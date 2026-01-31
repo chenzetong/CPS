@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::models::{Account, QuotaData};
 use crate::modules;
 
-const CACHE_DIR: &str = "cache/quota_api_v1";
+const CACHE_DIR: &str = "cache/quota_api_v1_desktop";
 const CACHE_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

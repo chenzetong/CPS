@@ -19,7 +19,7 @@ const BACKOFF_BASE_MS: u64 = 500;
 const BACKOFF_MAX_MS: u64 = 4000;
 const ONBOARD_ATTEMPTS: usize = 5;
 const ONBOARD_DELAY_MS: u64 = 2000;
-const API_CACHE_DIR: &str = "cache/quota_api_v1";
+const API_CACHE_DIR: &str = "cache/quota_api_v1_desktop";
 const API_CACHE_VERSION: u8 = 1;
 const API_CACHE_TTL_MS: i64 = 60_000;
 
@@ -432,44 +432,47 @@ pub async fn fetch_project_id(access_token: &str, email: &str) -> (Option<String
 }
 
 /// 查询账号配额
-pub async fn fetch_quota(access_token: &str, email: &str) -> crate::error::AppResult<QuotaFetchResult> {
+/// skip_cache: 是否跳过缓存，单个账号刷新应传 true，批量刷新传 false
+pub async fn fetch_quota(access_token: &str, email: &str, skip_cache: bool) -> crate::error::AppResult<QuotaFetchResult> {
     use crate::error::AppError;
     
     let (project_id, subscription_tier) = fetch_project_id(access_token, email).await;
 
-    if let Some(record) = read_api_cache("authorized", email) {
-        if is_api_cache_valid(&record) {
-            crate::modules::logger::log_info(&format!(
-                "[QuotaApiCache] Using api cache for {} (age: {}s)",
-                email,
-                api_cache_age_secs(&record),
-            ));
-            if let Ok(quota_response) = serde_json::from_value::<QuotaResponse>(record.payload.clone()) {
-                let mut quota_data = QuotaData::new();
-                for (name, info) in quota_response.models {
-                    if let Some(quota_info) = info.quota_info {
-                        let percentage = quota_info.remaining_fraction
-                            .map(|f| (f * 100.0) as i32)
-                            .unwrap_or(0);
-                        let reset_time = quota_info.reset_time.unwrap_or_default();
-                        if name.contains("gemini") || name.contains("claude") {
-                            quota_data.add_model(name, percentage, reset_time);
+    if !skip_cache {
+        if let Some(record) = read_api_cache("authorized", email) {
+            if is_api_cache_valid(&record) {
+                crate::modules::logger::log_info(&format!(
+                    "[QuotaApiCache] Using api cache for {} (age: {}s)",
+                    email,
+                    api_cache_age_secs(&record),
+                ));
+                if let Ok(quota_response) = serde_json::from_value::<QuotaResponse>(record.payload.clone()) {
+                    let mut quota_data = QuotaData::new();
+                    for (name, info) in quota_response.models {
+                        if let Some(quota_info) = info.quota_info {
+                            let percentage = quota_info.remaining_fraction
+                                .map(|f| (f * 100.0) as i32)
+                                .unwrap_or(0);
+                            let reset_time = quota_info.reset_time.unwrap_or_default();
+                            if name.contains("gemini") || name.contains("claude") {
+                                quota_data.add_model(name, percentage, reset_time);
+                            }
                         }
                     }
+                    quota_data.subscription_tier = subscription_tier.clone();
+                    return Ok(QuotaFetchResult {
+                        quota: quota_data,
+                        project_id: project_id.clone(),
+                        error: None,
+                    });
                 }
-                quota_data.subscription_tier = subscription_tier.clone();
-                return Ok(QuotaFetchResult {
-                    quota: quota_data,
-                    project_id: project_id.clone(),
-                    error: None,
-                });
+            } else {
+                crate::modules::logger::log_info(&format!(
+                    "[QuotaApiCache] Cache expired for {} (age: {}s), fetching from network",
+                    email,
+                    api_cache_age_secs(&record),
+                ));
             }
-        } else {
-            crate::modules::logger::log_info(&format!(
-                "[QuotaApiCache] Cache expired for {} (age: {}s), fetching from network",
-                email,
-                api_cache_age_secs(&record),
-            ));
         }
     }
     

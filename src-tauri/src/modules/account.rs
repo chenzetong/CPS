@@ -563,7 +563,7 @@ pub async fn refresh_all_quotas_logic() -> Result<RefreshStats, String> {
             let permit = semaphore.clone();
             async move {
                 let _guard = permit.acquire().await.unwrap();
-                match fetch_quota_with_retry(&mut account).await {
+                match fetch_quota_with_retry(&mut account, false).await {
                     Ok(quota) => {
                         if let Err(e) = update_account_quota(&account_id, quota) {
                             let msg = format!("Account {}: Save quota failed - {}", email, e);
@@ -615,7 +615,8 @@ pub async fn refresh_all_quotas_logic() -> Result<RefreshStats, String> {
 }
 
 /// 带重试的配额查询
-pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppResult<QuotaData> {
+/// skip_cache: 是否跳过缓存，单个账号刷新应传 true
+pub async fn fetch_quota_with_retry(account: &mut Account, skip_cache: bool) -> crate::error::AppResult<QuotaData> {
     use crate::modules::oauth;
     use crate::error::AppError;
     
@@ -643,7 +644,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
         let _ = upsert_account(account.email.clone(), account.name.clone(), token.clone());
     }
 
-    let result = modules::quota::fetch_quota(&account.token.access_token, &account.email).await;
+    let result = modules::quota::fetch_quota(&account.token.access_token, &account.email, skip_cache).await;
     match result {
         Ok(payload) => {
             account.quota_error = payload.error.map(|err| QuotaErrorInfo {

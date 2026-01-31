@@ -7,6 +7,12 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.4.10] - 2026-01-31
+
+### Changed
+- **Single account quota refresh**: Single card refresh now always fetches from the real-time API, bypassing the 60-second cache.
+- **Cache directory isolation**: Desktop quota cache moved to `quota_api_v1_desktop` to prevent sharing/overwriting with the extension.
+
 ## [0.4.9] - 2026-01-31
 
 ### Added

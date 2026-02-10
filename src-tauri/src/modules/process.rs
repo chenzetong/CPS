@@ -1078,22 +1078,15 @@ fn collect_antigravity_process_entries_from_ps() -> Vec<(u32, Option<String>)> {
 
 #[cfg(target_os = "windows")]
 fn collect_antigravity_process_entries_from_powershell() -> Vec<(u32, Option<String>)> {
-    #[derive(Debug)]
-    struct ProcessRow {
-        pid: u32,
-        parent_pid: u32,
-        dir: Option<String>,
-        is_helper: bool,
-    }
-
-    let mut rows: Vec<ProcessRow> = Vec::new();
+    let mut result = Vec::new();
     let output = powershell_output(&[
+        "-NoProfile",
         "-Command",
-        "Get-CimInstance Win32_Process -Filter \"Name='Antigravity.exe'\" | ForEach-Object { \"$($_.ProcessId)|$($_.ParentProcessId)|$($_.CommandLine)\" }",
+        "Get-CimInstance Win32_Process -Filter \"Name='Antigravity.exe'\" | ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }",
     ]);
     let output = match output {
         Ok(value) => value,
-        Err(_) => return Vec::new(),
+        Err(_) => return result,
     };
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
@@ -1101,72 +1094,20 @@ fn collect_antigravity_process_entries_from_powershell() -> Vec<(u32, Option<Str
         if line.is_empty() {
             continue;
         }
-        let mut parts = line.splitn(3, '|');
+        let mut parts = line.splitn(2, '|');
         let pid_str = parts.next().unwrap_or("").trim();
-        let parent_pid_str = parts.next().unwrap_or("").trim();
         let cmdline = parts.next().unwrap_or("").trim();
         let pid = match pid_str.parse::<u32>() {
             Ok(value) => value,
             Err(_) => continue,
         };
-        let parent_pid = parent_pid_str.parse::<u32>().unwrap_or(0);
         let lower = cmdline.to_lowercase();
+        if lower.contains("antigravity tools") || is_helper_command_line(&lower) {
+            continue;
+        }
         let dir = extract_user_data_dir_from_command_line(cmdline);
-        rows.push(ProcessRow {
-            pid,
-            parent_pid,
-            dir,
-            is_helper: lower.contains("antigravity tools") || is_helper_command_line(&lower),
-        });
+        result.push((pid, dir));
     }
-
-    if rows.is_empty() {
-        return Vec::new();
-    }
-
-    let antigravity_pids: HashSet<u32> = rows.iter().map(|row| row.pid).collect();
-    let mut child_count: HashMap<u32, usize> = HashMap::new();
-    for row in &rows {
-        if antigravity_pids.contains(&row.parent_pid) {
-            *child_count.entry(row.parent_pid).or_insert(0) += 1;
-        }
-    }
-
-    let mut map: HashMap<u32, Option<String>> = HashMap::new();
-    for row in rows {
-        if row.is_helper {
-            continue;
-        }
-        let has_antigravity_parent = antigravity_pids.contains(&row.parent_pid);
-        let has_antigravity_children = child_count.get(&row.pid).copied().unwrap_or(0) > 0;
-        if row.dir.is_none() && has_antigravity_parent && !has_antigravity_children {
-            // 过滤孤立的子进程（例如扩展 Node 进程），避免误判为主进程。
-            continue;
-        }
-        match map.get(&row.pid) {
-            None => {
-                map.insert(row.pid, row.dir);
-            }
-            Some(existing) => {
-                if existing.is_none() && row.dir.is_some() {
-                    map.insert(row.pid, row.dir);
-                }
-            }
-        }
-    }
-
-    let mut result: Vec<(u32, Option<String>)> = map.into_iter().collect();
-    for (_, dir) in &mut result {
-        if let Some(value) = dir {
-            let normalized = normalize_path_for_compare(value);
-            if normalized.is_empty() {
-                *dir = None;
-            } else {
-                *value = normalized;
-            }
-        }
-    }
-    result.sort_by_key(|(pid, _)| *pid);
     result
 }
 
@@ -2527,41 +2468,6 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
 }
 
 /// 关闭受管 Antigravity 实例（按 user-data-dir 匹配，包含默认实例目录）
-fn matches_antigravity_target_dir(dir: &Option<String>, target_dirs: &HashSet<String>) -> bool {
-    let Some(raw_dir) = dir.as_ref() else {
-        return false;
-    };
-    let normalized = normalize_path_for_compare(raw_dir);
-    !normalized.is_empty() && target_dirs.contains(&normalized)
-}
-
-fn collect_target_antigravity_entries(target_dirs: &HashSet<String>) -> Vec<(u32, Option<String>)> {
-    collect_antigravity_process_entries()
-        .into_iter()
-        .filter(|(_, dir)| matches_antigravity_target_dir(dir, target_dirs))
-        .collect()
-}
-
-fn collect_stable_target_antigravity_entries(
-    target_dirs: &HashSet<String>,
-    checks: usize,
-    interval_ms: u64,
-) -> Vec<(u32, Option<String>)> {
-    let rounds = checks.max(1);
-    let mut latest: Vec<(u32, Option<String>)> = Vec::new();
-    for index in 0..rounds {
-        latest = collect_target_antigravity_entries(target_dirs);
-        latest.sort_by_key(|(pid, _)| *pid);
-        if latest.is_empty() {
-            return latest;
-        }
-        if index + 1 < rounds {
-            thread::sleep(Duration::from_millis(interval_ms));
-        }
-    }
-    latest
-}
-
 pub fn close_antigravity_instances(user_data_dirs: &[String], timeout_secs: u64) -> Result<(), String> {
     crate::modules::logger::log_info("正在关闭受管 Antigravity 实例...");
 
@@ -2594,7 +2500,22 @@ pub fn close_antigravity_instances(user_data_dirs: &[String], timeout_secs: u64)
     ));
     let mut pids: Vec<u32> = entries
         .iter()
-        .filter_map(|(pid, dir)| matches_antigravity_target_dir(dir, &target_dirs).then_some(*pid))
+        .filter_map(|(pid, dir)| {
+            let resolved_dir = dir
+                .as_ref()
+                .map(|value| normalize_path_for_compare(value))
+                .filter(|value| !value.is_empty())
+                .or_else(|| default_dir.clone());
+            if resolved_dir
+                .as_ref()
+                .map(|value| target_dirs.contains(value))
+                .unwrap_or(false)
+            {
+                Some(*pid)
+            } else {
+                None
+            }
+        })
         .collect();
     pids.sort();
     pids.dedup();
@@ -2618,8 +2539,20 @@ pub fn close_antigravity_instances(user_data_dirs: &[String], timeout_secs: u64)
         ));
     }
 
-    let mut remaining_entries =
-        collect_stable_target_antigravity_entries(&target_dirs, 3, 260);
+    let mut remaining_entries: Vec<(u32, Option<String>)> = collect_antigravity_process_entries()
+        .into_iter()
+        .filter(|(_, dir)| {
+            let resolved_dir = dir
+                .as_ref()
+                .map(|value| normalize_path_for_compare(value))
+                .filter(|value| !value.is_empty())
+                .or_else(|| default_dir.clone());
+            resolved_dir
+                .as_ref()
+                .map(|value| target_dirs.contains(value))
+                .unwrap_or(false)
+        })
+        .collect();
     if !remaining_entries.is_empty() {
         let mut remaining_pids: Vec<u32> = remaining_entries.iter().map(|(pid, _)| *pid).collect();
         remaining_pids.sort();
@@ -2644,8 +2577,20 @@ pub fn close_antigravity_instances(user_data_dirs: &[String], timeout_secs: u64)
                     err
                 ));
             }
-            remaining_entries =
-                collect_stable_target_antigravity_entries(&target_dirs, 3, 320);
+            remaining_entries = collect_antigravity_process_entries()
+                .into_iter()
+                .filter(|(_, dir)| {
+                    let resolved_dir = dir
+                        .as_ref()
+                        .map(|value| normalize_path_for_compare(value))
+                        .filter(|value| !value.is_empty())
+                        .or_else(|| default_dir.clone());
+                    resolved_dir
+                        .as_ref()
+                        .map(|value| target_dirs.contains(value))
+                        .unwrap_or(false)
+                })
+                .collect();
         }
     }
     if !remaining_entries.is_empty() {

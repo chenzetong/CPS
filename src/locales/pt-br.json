@@ -1223,6 +1223,7 @@
       "recommended": "Troca recomendada",
       "noRecommendation": "Nenhuma conta disponível para troca",
       "later": "Depois",
+      "openSettings": "Ajustar configurações de alerta",
       "switchNow": "Trocar rapidamente para {{email}}",
       "switchFailedTitle": "Falha na troca",
       "switchFailedBody": "Falha na troca rápida: {{error}}"

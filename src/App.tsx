@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
@@ -6,22 +6,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from 'react-i18next';
 import { RefreshCw, X } from 'lucide-react';
-import { AccountsPage } from './pages/AccountsPage';
-import { CodexAccountsPage } from './pages/CodexAccountsPage';
-import { GitHubCopilotAccountsPage } from './pages/GitHubCopilotAccountsPage';
-import { WindsurfAccountsPage } from './pages/WindsurfAccountsPage';
-import { KiroAccountsPage } from './pages/KiroAccountsPage';
-
-import { FingerprintsPage } from './pages/FingerprintsPage';
-import { WakeupTasksPage } from './pages/WakeupTasksPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { InstancesPage } from './pages/InstancesPage';
 import { SideNav } from './components/layout/SideNav';
-import { PlatformLayoutModal } from './components/PlatformLayoutModal';
-import { UpdateNotification } from './components/UpdateNotification';
-import { CloseConfirmDialog } from './components/CloseConfirmDialog';
-import { BreakoutModal } from './components/easter-egg/BreakoutModal';
 import { GlobalModal } from './components/GlobalModal';
+import type { QuickSettingsType } from './components/QuickSettingsPopover';
 import { Page } from './types/navigation';
 import { useAutoRefresh } from './hooks/useAutoRefresh';
 import { useEasterEggTrigger } from './hooks/useEasterEggTrigger';
@@ -33,7 +20,52 @@ import { useGitHubCopilotAccountStore } from './stores/useGitHubCopilotAccountSt
 import { useWindsurfAccountStore } from './stores/useWindsurfAccountStore';
 import { useKiroAccountStore } from './stores/useKiroAccountStore';
 
-import { DashboardPage } from './pages/DashboardPage';
+const DashboardPage = lazy(() =>
+  import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
+);
+const AccountsPage = lazy(() =>
+  import('./pages/AccountsPage').then((module) => ({ default: module.AccountsPage })),
+);
+const CodexAccountsPage = lazy(() =>
+  import('./pages/CodexAccountsPage').then((module) => ({ default: module.CodexAccountsPage })),
+);
+const GitHubCopilotAccountsPage = lazy(() =>
+  import('./pages/GitHubCopilotAccountsPage').then((module) => ({
+    default: module.GitHubCopilotAccountsPage,
+  })),
+);
+const WindsurfAccountsPage = lazy(() =>
+  import('./pages/WindsurfAccountsPage').then((module) => ({ default: module.WindsurfAccountsPage })),
+);
+const KiroAccountsPage = lazy(() =>
+  import('./pages/KiroAccountsPage').then((module) => ({ default: module.KiroAccountsPage })),
+);
+const FingerprintsPage = lazy(() =>
+  import('./pages/FingerprintsPage').then((module) => ({ default: module.FingerprintsPage })),
+);
+const WakeupTasksPage = lazy(() =>
+  import('./pages/WakeupTasksPage').then((module) => ({ default: module.WakeupTasksPage })),
+);
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+);
+const InstancesPage = lazy(() =>
+  import('./pages/InstancesPage').then((module) => ({ default: module.InstancesPage })),
+);
+const PlatformLayoutModal = lazy(() =>
+  import('./components/PlatformLayoutModal').then((module) => ({
+    default: module.PlatformLayoutModal,
+  })),
+);
+const UpdateNotification = lazy(() =>
+  import('./components/UpdateNotification').then((module) => ({ default: module.UpdateNotification })),
+);
+const CloseConfirmDialog = lazy(() =>
+  import('./components/CloseConfirmDialog').then((module) => ({ default: module.CloseConfirmDialog })),
+);
+const BreakoutModal = lazy(() =>
+  import('./components/easter-egg/BreakoutModal').then((module) => ({ default: module.BreakoutModal })),
+);
 
 interface GeneralConfigTheme {
   theme: string;
@@ -123,6 +155,36 @@ function getQuotaAlertPlatformLabel(
   }
 }
 
+function getQuotaAlertTargetPage(platform: QuotaAlertPlatform): Page {
+  switch (platform) {
+    case 'codex':
+      return 'codex';
+    case 'github_copilot':
+      return 'github-copilot';
+    case 'windsurf':
+      return 'windsurf';
+    case 'kiro':
+      return 'kiro';
+    default:
+      return 'overview';
+  }
+}
+
+function getQuotaAlertQuickSettingsType(platform: QuotaAlertPlatform): QuickSettingsType {
+  switch (platform) {
+    case 'codex':
+      return 'codex';
+    case 'github_copilot':
+      return 'github_copilot';
+    case 'windsurf':
+      return 'windsurf';
+    case 'kiro':
+      return 'kiro';
+    default:
+      return 'antigravity';
+  }
+}
+
 function App() {
   const { t } = useTranslation();
   const [page, setPage] = useState<Page>('dashboard');
@@ -149,6 +211,18 @@ function App() {
   
   // 启用自动刷新 hook
   useAutoRefresh();
+
+  const openQuickSettingsForPlatform = useCallback((platform: QuotaAlertPlatform) => {
+    const targetPage = getQuotaAlertTargetPage(platform);
+    const targetType = getQuotaAlertQuickSettingsType(platform);
+    closeModal();
+    setPage(targetPage);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent('quick-settings:open', { detail: { type: targetType } }));
+      });
+    });
+  }, [closeModal]);
 
   useEffect(() => {
     let cleanup: (() => void) | null = null;
@@ -266,7 +340,7 @@ function App() {
       if (!nextLanguage || nextLanguage === getCurrentLanguage()) {
         return;
       }
-      changeLanguage(nextLanguage);
+      void changeLanguage(nextLanguage);
       window.dispatchEvent(new CustomEvent('general-language-updated', { detail: { language: nextLanguage } }));
     }).then((fn) => { unlisten = fn; });
 
@@ -338,6 +412,15 @@ function App() {
             label: t('quotaAlert.modal.later', '稍后处理'),
             variant: 'secondary',
           },
+          {
+            id: 'quota-alert-open-settings',
+            label: t('quotaAlert.modal.openSettings', '调整预警设置'),
+            variant: 'secondary',
+            autoClose: false,
+            onClick: () => {
+              openQuickSettingsForPlatform(platform);
+            },
+          },
           ...(hasRecommendation
             ? [{
                 id: 'quota-alert-switch',
@@ -401,7 +484,7 @@ function App() {
         unlisten();
       }
     };
-  }, [closeModal, showModal, t]);
+  }, [closeModal, openQuickSettingsForPlatform, showModal, t]);
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
@@ -455,6 +538,29 @@ function App() {
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
 
+    const refreshTasks = [
+      {
+        command: 'refresh_current_quota',
+        errorMessage: 'Failed to refresh Antigravity quotas:',
+      },
+      {
+        command: 'refresh_current_codex_quota',
+        errorMessage: 'Failed to refresh Codex quotas:',
+      },
+      {
+        command: 'refresh_all_github_copilot_tokens',
+        errorMessage: 'Failed to refresh GitHub Copilot quotas:',
+      },
+      {
+        command: 'refresh_all_windsurf_tokens',
+        errorMessage: 'Failed to refresh Windsurf quotas:',
+      },
+      {
+        command: 'refresh_all_kiro_tokens',
+        errorMessage: 'Failed to refresh Kiro quotas:',
+      },
+    ] as const;
+
     listen('tray:refresh_quota', async () => {
       if (trayRefreshInFlightRef.current) {
         return;
@@ -462,31 +568,13 @@ function App() {
       trayRefreshInFlightRef.current = true;
 
       try {
-        try {
-          await invoke('refresh_current_quota');
-        } catch (error) {
-          console.error('Failed to refresh Antigravity quotas:', error);
-        }
-        try {
-          await invoke('refresh_current_codex_quota');
-        } catch (error) {
-          console.error('Failed to refresh Codex quotas:', error);
-        }
-        try {
-          await invoke('refresh_all_github_copilot_tokens');
-        } catch (error) {
-          console.error('Failed to refresh GitHub Copilot quotas:', error);
-        }
-        try {
-          await invoke('refresh_all_windsurf_tokens');
-        } catch (error) {
-          console.error('Failed to refresh Windsurf quotas:', error);
-        }
-        try {
-          await invoke('refresh_all_kiro_tokens');
-        } catch (error) {
-          console.error('Failed to refresh Kiro quotas:', error);
-        }
+        await Promise.all(
+          refreshTasks.map(({ command, errorMessage }) =>
+            invoke(command).catch((error) => {
+              console.error(errorMessage, error);
+            }),
+          ),
+        );
       } finally {
         trayRefreshInFlightRef.current = false;
       }
@@ -687,22 +775,33 @@ function App() {
   const handleDragStart = () => {
     getCurrentWindow().startDragging();
   };
+  const suspenseFallback = (
+    <div className="loading-state">
+      {t('common.loading', '加载中...')}
+    </div>
+  );
 
   return (
     <div className="app-container">
       {/* 更新通知 */}
       {showUpdateNotification && (
-        <UpdateNotification key={updateNotificationKey} onClose={() => setShowUpdateNotification(false)} />
+        <Suspense fallback={null}>
+          <UpdateNotification key={updateNotificationKey} onClose={() => setShowUpdateNotification(false)} />
+        </Suspense>
       )}
       <GlobalModal />
 
       {/* 关闭确认对话框 */}
       {showCloseDialog && (
-        <CloseConfirmDialog onClose={() => setShowCloseDialog(false)} />
+        <Suspense fallback={null}>
+          <CloseConfirmDialog onClose={() => setShowCloseDialog(false)} />
+        </Suspense>
       )}
 
       {showBreakout && (
-        <BreakoutModal onClose={() => setShowBreakout(false)} />
+        <Suspense fallback={null}>
+          <BreakoutModal onClose={() => setShowBreakout(false)} />
+        </Suspense>
       )}
 
       {appPathMissing && (
@@ -820,27 +919,30 @@ function App() {
         onEasterEggTriggerClick={handleEasterEggTriggerClick}
       />
 
-      <PlatformLayoutModal open={showPlatformLayoutModal} onClose={() => setShowPlatformLayoutModal(false)} />
+      <Suspense fallback={null}>
+        <PlatformLayoutModal open={showPlatformLayoutModal} onClose={() => setShowPlatformLayoutModal(false)} />
+      </Suspense>
 
       <div className="main-wrapper">
         {/* overview 现在是合并后的账号总览页面 */}
-
-        {page === 'dashboard' && (
-          <DashboardPage
-            onNavigate={setPage}
-            onOpenPlatformLayout={() => setShowPlatformLayoutModal(true)}
-            onEasterEggTriggerClick={handleEasterEggTriggerClick}
-          />
-        )}
-        {page === 'overview' && <AccountsPage onNavigate={setPage} />}
-        {page === 'codex' && <CodexAccountsPage />}
-        {page === 'github-copilot' && <GitHubCopilotAccountsPage />}
-        {page === 'windsurf' && <WindsurfAccountsPage />}
-        {page === 'kiro' && <KiroAccountsPage />}
-        {page === 'instances' && <InstancesPage onNavigate={setPage} />}
-        {page === 'fingerprints' && <FingerprintsPage onNavigate={setPage} />}
-        {page === 'wakeup' && <WakeupTasksPage onNavigate={setPage} />}
-        {page === 'settings' && <SettingsPage />}
+        <Suspense fallback={suspenseFallback}>
+          {page === 'dashboard' && (
+            <DashboardPage
+              onNavigate={setPage}
+              onOpenPlatformLayout={() => setShowPlatformLayoutModal(true)}
+              onEasterEggTriggerClick={handleEasterEggTriggerClick}
+            />
+          )}
+          {page === 'overview' && <AccountsPage onNavigate={setPage} />}
+          {page === 'codex' && <CodexAccountsPage />}
+          {page === 'github-copilot' && <GitHubCopilotAccountsPage />}
+          {page === 'windsurf' && <WindsurfAccountsPage />}
+          {page === 'kiro' && <KiroAccountsPage />}
+          {page === 'instances' && <InstancesPage onNavigate={setPage} />}
+          {page === 'fingerprints' && <FingerprintsPage onNavigate={setPage} />}
+          {page === 'wakeup' && <WakeupTasksPage onNavigate={setPage} />}
+          {page === 'settings' && <SettingsPage />}
+        </Suspense>
       </div>
     </div>
   );

@@ -13,6 +13,8 @@ use crate::modules::{account, logger, windsurf_oauth};
 
 const ACCOUNTS_INDEX_FILE: &str = "windsurf_accounts.json";
 const ACCOUNTS_DIR: &str = "windsurf_accounts";
+static WINDSURF_ACCOUNT_INDEX_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
 static WINDSURF_QUOTA_ALERT_LAST_SENT: std::sync::LazyLock<Mutex<HashMap<String, i64>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 const WINDSURF_QUOTA_ALERT_COOLDOWN_SECONDS: i64 = 300;
@@ -102,6 +104,9 @@ fn refresh_summary(index: &mut WindsurfAccountIndex, account: &WindsurfAccount) 
 }
 
 fn upsert_account_record(account: WindsurfAccount) -> Result<WindsurfAccount, String> {
+    let _lock = WINDSURF_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 Windsurf 账号锁失败".to_string())?;
     let mut index = load_account_index();
     save_account_file(&account)?;
     refresh_summary(&mut index, &account);
@@ -673,6 +678,9 @@ pub fn list_accounts() -> Vec<WindsurfAccount> {
 }
 
 pub fn upsert_account(payload: WindsurfOAuthCompletePayload) -> Result<WindsurfAccount, String> {
+    let _lock = WINDSURF_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 Windsurf 账号锁失败".to_string())?;
     if let Err(err) = deduplicate_accounts_by_identity() {
         logger::log_warn(&format!("Windsurf upsert 前去重失败（已忽略）：{}", err));
     }
@@ -811,23 +819,52 @@ pub async fn refresh_account_token(account_id: &str) -> Result<WindsurfAccount, 
 
 pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<WindsurfAccount, String>)>, String>
 {
+    use futures::future::join_all;
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
+
+    const MAX_CONCURRENT: usize = 5;
     let accounts = list_accounts();
     logger::log_info(&format!(
         "[Windsurf Refresh] 开始批量刷新: total={}",
         accounts.len()
     ));
-    let mut results = Vec::new();
-    for account in accounts {
-        let id = account.id.clone();
-        let res = refresh_account_token(&id).await;
-        if let Err(err) = &res {
-            logger::log_warn(&format!(
-                "[Windsurf Refresh] 账号刷新失败: id={}, error={}",
-                id, err
-            ));
+
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
+    let tasks: Vec<_> = accounts
+        .into_iter()
+        .map(|account| {
+            let id = account.id;
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| format!("获取 Windsurf 刷新并发许可失败: {}", e))?;
+                let res = refresh_account_token(&id).await;
+                Ok::<(String, Result<WindsurfAccount, String>), String>((id, res))
+            }
+        })
+        .collect();
+
+    let mut results = Vec::with_capacity(tasks.len());
+    for task in join_all(tasks).await {
+        match task {
+            Ok(item) => {
+                if let Err(err) = &item.1 {
+                    logger::log_warn(&format!(
+                        "[Windsurf Refresh] 账号刷新失败: id={}, error={}",
+                        item.0, err
+                    ));
+                }
+                results.push(item);
+            }
+            Err(err) => {
+                logger::log_warn(&format!("[Windsurf Refresh] 执行任务失败: {}", err));
+            }
         }
-        results.push((id, res));
     }
+
     let success_count = results.iter().filter(|(_, item)| item.is_ok()).count();
     let failed_count = results.len().saturating_sub(success_count);
     logger::log_info(&format!(
@@ -838,6 +875,9 @@ pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<WindsurfAccount,
 }
 
 pub fn remove_account(account_id: &str) -> Result<(), String> {
+    let _lock = WINDSURF_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 Windsurf 账号锁失败".to_string())?;
     let mut index = load_account_index();
     index.accounts.retain(|item| item.id != account_id);
     save_account_index(&index)?;

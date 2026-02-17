@@ -1,22 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-import zhCN from '../locales/zh-CN.json';
-import zhTW from '../locales/zh-tw.json';
-import en from '../locales/en.json';
-import ja from '../locales/ja.json';
-import es from '../locales/es.json';
-import de from '../locales/de.json';
-import fr from '../locales/fr.json';
-import ptBR from '../locales/pt-br.json';
-import ru from '../locales/ru.json';
-import ko from '../locales/ko.json';
-import it from '../locales/it.json';
-import tr from '../locales/tr.json';
-import pl from '../locales/pl.json';
-import cs from '../locales/cs.json';
-import vi from '../locales/vi.json';
-import ar from '../locales/ar.json';
+type LocaleModule = { default: Record<string, unknown> };
 
 const languageAliases: Record<string, string> = {
   'zh-CN': 'zh-cn',
@@ -46,6 +31,28 @@ export const supportedLanguages = [
   'ar',
 ];
 
+const localeLoaders: Record<string, () => Promise<LocaleModule>> = {
+  en: () => import('../locales/en.json'),
+  'zh-cn': () => import('../locales/zh-CN.json'),
+  'zh-tw': () => import('../locales/zh-tw.json'),
+  ja: () => import('../locales/ja.json'),
+  es: () => import('../locales/es.json'),
+  de: () => import('../locales/de.json'),
+  fr: () => import('../locales/fr.json'),
+  'pt-br': () => import('../locales/pt-br.json'),
+  ru: () => import('../locales/ru.json'),
+  ko: () => import('../locales/ko.json'),
+  it: () => import('../locales/it.json'),
+  tr: () => import('../locales/tr.json'),
+  pl: () => import('../locales/pl.json'),
+  cs: () => import('../locales/cs.json'),
+  vi: () => import('../locales/vi.json'),
+  ar: () => import('../locales/ar.json'),
+};
+
+const loadedLanguages = new Set<string>();
+let initPromise: Promise<void> | null = null;
+
 export function normalizeLanguage(lang: string): string {
   const trimmed = lang.trim();
   if (!trimmed) {
@@ -64,48 +71,67 @@ export function normalizeLanguage(lang: string): string {
   return lower;
 }
 
-// 从 localStorage 读取语言设置，默认英文
-const savedLanguage = normalizeLanguage(localStorage.getItem('app-language') || 'en');
+function resolveSupportedLanguage(lang: string): string {
+  const normalized = normalizeLanguage(lang);
+  return supportedLanguages.includes(normalized) ? normalized : 'en';
+}
 
-i18n
-  .use(initReactI18next)
-  .init({
-    resources: {
-      'zh-cn': { translation: zhCN },
-      'zh-CN': { translation: zhCN },
-      'zh-tw': { translation: zhTW },
-      'zh-TW': { translation: zhTW },
-      'en': { translation: en },
-      'en-US': { translation: en },
-      'ja': { translation: ja },
-      'es': { translation: es },
-      'de': { translation: de },
-      'fr': { translation: fr },
-      'pt-br': { translation: ptBR },
-      'pt-BR': { translation: ptBR },
-      'ru': { translation: ru },
-      'ko': { translation: ko },
-      'it': { translation: it },
-      'tr': { translation: tr },
-      'pl': { translation: pl },
-      'cs': { translation: cs },
-      'vi': { translation: vi },
-      'ar': { translation: ar },
-    },
-    lng: savedLanguage,
-    fallbackLng: 'en',
-    interpolation: {
-      escapeValue: false, // React 已经处理了 XSS
-    },
-  });
+async function ensureLanguageResources(lang: string): Promise<string> {
+  const resolved = resolveSupportedLanguage(lang);
+  if (loadedLanguages.has(resolved)) {
+    return resolved;
+  }
+
+  const loader = localeLoaders[resolved] ?? localeLoaders.en;
+  const module = await loader();
+  i18n.addResourceBundle(resolved, 'translation', module.default, true, true);
+  loadedLanguages.add(resolved);
+  return resolved;
+}
+
+export async function initI18n(): Promise<void> {
+  if (initPromise) {
+    return initPromise;
+  }
+
+  initPromise = (async () => {
+    const savedLanguage = resolveSupportedLanguage(
+      localStorage.getItem('app-language') || 'en',
+    );
+
+    await i18n
+      .use(initReactI18next)
+      .init({
+        resources: {},
+        lng: 'en',
+        fallbackLng: 'en',
+        supportedLngs: supportedLanguages,
+        lowerCaseLng: true,
+        load: 'currentOnly',
+        interpolation: {
+          escapeValue: false, // React 已经处理了 XSS
+        },
+      });
+
+    await ensureLanguageResources('en');
+    if (savedLanguage !== 'en') {
+      await ensureLanguageResources(savedLanguage);
+    }
+    await i18n.changeLanguage(savedLanguage);
+  })();
+
+  return initPromise;
+}
+
+void initI18n();
 
 /**
  * 切换语言
  */
-export function changeLanguage(lang: string) {
-  const normalized = normalizeLanguage(lang);
-  i18n.changeLanguage(normalized);
-  localStorage.setItem('app-language', normalized);
+export async function changeLanguage(lang: string): Promise<void> {
+  const resolved = await ensureLanguageResources(lang);
+  await i18n.changeLanguage(resolved);
+  localStorage.setItem('app-language', resolved);
 }
 
 /**

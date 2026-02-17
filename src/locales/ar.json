@@ -1223,6 +1223,7 @@
       "recommended": "التبديل المقترح",
       "noRecommendation": "لا يوجد حساب بديل متاح",
       "later": "لاحقًا",
+      "openSettings": "تعديل إعدادات التنبيه",
       "switchNow": "تبديل سريع إلى {{email}}",
       "switchFailedTitle": "فشل التبديل",
       "switchFailedBody": "فشل التبديل السريع: {{error}}"

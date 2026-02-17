@@ -1223,6 +1223,7 @@
       "recommended": "Empfohlener Wechsel",
       "noRecommendation": "Kein geeignetes Konto zum Wechseln verfügbar",
       "later": "Später",
+      "openSettings": "Alarm-Einstellungen anpassen",
       "switchNow": "Schnell zu {{email}} wechseln",
       "switchFailedTitle": "Wechsel fehlgeschlagen",
       "switchFailedBody": "Schnellwechsel fehlgeschlagen: {{error}}"

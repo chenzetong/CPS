@@ -1223,6 +1223,7 @@
       "recommended": "Doporučené přepnutí",
       "noRecommendation": "Není k dispozici vhodný účet k přepnutí",
       "later": "Později",
+      "openSettings": "Upravit nastavení upozornění",
       "switchNow": "Rychle přepnout na {{email}}",
       "switchFailedTitle": "Přepnutí selhalo",
       "switchFailedBody": "Rychlé přepnutí selhalo: {{error}}"

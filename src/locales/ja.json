@@ -1223,6 +1223,7 @@
       "recommended": "推奨切替先",
       "noRecommendation": "切替可能なアカウントがありません",
       "later": "あとで",
+      "openSettings": "アラート設定を調整",
       "switchNow": "{{email}} にクイック切替",
       "switchFailedTitle": "切替失敗",
       "switchFailedBody": "クイック切替に失敗しました: {{error}}"

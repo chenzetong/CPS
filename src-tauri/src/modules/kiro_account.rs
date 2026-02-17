@@ -16,6 +16,7 @@ const LOCAL_USAGE_DB_KEY: &str = "kiro.kiroAgent";
 const KIRO_QUOTA_ALERT_COOLDOWN_SECONDS: i64 = 10 * 60;
 
 lazy_static::lazy_static! {
+    static ref KIRO_ACCOUNT_INDEX_LOCK: Mutex<()> = Mutex::new(());
     static ref KIRO_QUOTA_ALERT_LAST_SENT: Mutex<HashMap<String, i64>> = Mutex::new(HashMap::new());
 }
 
@@ -126,6 +127,9 @@ fn refresh_summary(index: &mut KiroAccountIndex, account: &KiroAccount) {
 }
 
 fn upsert_account_record(account: KiroAccount) -> Result<KiroAccount, String> {
+    let _lock = KIRO_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 Kiro 账号锁失败".to_string())?;
     let mut index = load_account_index();
     save_account_file(&account)?;
     refresh_summary(&mut index, &account);
@@ -565,6 +569,9 @@ fn apply_payload(account: &mut KiroAccount, payload: KiroOAuthCompletePayload) {
 }
 
 pub fn upsert_account(payload: KiroOAuthCompletePayload) -> Result<KiroAccount, String> {
+    let _lock = KIRO_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 Kiro 账号锁失败".to_string())?;
     let now = now_ts();
     let mut index = load_account_index();
     let incoming_profile_arn = normalize_identity(payload_profile_arn(&payload).as_deref());
@@ -682,19 +689,44 @@ pub async fn refresh_account_token(account_id: &str) -> Result<KiroAccount, Stri
 }
 
 pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<KiroAccount, String>)>, String> {
-    let accounts = list_accounts();
-    let mut results = Vec::new();
+    use futures::future::join_all;
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
 
-    for account in accounts {
-        let id = account.id.clone();
-        let result = refresh_account_token(&id).await;
-        results.push((id, result));
+    const MAX_CONCURRENT: usize = 5;
+    let accounts = list_accounts();
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
+    let tasks: Vec<_> = accounts
+        .into_iter()
+        .map(|account| {
+            let id = account.id;
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| format!("获取 Kiro 刷新并发许可失败: {}", e))?;
+                let result = refresh_account_token(&id).await;
+                Ok::<(String, Result<KiroAccount, String>), String>((id, result))
+            }
+        })
+        .collect();
+
+    let mut results = Vec::with_capacity(tasks.len());
+    for task in join_all(tasks).await {
+        match task {
+            Ok(item) => results.push(item),
+            Err(err) => return Err(err),
+        }
     }
 
     Ok(results)
 }
 
 pub fn remove_account(account_id: &str) -> Result<(), String> {
+    let _lock = KIRO_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 Kiro 账号锁失败".to_string())?;
     let mut index = load_account_index();
     index.accounts.retain(|item| item.id != account_id);
     save_account_index(&index)?;

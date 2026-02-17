@@ -82,8 +82,9 @@ export function GlobalModal() {
               className={resolveActionClass(action.variant)}
               onClick={() => { void handleActionClick(action); }}
               disabled={action.disabled}
+              title={action.label}
             >
-              {action.label}
+              <span className="global-modal-action-label">{action.label}</span>
             </button>
           ))}
         </div>

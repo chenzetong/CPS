@@ -1223,6 +1223,7 @@
       "recommended": "建議切換",
       "noRecommendation": "暫無可切換帳號",
       "later": "稍後處理",
+      "openSettings": "調整預警設定",
       "switchNow": "快捷切號到 {{email}}",
       "switchFailedTitle": "切號失敗",
       "switchFailedBody": "快捷切號失敗：{{error}}"

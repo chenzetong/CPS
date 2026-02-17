@@ -1223,6 +1223,7 @@
       "recommended": "Zalecane przełączenie",
       "noRecommendation": "Brak dostępnego konta do przełączenia",
       "later": "Później",
+      "openSettings": "Dostosuj ustawienia alertu",
       "switchNow": "Szybko przełącz na {{email}}",
       "switchFailedTitle": "Przełączenie nie powiodło się",
       "switchFailedBody": "Szybkie przełączenie nie powiodło się: {{error}}"

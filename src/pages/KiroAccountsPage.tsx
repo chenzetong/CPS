@@ -410,6 +410,21 @@ export function KiroAccountsPage() {
     importFileInputRef.current?.click();
   };
 
+  const importFromJsonContent = async (content: string): Promise<number> => {
+    const imported = await kiroService.importKiroFromJson(content);
+    return imported.length;
+  };
+
+  const isJsonObjectOrArrayText = (content: string): boolean => {
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed === null) return false;
+      return Array.isArray(parsed) || typeof parsed === 'object';
+    } catch {
+      return false;
+    }
+  };
+
   const handleImportJsonFile = async (file: File) => {
     setImporting(true);
     setAddStatus('loading');
@@ -417,13 +432,13 @@ export function KiroAccountsPage() {
 
     try {
       const content = await file.text();
-      const imported = await kiroService.importKiroFromJson(content);
+      const importedCount = await importFromJsonContent(content);
       await fetchAccounts();
 
       setAddStatus('success');
       setAddMessage(
         t('kiro.token.importSuccessMsg', {
-          count: imported.length,
+          count: importedCount,
           defaultValue: '成功导入 {{count}} 个账号',
         })
       );

@@ -93,6 +93,22 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     };
   }, [isOpen]);
 
+  // 外部触发：按平台类型打开设置弹框
+  useEffect(() => {
+    const handleExternalOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<{ type?: QuickSettingsType }>;
+      if (customEvent.detail?.type !== type) {
+        return;
+      }
+      setIsOpen(true);
+    };
+
+    window.addEventListener('quick-settings:open', handleExternalOpen as EventListener);
+    return () => {
+      window.removeEventListener('quick-settings:open', handleExternalOpen as EventListener);
+    };
+  }, [type]);
+
   const loadConfig = async () => {
     try {
       const cfg = await invoke<GeneralConfig>('get_general_config');

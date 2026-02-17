@@ -1223,6 +1223,7 @@
       "recommended": "권장 전환",
       "noRecommendation": "전환 가능한 계정이 없습니다",
       "later": "나중에",
+      "openSettings": "알림 설정 조정",
       "switchNow": "{{email}}로 빠른 전환",
       "switchFailedTitle": "전환 실패",
       "switchFailedBody": "빠른 전환 실패: {{error}}"

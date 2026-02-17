@@ -21,4 +21,14 @@
 
 .global-modal-footer .btn {
   min-width: 90px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.global-modal-action-label {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

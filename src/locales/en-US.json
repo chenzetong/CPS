@@ -1239,6 +1239,7 @@
       "recommended": "Recommended switch",
       "noRecommendation": "No switch candidate available",
       "later": "Later",
+      "openSettings": "Adjust alert settings",
       "switchNow": "Quick switch to {{email}}",
       "switchFailedTitle": "Switch failed",
       "switchFailedBody": "Quick switch failed: {{error}}"

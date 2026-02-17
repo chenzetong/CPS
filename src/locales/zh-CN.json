@@ -1271,6 +1271,7 @@
       "recommended": "建议切换",
       "noRecommendation": "暂无可切换账号",
       "later": "稍后处理",
+      "openSettings": "调整预警设置",
       "switchNow": "快捷切号到 {{email}}",
       "switchFailedTitle": "切号失败",
       "switchFailedBody": "快捷切号失败：{{error}}"

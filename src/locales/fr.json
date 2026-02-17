@@ -1223,6 +1223,7 @@
       "recommended": "Changement recommandé",
       "noRecommendation": "Aucun compte de remplacement disponible",
       "later": "Plus tard",
+      "openSettings": "Ajuster les paramètres d'alerte",
       "switchNow": "Changer rapidement vers {{email}}",
       "switchFailedTitle": "Échec du changement",
       "switchFailedBody": "Échec du changement rapide : {{error}}"

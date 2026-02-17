@@ -9,6 +9,8 @@ use std::sync::Mutex;
 
 const ACCOUNTS_INDEX_FILE: &str = "github_copilot_accounts.json";
 const ACCOUNTS_DIR: &str = "github_copilot_accounts";
+static GHCP_ACCOUNT_INDEX_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
 static GHCP_QUOTA_ALERT_LAST_SENT: std::sync::LazyLock<Mutex<HashMap<String, i64>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 const GHCP_QUOTA_ALERT_COOLDOWN_SECONDS: i64 = 300;
@@ -103,6 +105,9 @@ fn refresh_summary(index: &mut GitHubCopilotAccountIndex, account: &GitHubCopilo
 }
 
 fn upsert_account_record(account: GitHubCopilotAccount) -> Result<GitHubCopilotAccount, String> {
+    let _lock = GHCP_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 GitHub Copilot 账号锁失败".to_string())?;
     let mut index = load_account_index();
     save_account_file(&account)?;
     refresh_summary(&mut index, &account);
@@ -122,6 +127,9 @@ pub fn list_accounts() -> Vec<GitHubCopilotAccount> {
 pub fn upsert_account(
     payload: GitHubCopilotOAuthCompletePayload,
 ) -> Result<GitHubCopilotAccount, String> {
+    let _lock = GHCP_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 GitHub Copilot 账号锁失败".to_string())?;
     let now = now_ts();
     let mut index = load_account_index();
     let generated_id = format!(
@@ -214,17 +222,44 @@ pub async fn refresh_account_token(account_id: &str) -> Result<GitHubCopilotAcco
 
 pub async fn refresh_all_tokens(
 ) -> Result<Vec<(String, Result<GitHubCopilotAccount, String>)>, String> {
+    use futures::future::join_all;
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
+
+    const MAX_CONCURRENT: usize = 5;
     let accounts = list_accounts();
-    let mut results = Vec::new();
-    for acc in accounts {
-        let id = acc.id.clone();
-        let res = refresh_account_token(&id).await;
-        results.push((id, res));
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
+    let tasks: Vec<_> = accounts
+        .into_iter()
+        .map(|account| {
+            let id = account.id;
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| format!("获取 GitHub Copilot 刷新并发许可失败: {}", e))?;
+                let res = refresh_account_token(&id).await;
+                Ok::<(String, Result<GitHubCopilotAccount, String>), String>((id, res))
+            }
+        })
+        .collect();
+
+    let mut results = Vec::with_capacity(tasks.len());
+    for task in join_all(tasks).await {
+        match task {
+            Ok(item) => results.push(item),
+            Err(err) => return Err(err),
+        }
     }
+
     Ok(results)
 }
 
 pub fn remove_account(account_id: &str) -> Result<(), String> {
+    let _lock = GHCP_ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|_| "获取 GitHub Copilot 账号锁失败".to_string())?;
     let mut index = load_account_index();
     index.accounts.retain(|item| item.id != account_id);
     save_account_index(&index)?;

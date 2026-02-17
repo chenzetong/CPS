@@ -1223,6 +1223,7 @@
       "recommended": "Đề xuất chuyển",
       "noRecommendation": "Không có tài khoản phù hợp để chuyển",
       "later": "Để sau",
+      "openSettings": "Điều chỉnh cài đặt cảnh báo",
       "switchNow": "Chuyển nhanh sang {{email}}",
       "switchFailedTitle": "Chuyển thất bại",
       "switchFailedBody": "Chuyển nhanh thất bại: {{error}}"

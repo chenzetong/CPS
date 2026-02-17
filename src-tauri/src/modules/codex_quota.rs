@@ -262,12 +262,36 @@ pub async fn refresh_account_quota(account_id: &str) -> Result<CodexQuota, Strin
 
 /// 刷新所有账号配额
 pub async fn refresh_all_quotas() -> Result<Vec<(String, Result<CodexQuota, String>)>, String> {
-    let accounts = codex_account::list_accounts();
-    let mut results = Vec::new();
+    use futures::future::join_all;
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
 
-    for account in accounts {
-        let result = refresh_account_quota(&account.id).await;
-        results.push((account.id.clone(), result));
+    const MAX_CONCURRENT: usize = 5;
+    let accounts = codex_account::list_accounts();
+
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
+    let tasks: Vec<_> = accounts
+        .into_iter()
+        .map(|account| {
+            let account_id = account.id;
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| format!("获取 Codex 刷新并发许可失败: {}", e))?;
+                let result = refresh_account_quota(&account_id).await;
+                Ok::<(String, Result<CodexQuota, String>), String>((account_id, result))
+            }
+        })
+        .collect();
+
+    let mut results = Vec::with_capacity(tasks.len());
+    for task in join_all(tasks).await {
+        match task {
+            Ok(item) => results.push(item),
+            Err(err) => return Err(err),
+        }
     }
 
     Ok(results)

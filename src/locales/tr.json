@@ -1223,6 +1223,7 @@
       "recommended": "Önerilen geçiş",
       "noRecommendation": "Geçiş için uygun hesap yok",
       "later": "Daha sonra",
+      "openSettings": "Uyarı ayarlarını düzenle",
       "switchNow": "{{email}} hesabına hızlı geçiş",
       "switchFailedTitle": "Geçiş başarısız",
       "switchFailedBody": "Hızlı geçiş başarısız: {{error}}"

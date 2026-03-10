@@ -20,31 +20,6 @@ export interface CodebuddyQuotaQueryPayload extends Record<string, unknown> {
   pageSize?: number;
 }
 
-export interface CodebuddyOAuthWebviewUiTexts {
-  manualUrlPlaceholder?: string;
-  manualUrlGo?: string;
-  manualUrlInvalid?: string;
-  quotaFailurePrompt?: string;
-  quotaFailureTitle?: string;
-  quotaFailureRetryLabel?: string;
-  quotaFailureSkipLabel?: string;
-  oauthSuccessClosePrompt?: string;
-  oauthSuccessCloseTitle?: string;
-  oauthSuccessCloseNowLabel?: string;
-  oauthSuccessCloseLaterLabel?: string;
-  oauthSuccessCloseNowStatus?: string;
-  oauthSuccessCloseLaterStatus?: string;
-  oauthStepQuotaAuthorize?: string;
-  oauthStepQuotaBind?: string;
-  oauthStepQuotaComplete?: string;
-  oauthStepPrepare?: string;
-  oauthStepAuthorize?: string;
-  oauthStepBind?: string;
-  oauthStepQuota?: string;
-  oauthStepComplete?: string;
-  oauthStatusLoginConfirm?: string;
-}
-
 export async function listCodebuddyAccounts(): Promise<CodebuddyAccount[]> {
   return await invoke('list_codebuddy_accounts');
 }
@@ -89,30 +64,6 @@ export async function cancelCodebuddyOAuthLogin(loginId?: string): Promise<void>
   return await invoke('codebuddy_oauth_login_cancel', { loginId: loginId ?? null });
 }
 
-export async function openCodebuddyOAuthWebview(
-  authUrl: string,
-  incognito = false,
-  authorizeOnly = false,
-  uiTexts?: CodebuddyOAuthWebviewUiTexts,
-): Promise<void> {
-  return await invoke('open_codebuddy_oauth_webview', {
-    authUrl,
-    incognito,
-    authorizeOnly,
-    uiTexts: uiTexts ?? null,
-  });
-}
-
-export async function runCodebuddyOAuthWebviewAction(
-  action: 'retry_quota' | 'goto_authorize',
-  authUrl?: string,
-): Promise<void> {
-  return await invoke('codebuddy_oauth_webview_action', {
-    action,
-    authUrl: authUrl ?? null,
-  });
-}
-
 export async function addCodebuddyAccountWithToken(accessToken: string): Promise<CodebuddyAccount> {
   return await invoke('add_codebuddy_account_with_token', { accessToken });
 }
@@ -137,16 +88,4 @@ export async function queryCodebuddyQuotaWithBinding(
 
 export async function clearCodebuddyQuotaBinding(accountId: string): Promise<CodebuddyAccount> {
   return await invoke('clear_codebuddy_quota_binding', { accountId });
-}
-
-export async function openCodebuddyQuotaWebview(
-  accountId: string,
-  incognito = false,
-  uiTexts?: CodebuddyOAuthWebviewUiTexts,
-): Promise<void> {
-  return await invoke('open_codebuddy_quota_webview', {
-    accountId,
-    incognito,
-    uiTexts: uiTexts ?? null,
-  });
 }

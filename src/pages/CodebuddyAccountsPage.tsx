@@ -1,10 +1,9 @@
-import { useMemo, useCallback, Fragment, useState, useEffect } from 'react';
+import { useMemo, useCallback, Fragment, useState } from 'react';
 import {
   Plus, RefreshCw, Download, Upload, Trash2, X, Globe, KeyRound, Database,
   Copy, Check, RotateCw, LayoutGrid, List, Search,
   Tag, Play, Eye, EyeOff, CircleAlert, ChevronDown,
 } from 'lucide-react';
-import { listen } from '@tauri-apps/api/event';
 import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useCodebuddyAccountStore } from '../stores/useCodebuddyAccountStore';
@@ -22,7 +21,6 @@ import {
 import { QuickSettingsPopover } from '../components/QuickSettingsPopover';
 import { useProviderAccountsPage } from '../hooks/useProviderAccountsPage';
 import { PlatformOverviewTabsHeader, PlatformOverviewTab } from '../components/platform/PlatformOverviewTabsHeader';
-import { WebviewFlowStepStatus } from '../components/platform/WebviewFlowSteps';
 import { CodebuddyInstancesContent } from './CodebuddyInstancesPage';
 
 const CB_FLOW_NOTICE_COLLAPSED_KEY = 'agtools.codebuddy.flow_notice_collapsed';
@@ -33,16 +31,6 @@ const CODEBUDDY_USAGE_URL = 'https://www.codebuddy.ai/profile/usage';
 
 type QuotaQueryFormState = {
   cookieHeader: string;
-};
-
-type QuotaQueryMode = 'webview' | 'manual';
-
-type OAuthFlowStepKey = 'prepare' | 'authorize' | 'bind' | 'quota';
-const DEFAULT_OAUTH_FLOW_STATUS: Record<OAuthFlowStepKey, WebviewFlowStepStatus> = {
-  prepare: 'pending',
-  authorize: 'pending',
-  bind: 'pending',
-  quota: 'pending',
 };
 
 function createDefaultQuotaQueryForm(): QuotaQueryFormState {
@@ -81,18 +69,10 @@ function parseQuotaBindingMismatchMeta(raw: string): QuotaBindingMismatchMeta | 
 export function CodebuddyAccountsPage() {
   const [activeTab, setActiveTab] = useState<PlatformOverviewTab>('overview');
   const [quotaQueryAccountId, setQuotaQueryAccountId] = useState<string | null>(null);
-  const [quotaQueryMode, setQuotaQueryMode] = useState<QuotaQueryMode>('webview');
   const [quotaQueryForm, setQuotaQueryForm] = useState<QuotaQueryFormState>(createDefaultQuotaQueryForm);
   const [quotaQuerySubmitting, setQuotaQuerySubmitting] = useState(false);
   const [quotaBindingClearing, setQuotaBindingClearing] = useState(false);
   const [quotaQueryModalError, setQuotaQueryModalError] = useState<string | null>(null);
-  const [quotaWebviewOpening, setQuotaWebviewOpening] = useState(false);
-  const [quotaWebviewStage, setQuotaWebviewStage] = useState<string | null>(null);
-  const [quotaWebviewError, setQuotaWebviewError] = useState<string | null>(null);
-  const [oauthFlowStatus, setOauthFlowStatus] = useState<Record<OAuthFlowStepKey, WebviewFlowStepStatus>>({ ...DEFAULT_OAUTH_FLOW_STATUS });
-  const [oauthFlowError, setOauthFlowError] = useState<string | null>(null);
-  const [oauthWebviewUrlInput, setOauthWebviewUrlInput] = useState('');
-  const [oauthWebviewUrlCopied, setOauthWebviewUrlCopied] = useState(false);
   const untaggedKey = '__untagged__';
   const store = useCodebuddyAccountStore();
 
@@ -102,7 +82,7 @@ export function CodebuddyAccountsPage() {
     flowNoticeCollapsedKey: CB_FLOW_NOTICE_COLLAPSED_KEY,
     currentAccountIdKey: CB_CURRENT_ACCOUNT_ID_KEY,
     exportFilePrefix: 'codebuddy_accounts',
-    oauthTabKeys: ['oauth', 'oauthWebview'],
+    oauthTabKeys: ['oauth'],
     store: {
       accounts: store.accounts,
       loading: store.loading,
@@ -152,7 +132,7 @@ export function CodebuddyAccountsPage() {
     oauthUrl, oauthUrlCopied, oauthUserCode, oauthUserCodeCopied, oauthMeta,
     oauthPolling, oauthTimedOut,
     oauthPrepareError, oauthCompleteError,
-    handleCopyOauthUrl, handleCopyOauthUserCode, handleRetryOauth, handleRetryOauthComplete, handleOpenOauthUrl,
+    handleCopyOauthUrl, handleCopyOauthUserCode, handleRetryOauth, handleOpenOauthUrl,
     handleInjectToVSCode,
     isFlowNoticeCollapsed, setIsFlowNoticeCollapsed,
     currentAccountId, formatDate, normalizeTag,
@@ -166,94 +146,18 @@ export function CodebuddyAccountsPage() {
   );
   const quotaQueryHasBinding = !!quotaQueryAccount?.quota_binding;
 
-  useEffect(() => {
-    if (addTab !== 'oauthWebview') return;
-    setOauthWebviewUrlInput(oauthUrl ?? '');
-    setOauthWebviewUrlCopied(false);
-  }, [addTab, oauthUrl]);
-
-  useEffect(() => {
-    const unlisteners: Array<() => void> = [];
-    listen('codebuddy-oauth-webview-stage', (ev) => {
-      const payload = ev.payload as { stage?: string } | string | null;
-      const stage = typeof payload === 'string' ? payload : payload?.stage;
-      if (!stage) return;
-      setOauthFlowStatus((prev) => {
-        const next = { ...prev };
-        if (stage === 'wait_login' || stage === 'wait_authorize') {
-          if (next.prepare === 'pending') next.prepare = 'success';
-          if (next.authorize !== 'success') next.authorize = 'running';
-          if (next.bind === 'error') next.bind = 'pending';
-          if (next.quota === 'error') next.quota = 'pending';
-        } else if (stage === 'authorized' || stage === 'usage_page') {
-          next.prepare = 'success';
-          next.authorize = 'success';
-          if (next.bind !== 'success') next.bind = 'running';
-        } else if (stage === 'quota_ready') {
-          next.prepare = 'success';
-          next.authorize = 'success';
-          next.bind = 'success';
-          next.quota = 'success';
-        } else if (stage === 'done') {
-          next.prepare = 'success';
-          next.authorize = 'success';
-          next.bind = 'success';
-          next.quota = 'success';
-        }
-        return next;
-      });
-    }).then((fn) => unlisteners.push(fn));
-    listen('codebuddy-oauth-webview-error', (ev) => {
-      const rawError = String(ev.payload ?? '');
-      setOauthFlowError(rawError);
-      setOauthFlowStatus((prev) => {
-        const next = { ...prev };
-        if (next.authorize === 'running') {
-          next.authorize = 'error';
-        } else if (next.bind === 'running') {
-          next.bind = 'error';
-        } else if (next.quota === 'running') {
-          next.quota = 'error';
-        } else {
-          next.quota = 'error';
-        }
-        return next;
-      });
-    }).then((fn) => unlisteners.push(fn));
-    listen('codebuddy-oauth-webview-action', (ev) => {
-      const payload = ev.payload as { action?: string } | string | null;
-      const action = typeof payload === 'string' ? payload : payload?.action;
-      if (action !== 'retry_bind') return;
-      setOauthFlowError(null);
-      setOauthFlowStatus((prev) => ({
-        ...prev,
-        bind: 'running',
-      }));
-      handleRetryOauthComplete();
-    }).then((fn) => unlisteners.push(fn));
-    return () => { unlisteners.forEach((fn) => fn()); };
-  }, [store, setMessage, t, handleRetryOauthComplete]);
-
   const openQuotaQueryModal = useCallback((account: CodebuddyAccount) => {
     const binding = account.quota_binding;
     setQuotaQueryForm({
-      cookieHeader: binding?.source === 'webview' ? '' : (binding?.cookie_header || ''),
+      cookieHeader: binding?.cookie_header || '',
     });
-    setQuotaQueryMode(binding?.source === 'manual' ? 'manual' : 'webview');
     setQuotaQueryModalError(null);
-    setQuotaWebviewOpening(false);
-    setQuotaWebviewStage(null);
-    setQuotaWebviewError(null);
     setQuotaQueryAccountId(account.id);
   }, []);
 
   const closeQuotaQueryModal = useCallback(() => {
     if (quotaQuerySubmitting || quotaBindingClearing) return;
     setQuotaQueryModalError(null);
-    setQuotaWebviewOpening(false);
-    setQuotaWebviewStage(null);
-    setQuotaWebviewError(null);
-    setQuotaQueryMode('webview');
     setQuotaQueryAccountId(null);
   }, [quotaBindingClearing, quotaQuerySubmitting]);
 
@@ -283,220 +187,6 @@ export function CodebuddyAccountsPage() {
     }
   }, [setMessage, t]);
 
-  const resolveOauthWebviewTargetUrl = useCallback((): string | null => {
-    const candidate = (oauthWebviewUrlInput.trim() || oauthUrl || '').trim();
-    if (!candidate) return null;
-    try {
-      return new URL(candidate).toString();
-    } catch {
-      return null;
-    }
-  }, [oauthWebviewUrlInput, oauthUrl]);
-
-  const oauthWebviewUiTexts = useMemo(
-    () => ({
-      manualUrlPlaceholder: t('codebuddy.oauthWebviewInlineUrlPlaceholder', '在此输入网址并在当前 WebView 跳转'),
-      manualUrlGo: t('codebuddy.oauthWebviewInlineGo', '跳转'),
-      manualUrlInvalid: t('codebuddy.oauthInvalidUrl', '授权链接格式不正确，请输入完整 URL。'),
-      quotaFailurePrompt: t(
-        'codebuddy.oauthQuotaFailurePrompt',
-        '配额绑定失败。\n点击“确定”重试 Cookie 采集并刷新配额；点击“取消”跳过（仅添加账号）。',
-      ),
-      quotaFailureTitle: t('codebuddy.oauthQuotaFailureTitle', '配额绑定失败'),
-      quotaFailureRetryLabel: t('codebuddy.oauthQuotaFailureRetry', '重试'),
-      quotaFailureSkipLabel: t('codebuddy.oauthQuotaFailureSkip', '跳过'),
-      oauthSuccessClosePrompt: t(
-        'codebuddy.oauthSuccessClosePrompt',
-        '账号添加完成，是否关闭 WebView？\n点击“关闭 WebView”将立即关闭；点击“稍后再说”保持当前页面不关闭。',
-      ),
-      oauthSuccessCloseTitle: t('codebuddy.oauthSuccessCloseTitle', '账号添加完成'),
-      oauthSuccessCloseNowLabel: t('codebuddy.oauthSuccessCloseNowLabel', '关闭 WebView'),
-      oauthSuccessCloseLaterLabel: t('codebuddy.oauthSuccessCloseLaterLabel', '稍后再说'),
-      oauthSuccessCloseNowStatus: t('codebuddy.oauthSuccessCloseNowStatus', '✅ 账号添加完成，窗口即将关闭…'),
-      oauthSuccessCloseLaterStatus: t(
-        'codebuddy.oauthSuccessCloseLaterStatus',
-        '✅ 账号添加完成，可继续停留或手动关闭此窗口。',
-      ),
-      oauthStepQuotaAuthorize: t('codebuddy.oauthWebviewOverlay.steps.quotaAuthorize', '1 登录并进入 CodeBuddy'),
-      oauthStepQuotaBind: t('codebuddy.oauthWebviewOverlay.steps.quotaBind', '2 WebView 获取 Cookie 并绑定配额查询'),
-      oauthStepQuotaComplete: t('codebuddy.oauthWebviewOverlay.steps.quotaComplete', '3 已完成（请手动关闭）'),
-      oauthStepPrepare: t('codebuddy.oauthWebviewOverlay.steps.prepare', '1 准备授权链接'),
-      oauthStepAuthorize: t('codebuddy.oauthWebviewOverlay.steps.authorize', '2 访问授权链接并确认授权'),
-      oauthStepBind: t('codebuddy.oauthWebviewOverlay.steps.bind', '3 轮询授权结果并绑定账号'),
-      oauthStepQuota: t('codebuddy.oauthWebviewOverlay.steps.quota', '4 WebView 获取 Cookie 并绑定配额查询'),
-      oauthStepComplete: t('codebuddy.oauthWebviewOverlay.steps.complete', '5 已完成（请手动关闭）'),
-      oauthStatusLoginConfirm: t('codebuddy.oauthWebviewOverlay.status.loginConfirm', '请在页面中完成登录并确认授权。'),
-    }),
-    [t],
-  );
-
-  const handleCopyOauthWebviewUrl = useCallback(async () => {
-    const targetUrl = resolveOauthWebviewTargetUrl();
-    if (!targetUrl) {
-      setMessage({
-        tone: 'error',
-        text: t('codebuddy.oauthInvalidUrl', '授权链接格式不正确，请输入完整 URL。'),
-      });
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(targetUrl);
-      setOauthWebviewUrlCopied(true);
-      window.setTimeout(() => setOauthWebviewUrlCopied(false), 1200);
-    } catch (_err) {
-      setMessage({
-        tone: 'error',
-        text: t('wakeup.errorUi.copyFailed', '复制失败'),
-      });
-    }
-  }, [resolveOauthWebviewTargetUrl, setMessage, t]);
-
-  const handleOpenOauthInWebview = useCallback(async (incognito = false) => {
-    const targetUrl = resolveOauthWebviewTargetUrl();
-    if (!targetUrl) {
-      setMessage({
-        tone: 'error',
-        text: t('codebuddy.oauthInvalidUrl', '授权链接格式不正确，请输入完整 URL。'),
-      });
-      return;
-    }
-    setOauthFlowError(null);
-    setOauthFlowStatus((prev) => ({
-      prepare: prev.prepare === 'success' ? 'success' : 'running',
-      authorize: 'running',
-      bind: 'pending',
-      quota: 'pending',
-    }));
-    try {
-      await codebuddyService.openCodebuddyOAuthWebview(
-        targetUrl,
-        incognito,
-        false,
-        oauthWebviewUiTexts,
-      );
-    } catch (error) {
-      const errorText = String(error);
-      setOauthFlowError(errorText);
-      setOauthFlowStatus((prev) => ({
-        ...prev,
-        authorize: 'error',
-      }));
-      setMessage({
-        tone: 'error',
-        text: t('codebuddy.oauthOpenWebviewFailed', '打开 WebView 失败：{{error}}', {
-          error: errorText,
-        }),
-      });
-    }
-  }, [oauthPolling, oauthWebviewUiTexts, resolveOauthWebviewTargetUrl, setMessage, t]);
-
-  useEffect(() => {
-    const onOauthTab = addTab === 'oauth' || addTab === 'oauthWebview';
-    if (!showAddModal || !onOauthTab) {
-      setOauthFlowStatus({ ...DEFAULT_OAUTH_FLOW_STATUS });
-      setOauthFlowError(null);
-      return;
-    }
-
-    if (oauthPrepareError) {
-      setOauthFlowError(oauthPrepareError);
-      setOauthFlowStatus((prev) => ({
-        ...prev,
-        prepare: 'error',
-        authorize: 'pending',
-        bind: 'pending',
-        quota: 'pending',
-      }));
-      return;
-    }
-
-    if (oauthUrl) {
-      setOauthFlowStatus((prev) => ({
-        prepare: 'success',
-        authorize: prev.authorize,
-        bind: prev.bind,
-        quota: prev.quota,
-      }));
-      return;
-    }
-
-    setOauthFlowStatus({
-      prepare: 'running',
-      authorize: 'pending',
-      bind: 'pending',
-      quota: 'pending',
-    });
-  }, [showAddModal, addTab, oauthUrl, oauthPrepareError]);
-
-  useEffect(() => {
-    if (oauthPolling) {
-      setOauthFlowStatus((prev) => ({
-        ...prev,
-        bind: prev.authorize === 'success' && prev.bind !== 'success' ? 'running' : prev.bind,
-      }));
-    }
-  }, [oauthPolling]);
-
-  useEffect(() => {
-    if (!oauthCompleteError) return;
-    setOauthFlowError(oauthCompleteError);
-    setOauthFlowStatus((prev) => {
-      const next = { ...prev };
-      if (next.quota === 'running' || next.quota === 'success') {
-        next.quota = 'error';
-      } else {
-        next.bind = 'error';
-      }
-      return next;
-    });
-  }, [oauthCompleteError]);
-
-  useEffect(() => {
-    if (addStatus !== 'success') return;
-    setOauthFlowError(null);
-    setOauthFlowStatus({
-      prepare: 'success',
-      quota: 'success',
-      authorize: 'success',
-      bind: 'success',
-    });
-  }, [addStatus]);
-
-  useEffect(() => {
-    if (!quotaQueryAccountId) return;
-    const unlisteners: Array<() => void> = [];
-    listen('codebuddy-quota-webview-stage', (ev) => {
-      const payload = ev.payload as { stage?: string } | string | null;
-      const stage = typeof payload === 'string' ? payload : payload?.stage;
-      if (!stage) return;
-      setQuotaWebviewStage(stage);
-      setQuotaWebviewError(null);
-      setQuotaQueryModalError(null);
-    }).then((fn) => unlisteners.push(fn));
-    listen('codebuddy-webview-quota-success', (ev) => {
-      const payload = ev.payload as { id?: string } | null;
-      const eventAccountId = payload?.id || '';
-      if (eventAccountId && eventAccountId !== quotaQueryAccountId) return;
-      setQuotaWebviewError(null);
-      setQuotaQueryModalError(null);
-      setQuotaWebviewStage('signal_received');
-      void (async () => {
-        await store.fetchAccounts();
-        setMessage({
-          text: t('codebuddy.quotaQuery.webview.success', 'WebView 配额查询成功'),
-        });
-        setQuotaQueryAccountId(null);
-      })();
-    }).then((fn) => unlisteners.push(fn));
-    listen('codebuddy-webview-quota-error', (ev) => {
-      const errorText = String(ev.payload ?? '');
-      setQuotaWebviewError(t('codebuddy.quotaQuery.webview.failed', 'WebView 查询失败：{{error}}', { error: errorText }));
-      setQuotaQueryModalError(null);
-      void store.fetchAccounts();
-    }).then((fn) => unlisteners.push(fn));
-    return () => { unlisteners.forEach((fn) => fn()); };
-  }, [quotaQueryAccountId, setMessage, store, t]);
-
   const setQuotaQueryField = useCallback((key: keyof QuotaQueryFormState, value: string) => {
     setQuotaQueryModalError(null);
     setQuotaQueryForm((prev) => ({ ...prev, [key]: value }));
@@ -520,56 +210,6 @@ export function CodebuddyAccountsPage() {
     if (value == null || !Number.isFinite(value)) return '--';
     return value.toFixed(2);
   }, []);
-
-  const quotaWebviewStageText = useMemo(() => {
-    if (quotaWebviewStage === 'open') {
-      return t('codebuddy.quotaQuery.webviewFlow.open', '打开 WebView');
-    }
-    if (quotaWebviewStage === 'wait_login') {
-      return t('codebuddy.quotaQuery.webviewFlow.login', '登录 CodeBuddy');
-    }
-    if (quotaWebviewStage === 'usage_page' || quotaWebviewStage === 'navigating') {
-      return t('codebuddy.quotaQuery.webviewFlow.fetch', '抓取配额信息');
-    }
-    if (quotaWebviewStage === 'signal_received') {
-      return t('codebuddy.quotaQuery.webviewFlow.bind', '绑定查询结果到账号');
-    }
-    return t('codebuddy.quotaQuery.webview.waiting', '等待浏览器登录...');
-  }, [quotaWebviewStage, t]);
-
-  const handleOpenQuotaWebview = useCallback(async (incognito = false) => {
-    if (!quotaQueryAccountId || quotaQuerySubmitting || quotaBindingClearing || quotaWebviewOpening) return;
-    setQuotaQueryModalError(null);
-    setQuotaWebviewError(null);
-    setQuotaWebviewStage('open');
-    setQuotaWebviewOpening(true);
-    try {
-      await codebuddyService.openCodebuddyQuotaWebview(
-        quotaQueryAccountId,
-        incognito,
-        oauthWebviewUiTexts,
-      );
-      setQuotaWebviewStage((prev) => (prev === 'open' ? 'wait_login' : prev));
-    } catch (error) {
-      const errorText = String(error);
-      setQuotaWebviewError(t('codebuddy.quotaQuery.webview.failed', 'WebView 查询失败：{{error}}', { error: errorText }));
-      setMessage({
-        tone: 'error',
-        text: t('codebuddy.quotaQuery.webview.failed', 'WebView 查询失败：{{error}}', { error: errorText }),
-      });
-      setQuotaWebviewStage(null);
-    } finally {
-      setQuotaWebviewOpening(false);
-    }
-  }, [
-    quotaBindingClearing,
-    quotaQueryAccountId,
-    quotaQuerySubmitting,
-    quotaWebviewOpening,
-    oauthWebviewUiTexts,
-    setMessage,
-    t,
-  ]);
 
   const handleSubmitQuotaQuery = useCallback(async () => {
     if (!quotaQueryAccountId || quotaQuerySubmitting) return;
@@ -1012,7 +652,7 @@ export function CodebuddyAccountsPage() {
           </div>
         </div>
         <div className="toolbar-right">
-          <button className="btn btn-primary icon-only" onClick={() => openAddModal('oauthWebview')} title={t('common.shared.addAccount', '添加账号')}><Plus size={14} /></button>
+          <button className="btn btn-primary icon-only" onClick={() => openAddModal('oauth')} title={t('common.shared.addAccount', '添加账号')}><Plus size={14} /></button>
           <button className="btn btn-secondary icon-only" onClick={handleRefreshAll} disabled={refreshingAll || accounts.length === 0} title={t('common.shared.refreshAll', '刷新全部')}>
             <RefreshCw size={14} className={refreshingAll ? 'loading-spinner' : ''} />
           </button>
@@ -1040,7 +680,7 @@ export function CodebuddyAccountsPage() {
           <h3>{t('common.shared.empty.title', '暂无账号')}</h3>
           <p>{t('codebuddy.noAccounts', '暂无 CodeBuddy 账号')}</p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '16px' }}>
-            <button className="btn btn-primary" onClick={() => openAddModal('oauthWebview')}>
+            <button className="btn btn-primary" onClick={() => openAddModal('oauth')}>
               <Plus size={16} /> {t('common.shared.addAccount', '添加账号')}
             </button>
           </div>
@@ -1113,41 +753,24 @@ export function CodebuddyAccountsPage() {
               <button className="modal-close" onClick={closeAddModal}><X size={18} /></button>
             </div>
             <div className="modal-tabs">
-              <button className={`modal-tab ${addTab === 'oauthWebview' ? 'active' : ''}`} onClick={() => openAddModal('oauthWebview')}><Globe size={14} /> {t('codebuddy.oauthWebviewTab', 'WebView 授权')}</button>
               <button className={`modal-tab ${addTab === 'oauth' ? 'active' : ''}`} onClick={() => openAddModal('oauth')}><Globe size={14} /> {t('common.shared.addModal.oauth', '授权登录')}</button>
               <button className={`modal-tab ${addTab === 'token' ? 'active' : ''}`} onClick={() => openAddModal('token')}><KeyRound size={14} />Token / JSON</button>
               <button className={`modal-tab ${addTab === 'json' ? 'active' : ''}`} onClick={() => openAddModal('json')}><Database size={14} />{t('common.shared.addModal.import', '本地导入')}</button>
             </div>
             <div className="modal-body">
-              {(addTab === 'oauth' || addTab === 'oauthWebview') && (
+              {addTab === 'oauth' && (
                 <div className="add-section oauth-section">
                   <p className="section-desc">
-                    {addTab === 'oauthWebview'
-                      ? t('codebuddy.oauthDescWebview', '点击下方按钮将在内置 WebView 中打开 CodeBuddy 授权页面。')
-                      : t('codebuddy.oauthDesc', '点击下方按钮将在浏览器中打开 CodeBuddy 授权页面。')}
+                    {t('codebuddy.oauthDesc', '点击下方按钮将在浏览器中打开 CodeBuddy 授权页面。')}
                   </p>
-                  <div className={`codebuddy-oauth-feature-card ${addTab === 'oauthWebview' ? 'webview' : 'oauth'}`}>
+                  <div className="codebuddy-oauth-feature-card oauth">
                     <p className="feature-title">
-                      {addTab === 'oauthWebview'
-                        ? t('codebuddy.oauthFeature.webview.title', '推荐：一次完成 IDE 授权 + 配额绑定')
-                        : t('codebuddy.oauthFeature.oauth.title', '仅授权 IDE 登录信息')}
+                      {t('codebuddy.oauthFeature.oauth.title', '仅授权 IDE 登录信息')}
                     </p>
                     <ul className="feature-list">
-                      <li>
-                        {addTab === 'oauthWebview'
-                          ? t('codebuddy.oauthFeature.webview.item1', '在内置无痕 WebView 中登录后，系统会自动绑定 IDE 登录信息。')
-                          : t('codebuddy.oauthFeature.oauth.item1', '在浏览器完成 OAuth 后即可添加账号并用于 IDE 切换。')}
-                      </li>
-                      <li>
-                        {addTab === 'oauthWebview'
-                          ? t('codebuddy.oauthFeature.webview.item2', '同时自动采集配额查询所需参数，无需额外手动绑定。')
-                          : t('codebuddy.oauthFeature.oauth.item2', '不会自动绑定配额查询参数。')}
-                      </li>
-                      <li>
-                        {addTab === 'oauthWebview'
-                          ? t('codebuddy.oauthFeature.webview.item3', '适合首次添加账号，完成后可直接查看和刷新配额。')
-                          : t('codebuddy.oauthFeature.oauth.item3', '如需配额显示，请在账号卡片中手动执行“查询配额”绑定。')}
-                      </li>
+                      <li>{t('codebuddy.oauthFeature.oauth.item1', '在浏览器完成 OAuth 后即可添加账号并用于 IDE 切换。')}</li>
+                      <li>{t('codebuddy.oauthFeature.oauth.item2', '不会自动绑定配额查询参数。')}</li>
+                      <li>{t('codebuddy.oauthFeature.oauth.item3', '如需配额显示，请在账号卡片中手动执行“查询配额”绑定。')}</li>
                     </ul>
                   </div>
                   {oauthPrepareError ? (
@@ -1163,17 +786,12 @@ export function CodebuddyAccountsPage() {
                       <div className="oauth-url-box">
                         <input
                           type="text"
-                          value={addTab === 'oauthWebview' ? oauthWebviewUrlInput : oauthUrl}
-                          readOnly={addTab !== 'oauthWebview'}
-                          onChange={(e) => {
-                            if (addTab !== 'oauthWebview') return;
-                            setOauthWebviewUrlCopied(false);
-                            setOauthWebviewUrlInput(e.target.value);
-                          }}
+                          value={oauthUrl}
+                          readOnly
                           placeholder={t('codebuddy.oauthUrlInputPlaceholder', '可手动输入授权地址')}
                         />
-                        <button onClick={addTab === 'oauthWebview' ? handleCopyOauthWebviewUrl : handleCopyOauthUrl}>
-                          {(addTab === 'oauthWebview' ? oauthWebviewUrlCopied : oauthUrlCopied) ? <Check size={16} /> : <Copy size={16} />}
+                        <button onClick={handleCopyOauthUrl}>
+                          {oauthUrlCopied ? <Check size={16} /> : <Copy size={16} />}
                         </button>
                       </div>
                       {!oauthUrl.includes('user_code=') && oauthUserCode && (
@@ -1192,37 +810,17 @@ export function CodebuddyAccountsPage() {
                           })}
                         </p>
                       )}
-                      {addTab === 'oauthWebview' ? (
-                        <>
-                          <button
-                            className="btn btn-primary btn-full"
-                            onClick={() => handleOpenOauthInWebview(true)}
-                          >
-                            <Globe size={16} />
-                            {t('codebuddy.oauthOpenWebviewIncognito', '在无痕 WebView 中打开')}
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          className="btn btn-primary btn-full"
-                          onClick={handleOpenOauthUrl}
-                        >
-                          <Globe size={16} />
-                          {t('common.shared.oauth.openBrowser', '在浏览器中打开')}
-                        </button>
-                      )}
+                      <button
+                        className="btn btn-primary btn-full"
+                        onClick={handleOpenOauthUrl}
+                      >
+                        <Globe size={16} />
+                        {t('common.shared.oauth.openBrowser', '在浏览器中打开')}
+                      </button>
                       {oauthPolling && (
                         <div className="add-status loading">
                           <RefreshCw size={16} className="loading-spinner" />
                           <span>{t('codebuddy.oauthWaiting', '等待授权完成...')}</span>
-                        </div>
-                      )}
-                      {addTab === 'oauthWebview' && oauthFlowStatus && oauthFlowError && (
-                        <div className="add-status error">
-                          <CircleAlert size={16} />
-                          <span>
-                            {t('codebuddy.oauthFlow.error', '流程异常：{{error}}', { error: oauthFlowError })}
-                          </span>
                         </div>
                       )}
                       {oauthCompleteError && (
@@ -1236,11 +834,9 @@ export function CodebuddyAccountsPage() {
                           )}
                         </div>
                       )}
-                      {addTab !== 'oauthWebview' && (
-                        <p className="oauth-hint">
-                          {t('common.shared.oauth.hint', 'Once authorized, this window will update automatically')}
-                        </p>
-                      )}
+                      <p className="oauth-hint">
+                        {t('common.shared.oauth.hint', 'Once authorized, this window will update automatically')}
+                      </p>
                     </div>
                   ) : (
                     <div className="oauth-loading">
@@ -1299,88 +895,38 @@ export function CodebuddyAccountsPage() {
             </div>
             <div className="modal-body">
               <div className="add-section">
-                <div className="add-tabs codebuddy-quota-mode-tabs">
-                  <button
-                    type="button"
-                    className={`add-tab ${quotaQueryMode === 'webview' ? 'active' : ''}`}
-                    onClick={() => {
-                      setQuotaQueryMode('webview');
-                      setQuotaQueryModalError(null);
-                    }}
-                  >
-                    <Globe size={16} />
-                    {t('codebuddy.quotaQuery.webview.tab', 'WebView 登录')}
-                  </button>
-                  <button
-                    type="button"
-                    className={`add-tab ${quotaQueryMode === 'manual' ? 'active' : ''}`}
-                    onClick={() => {
-                      setQuotaQueryMode('manual');
-                      setQuotaWebviewError(null);
-                    }}
-                  >
-                    <Copy size={16} />
-                    {t('codebuddy.quotaQuery.manual.tab', '手动粘贴')}
-                  </button>
-                </div>
-                {quotaQueryMode === 'webview' ? (
-                  <div className="add-panel">
-                    <p className="section-desc">
-                      {t('codebuddy.quotaQuery.webview.desc', '在内置浏览器中登录 CodeBuddy，登录后将自动获取配额信息。')}
-                    </p>
-                    <div className="oauth-actions">
-                      <button
-                        className="btn btn-primary"
-                        type="button"
-                        onClick={() => void handleOpenQuotaWebview(true)}
-                        disabled={quotaQuerySubmitting || quotaBindingClearing || quotaWebviewOpening}
-                      >
-                        {quotaWebviewOpening ? <RefreshCw size={16} className="loading-spinner" /> : <Globe size={16} />}
-                        {t('codebuddy.quotaQuery.webview.openIncognito', '在无痕 WebView 中打开')}
-                      </button>
-                    </div>
-                    <p className="oauth-hint">{t('codebuddy.quotaQuery.webview.hint', '请在弹出的浏览器窗口中登录 CodeBuddy，登录后将自动获取配额并关闭窗口。')}</p>
-                    {(quotaWebviewOpening || quotaWebviewStage || quotaWebviewError) && (
-                      <div className={`add-status ${quotaWebviewError ? 'error' : 'loading'}`}>
-                        {quotaWebviewError ? <CircleAlert size={16} /> : <RefreshCw size={16} className="loading-spinner" />}
-                        <span>{quotaWebviewError || quotaWebviewStageText}</span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="add-panel">
-                    <ol className="codebuddy-quota-steps">
-                      <li className="codebuddy-quota-step-with-actions">
-                        <span>{t('codebuddy.quotaQuery.manual.step1', '在浏览器中打开下方链接并登录')}</span>
-                        <div className="codebuddy-quota-url-actions">
-                          <code className="codebuddy-quota-url-text">{CODEBUDDY_USAGE_URL}</code>
-                          <div className="codebuddy-quota-url-buttons">
-                            <button className="btn btn-ghost btn-sm" type="button" onClick={handleCopyQuotaUsageUrl}>
-                              <Copy size={14} />
-                              {t('common.copy', '复制')}
-                            </button>
-                            <button className="btn btn-ghost btn-sm" type="button" onClick={handleOpenQuotaUsageUrl}>
-                              <Globe size={14} />
-                              {t('common.shared.oauth.openBrowser', '在浏览器中打开')}
-                            </button>
-                          </div>
+                <div className="add-panel">
+                  <ol className="codebuddy-quota-steps">
+                    <li className="codebuddy-quota-step-with-actions">
+                      <span>{t('codebuddy.quotaQuery.manual.step1', '在浏览器中打开下方链接并登录')}</span>
+                      <div className="codebuddy-quota-url-actions">
+                        <code className="codebuddy-quota-url-text">{CODEBUDDY_USAGE_URL}</code>
+                        <div className="codebuddy-quota-url-buttons">
+                          <button className="btn btn-ghost btn-sm" type="button" onClick={handleCopyQuotaUsageUrl}>
+                            <Copy size={14} />
+                            {t('common.copy', '复制')}
+                          </button>
+                          <button className="btn btn-ghost btn-sm" type="button" onClick={handleOpenQuotaUsageUrl}>
+                            <Globe size={14} />
+                            {t('common.shared.oauth.openBrowser', '在浏览器中打开')}
+                          </button>
                         </div>
-                      </li>
-                      <li>{t('codebuddy.quotaQuery.manual.step2', '按 F12 打开开发者工具，切换到 Network（网络）面板')}</li>
-                      <li>{t('codebuddy.quotaQuery.manual.step3', '刷新页面，找到 get-user-resource 请求')}</li>
-                      <li>{t('codebuddy.quotaQuery.manual.step4', '右键该请求 → Copy → Copy as cURL')}</li>
-                      <li>{t('codebuddy.quotaQuery.manual.step5', '粘贴到下方输入框')}</li>
-                    </ol>
-                    <div className="codebuddy-quota-form">
-                      <textarea
-                        className="token-input"
-                        value={quotaQueryForm.cookieHeader}
-                        onChange={(e) => setQuotaQueryField('cookieHeader', e.target.value)}
-                        placeholder={t('codebuddy.quotaQuery.placeholders.cookieHeader', '粘贴 get-user-resource 的 cURL 命令')}
-                      />
-                    </div>
+                      </div>
+                    </li>
+                    <li>{t('codebuddy.quotaQuery.manual.step2', '按 F12 打开开发者工具，切换到 Network（网络）面板')}</li>
+                    <li>{t('codebuddy.quotaQuery.manual.step3', '刷新页面，找到 get-user-resource 请求')}</li>
+                    <li>{t('codebuddy.quotaQuery.manual.step4', '右键该请求 → Copy → Copy as cURL')}</li>
+                    <li>{t('codebuddy.quotaQuery.manual.step5', '粘贴到下方输入框')}</li>
+                  </ol>
+                  <div className="codebuddy-quota-form">
+                    <textarea
+                      className="token-input"
+                      value={quotaQueryForm.cookieHeader}
+                      onChange={(e) => setQuotaQueryField('cookieHeader', e.target.value)}
+                      placeholder={t('codebuddy.quotaQuery.placeholders.cookieHeader', '粘贴 get-user-resource 的 cURL 命令')}
+                    />
                   </div>
-                )}
+                </div>
                 {quotaQueryAccount && (
                   <p className="oauth-hint">
                     {t('codebuddy.quotaQuery.bindTarget', '绑定账号：{{email}}', {
@@ -1395,13 +941,13 @@ export function CodebuddyAccountsPage() {
                   </div>
                 )}
                 <div className="modal-footer">
-                  <button className="btn btn-secondary" onClick={closeQuotaQueryModal} disabled={quotaQuerySubmitting || quotaBindingClearing || quotaWebviewOpening}>
+                  <button className="btn btn-secondary" onClick={closeQuotaQueryModal} disabled={quotaQuerySubmitting || quotaBindingClearing}>
                     {t('common.cancel', '取消')}
                   </button>
                   <button
                     className="btn btn-secondary"
                     onClick={handleClearQuotaBinding}
-                    disabled={!quotaQueryHasBinding || quotaQuerySubmitting || quotaBindingClearing || quotaWebviewOpening}
+                    disabled={!quotaQueryHasBinding || quotaQuerySubmitting || quotaBindingClearing}
                   >
                     {quotaBindingClearing ? (
                       <RefreshCw size={16} className="loading-spinner" />
@@ -1410,16 +956,14 @@ export function CodebuddyAccountsPage() {
                     )}
                     {t('codebuddy.quotaQuery.clearBinding', '清除绑定')}
                   </button>
-                  {quotaQueryMode === 'manual' && (
-                    <button className="btn btn-primary" onClick={handleSubmitQuotaQuery} disabled={quotaQuerySubmitting || quotaBindingClearing || quotaWebviewOpening}>
-                      {quotaQuerySubmitting ? (
-                        <RefreshCw size={16} className="loading-spinner" />
-                      ) : (
-                        <Database size={16} />
-                      )}
-                      {t('codebuddy.quotaQuery.submit', '绑定并查询')}
-                    </button>
-                  )}
+                  <button className="btn btn-primary" onClick={handleSubmitQuotaQuery} disabled={quotaQuerySubmitting || quotaBindingClearing}>
+                    {quotaQuerySubmitting ? (
+                      <RefreshCw size={16} className="loading-spinner" />
+                    ) : (
+                      <Database size={16} />
+                    )}
+                    {t('codebuddy.quotaQuery.submit', '绑定并查询')}
+                  </button>
                 </div>
               </div>
             </div>

@@ -1555,7 +1555,8 @@ pub(crate) async fn trigger_wakeup_direct(
     ));
     let mut token = modules::oauth::ensure_fresh_token(&account.token).await?;
 
-    let (project_id, _) = modules::quota::fetch_project_id_for_token(&token, &account.email).await;
+    let (project_id, _) =
+        modules::quota::fetch_project_id_for_token(&token, &account.email).await;
     let final_project_id = project_id
         .clone()
         .or_else(|| token.project_id.clone())

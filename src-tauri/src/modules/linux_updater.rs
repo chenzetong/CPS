@@ -6,6 +6,7 @@ pub struct UpdateRuntimeInfo {
     pub platform: String,
     pub linux_install_kind: String,
     pub linux_managed_install_supported: bool,
+    pub updater_target: Option<String>,
 }
 
 #[cfg(target_os = "linux")]
@@ -84,6 +85,7 @@ mod imp {
                 install_kind,
                 LinuxInstallKind::Deb | LinuxInstallKind::Rpm
             ),
+            updater_target: None,
         }
     }
 
@@ -575,6 +577,31 @@ mod imp {
     use super::UpdateRuntimeInfo;
     use tauri::AppHandle;
 
+    #[cfg(target_os = "windows")]
+    fn windows_updater_target() -> Option<String> {
+        use tauri::utils::config::BundleType;
+        use tauri::utils::platform::bundle_type;
+
+        let arch = match std::env::consts::ARCH {
+            "x86_64" => "x86_64",
+            "aarch64" => "aarch64",
+            _ => "x86_64",
+        };
+        let base = format!("windows-{}", arch);
+        let installer_suffix = match bundle_type() {
+            Some(BundleType::Nsis) => "nsis",
+            Some(BundleType::Msi) => "msi",
+            _ => "nsis",
+        };
+
+        Some(format!("{}-{}", base, installer_suffix))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn windows_updater_target() -> Option<String> {
+        None
+    }
+
     pub fn get_update_runtime_info() -> UpdateRuntimeInfo {
         let platform = if cfg!(target_os = "macos") {
             "macos"
@@ -588,6 +615,7 @@ mod imp {
             platform: platform.to_string(),
             linux_install_kind: "unknown".to_string(),
             linux_managed_install_supported: false,
+            updater_target: windows_updater_target(),
         }
     }
 

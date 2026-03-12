@@ -198,6 +198,7 @@ type UpdateRuntimeInfo = {
   platform: string;
   linux_install_kind: string;
   linux_managed_install_supported: boolean;
+  updater_target?: string | null;
 };
 
 type LinuxUpdateProgressPhase =
@@ -444,6 +445,24 @@ function App() {
   const isLinuxManagedUpdate = updateRuntimeInfo?.platform === 'linux'
     && updateRuntimeInfo.linux_managed_install_supported;
 
+  const getUpdaterCheckTarget = useCallback((): string | undefined => {
+    if (updateRuntimeInfo?.platform !== 'windows') {
+      return undefined;
+    }
+    if (typeof updateRuntimeInfo.updater_target !== 'string') {
+      return undefined;
+    }
+
+    const target = updateRuntimeInfo.updater_target.trim();
+    return target.length > 0 ? target : undefined;
+  }, [updateRuntimeInfo]);
+
+  const runUpdaterCheck = useCallback(async () => {
+    const { check } = await import('@tauri-apps/plugin-updater');
+    const target = getUpdaterCheckTarget();
+    return target ? check({ target }) : check();
+  }, [getUpdaterCheckTarget]);
+
   const closeUpdaterHandle = useCallback(async (handle: UpdaterUpdate | null | undefined) => {
     if (!handle) {
       return;
@@ -574,7 +593,6 @@ function App() {
 
     let usedAttempts = 0;
     try {
-      const { check } = await import('@tauri-apps/plugin-updater');
       const downloadedUpdate = await retryWithBackoff(
         async (attempt) => {
           usedAttempts = attempt;
@@ -584,7 +602,7 @@ function App() {
 
           let candidate: UpdaterUpdate | null = null;
           try {
-            candidate = await check();
+            candidate = await runUpdaterCheck();
             if (!candidate) {
               throw new Error('No update available from updater plugin');
             }
@@ -738,7 +756,7 @@ function App() {
         updateDownloadOwnerRef.current = 'none';
       }
     }
-  }, [closeUpdaterHandle, t, writeUpdateLog]);
+  }, [closeUpdaterHandle, runUpdaterCheck, t, writeUpdateLog]);
 
   const cancelUpdateDownload = useCallback(async () => {
     if (updateAction.state !== 'downloading') {
@@ -955,9 +973,8 @@ function App() {
           console.log('[App] Auto-install enabled, attempting silent update...');
           writeUpdateLog('info', '后台自动更新已开启，尝试静默检查并下载');
           try {
-            const { check } = await import('@tauri-apps/plugin-updater');
             const update = await retryWithBackoff(
-              async () => check(),
+              async () => runUpdaterCheck(),
               {
                 delaysMs: UPDATE_CHECK_RETRY_DELAYS_MS,
                 shouldRetry: isRetryableUpdaterError,
@@ -1012,7 +1029,7 @@ function App() {
                     if (attempt === 1) {
                       candidate = update;
                     } else {
-                      candidate = await check();
+                      candidate = await runUpdaterCheck();
                     }
 
                     if (!candidate) {
@@ -1173,6 +1190,7 @@ function App() {
   }, [
     isLinuxManagedUpdate,
     openUpdateNotification,
+    runUpdaterCheck,
     updateRuntimeInfo?.linux_install_kind,
     updateRuntimeInfoLoaded,
     writeUpdateLog,
@@ -1913,6 +1931,8 @@ function App() {
           <UpdateNotification
             key={updateNotificationKey}
             source={updateCheckSource}
+            updaterTarget={getUpdaterCheckTarget() ?? null}
+            updaterCheckReady={updateRuntimeInfoLoaded}
             preparedUpdateVersion={updateAction.state === 'ready' ? updateAction.version : null}
             onRestartUpdate={handleApplyPendingUpdate}
             actionState={updateAction.state}

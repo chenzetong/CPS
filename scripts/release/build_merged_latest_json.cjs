@@ -134,7 +134,8 @@ function main() {
       'darwin-aarch64-app': cloneEntry(darwinAarch64Entry),
       'darwin-x86_64': darwinX64Entry,
       'darwin-x86_64-app': cloneEntry(darwinX64Entry),
-      'windows-x86_64': windowsMsiEntry,
+      // Keep Windows fallback aligned to NSIS so updater fallback does not switch installer type.
+      'windows-x86_64': windowsNsisEntry,
       'windows-x86_64-msi': cloneEntry(windowsMsiEntry),
       'windows-x86_64-nsis': windowsNsisEntry,
       'linux-x86_64': linuxX64AppImageEntry,

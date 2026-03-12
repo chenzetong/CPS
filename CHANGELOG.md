@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **Pending OAuth sessions are now cancelled when dialogs or pages close**: Provider OAuth flows now cancel in-flight authorization sessions on modal close, tab switch, or page unload to avoid stale pending sessions.
+- **Windows updater now keeps installer type consistent to avoid duplicate desktop shortcuts**: Windows update checks now pass an explicit updater target based on the current bundle type (`windows-*-nsis` / `windows-*-msi`), and merged `latest.json` now points the `windows-x86_64` fallback to NSIS to prevent installer-type drift from recreating desktop shortcuts during update.
 
 ---
 ## [0.12.3] - 2026-03-11

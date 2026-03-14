@@ -19,7 +19,6 @@ pub struct WakeupTaskInput {
     pub id: String,
     pub name: String,
     pub enabled: bool,
-    pub created_at: i64,
     pub last_run_at: Option<i64>,
     pub schedule: ScheduleConfig,
 }
@@ -50,8 +49,6 @@ struct WakeupTask {
     id: String,
     name: String,
     enabled: bool,
-    #[allow(dead_code)]
-    created_at: i64,
     last_run_at: Option<i64>,
     schedule: ScheduleConfigNormalized,
 }
@@ -152,7 +149,6 @@ pub fn sync_state(enabled: bool, tasks: Vec<WakeupTaskInput>) {
             id: task.id,
             name: task.name,
             enabled: task.enabled,
-            created_at: task.created_at,
             last_run_at: task.last_run_at,
             schedule: normalize_schedule(task.schedule),
         })

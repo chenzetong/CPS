@@ -75,7 +75,6 @@ impl Default for CursorAccountIndex {
 pub struct CursorImportPayload {
     pub email: String,
     pub auth_id: Option<String>,
-    #[allow(dead_code)]
     pub name: Option<String>,
     pub access_token: String,
     pub refresh_token: Option<String>,

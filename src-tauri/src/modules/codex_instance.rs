@@ -258,25 +258,6 @@ pub fn delete_instance(instance_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn update_instance_last_launched(instance_id: &str) -> Result<InstanceProfile, String> {
-    let _lock = CODEX_INSTANCE_STORE_LOCK
-        .lock()
-        .map_err(|_| "无法获取实例锁")?;
-    let mut store = load_instance_store()?;
-    let mut updated = None;
-    for instance in &mut store.instances {
-        if instance.id == instance_id {
-            instance.last_launched_at = Some(Utc::now().timestamp_millis());
-            updated = Some(instance.clone());
-            break;
-        }
-    }
-    let updated = updated.ok_or("实例不存在")?;
-    save_instance_store(&store)?;
-    Ok(updated)
-}
-
 pub fn update_instance_after_start(instance_id: &str, pid: u32) -> Result<InstanceProfile, String> {
     let _lock = CODEX_INSTANCE_STORE_LOCK
         .lock()

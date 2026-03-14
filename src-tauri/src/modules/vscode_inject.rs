@@ -131,13 +131,6 @@ fn get_vscode_db_path_from_data_root(data_root: &Path) -> Result<PathBuf, String
     }
 }
 
-/// Get the path to VS Code's state.vscdb.
-#[allow(dead_code)]
-pub fn get_vscode_db_path() -> Result<PathBuf, String> {
-    let data_root = resolve_vscode_data_root(None)?;
-    get_vscode_db_path_from_data_root(&data_root)
-}
-
 fn build_secret_storage_item_key(extension_id: &str, key: &str) -> String {
     format!(
         r#"secret://{{"extensionId":"{}","key":"{}"}}"#,
@@ -756,28 +749,6 @@ fn decode_secret_storage_value_with_mode(
     Ok(raw_value.to_string())
 }
 
-#[allow(dead_code)]
-fn decode_secret_storage_value(
-    raw_value: &str,
-    data_root: Option<&Path>,
-) -> Result<String, String> {
-    decode_secret_storage_value_with_mode(raw_value, data_root, SafeStorageReadMode::Default)
-}
-
-#[allow(dead_code)]
-fn read_secret_storage_value_with_data_root(
-    data_root: &Path,
-    extension_id: &str,
-    key: &str,
-) -> Result<Option<String>, String> {
-    read_secret_storage_value_with_data_root_and_mode(
-        data_root,
-        extension_id,
-        key,
-        SafeStorageReadMode::Default,
-    )
-}
-
 fn read_secret_storage_value_with_data_root_and_mode(
     data_root: &Path,
     extension_id: &str,
@@ -821,16 +792,6 @@ fn read_secret_storage_value_with_data_root_and_mode(
         }
         None => Ok(None),
     }
-}
-
-#[allow(dead_code)]
-pub fn read_vscode_secret_storage_value(
-    extension_id: &str,
-    key: &str,
-    user_data_dir: Option<&str>,
-) -> Result<Option<String>, String> {
-    let data_root = resolve_vscode_data_root(user_data_dir)?;
-    read_secret_storage_value_with_data_root(&data_root, extension_id, key)
 }
 
 pub fn read_antigravity_secret_storage_value(
@@ -1011,19 +972,6 @@ pub fn inject_copilot_token_for_user_data_dir(
 ) -> Result<String, String> {
     let data_root = resolve_vscode_data_root(Some(user_data_dir))?;
     inject_copilot_token_with_data_root(&data_root, username, token, github_user_id)
-}
-
-/// Generic: encrypt a plaintext string and write it to a given state.vscdb
-/// under an arbitrary `secret://` key. The `db_path` should point to
-/// `<AppSupport>/<AppName>/User/globalStorage/state.vscdb` so that
-/// the parent `<AppName>` directory is used to derive the encryption key.
-#[allow(dead_code)]
-pub fn inject_secret_to_state_db(
-    db_path: &std::path::Path,
-    db_key: &str,
-    plaintext: &str,
-) -> Result<(), String> {
-    inject_secret_to_state_db_with_mode(db_path, db_key, plaintext, SafeStorageReadMode::Default)
 }
 
 pub fn inject_secret_to_state_db_for_codebuddy(

@@ -631,7 +631,9 @@ pub async fn complete_oauth_login(login_id: &str) -> Result<CodexTokens, String>
     ));
     let (code, code_verifier, port) = {
         let oauth_state = OAUTH_STATE.lock().unwrap();
-        let state = oauth_state.as_ref().ok_or("OAuth 状态不存在，请重新发起授权")?;
+        let state = oauth_state
+            .as_ref()
+            .ok_or("OAuth 状态不存在，请重新发起授权")?;
         if state.expires_at <= now_timestamp() {
             return Err("OAuth 登录已超时，请重新发起授权".to_string());
         }

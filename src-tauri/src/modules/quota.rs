@@ -21,7 +21,6 @@ const BACKOFF_MAX_MS: u64 = 4000;
 const ONBOARD_POLL_DELAY_MS: u64 = 500;
 const API_CACHE_DIR: &str = "cache/quota_api_v1_desktop";
 const API_CACHE_VERSION: u8 = 1;
-#[allow(dead_code)]
 const API_CACHE_TTL_MS: i64 = 60_000;
 
 #[derive(Debug, Clone, Default)]
@@ -141,7 +140,6 @@ struct QuotaApiCacheRecord {
     payload: serde_json::Value,
 }
 
-#[allow(dead_code)]
 fn read_api_cache(source: &str, email: &str) -> Option<QuotaApiCacheRecord> {
     let path = api_cache_path(source, email).ok()?;
     let content = fs::read_to_string(path).ok()?;
@@ -155,13 +153,11 @@ fn read_api_cache(source: &str, email: &str) -> Option<QuotaApiCacheRecord> {
     Some(record)
 }
 
-#[allow(dead_code)]
 fn is_api_cache_valid(record: &QuotaApiCacheRecord) -> bool {
     let now_ms = Utc::now().timestamp_millis();
     now_ms - record.updated_at < API_CACHE_TTL_MS
 }
 
-#[allow(dead_code)]
 fn api_cache_age_secs(record: &QuotaApiCacheRecord) -> i64 {
     let now_ms = Utc::now().timestamp_millis();
     std::cmp::max(0, (now_ms - record.updated_at) / 1000)
@@ -220,8 +216,6 @@ pub struct QuotaFetchError {
 #[derive(Debug, Clone)]
 pub struct QuotaFetchResult {
     pub quota: QuotaData,
-    #[allow(dead_code)]
-    pub project_id: Option<String>,
     pub error: Option<QuotaFetchError>,
 }
 
@@ -247,11 +241,6 @@ struct AllowedTier {
 #[derive(Debug, Deserialize)]
 struct Tier {
     id: Option<String>,
-    #[allow(dead_code)]
-    #[serde(rename = "quotaTier")]
-    quota_tier: Option<String>,
-    #[allow(dead_code)]
-    name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -420,12 +409,6 @@ async fn try_onboard_user(
 
         tokio::time::sleep(std::time::Duration::from_millis(ONBOARD_POLL_DELAY_MS)).await;
     }
-}
-
-/// 获取项目 ID 和订阅类型（兼容旧调用，默认按普通账号规则选择 daily 域名）
-#[allow(dead_code)]
-pub async fn fetch_project_id(access_token: &str, email: &str) -> (Option<String>, Option<String>) {
-    fetch_project_id_with_context(access_token, email, &QuotaCloudCodeContext::default()).await
 }
 
 /// 获取项目 ID 和订阅类型（优先使用 token 中的 project_id / is_gcp_tos 上下文）
@@ -698,23 +681,6 @@ pub async fn fetch_quota_for_token(
     fetch_quota_with_context(&token.access_token, email, skip_cache, &ctx).await
 }
 
-/// 查询账号配额（兼容旧调用，默认按普通账号规则选择 daily 域名）
-/// skip_cache: 是否跳过缓存，单个账号刷新应传 true，批量刷新传 false
-#[allow(dead_code)]
-pub async fn fetch_quota(
-    access_token: &str,
-    email: &str,
-    skip_cache: bool,
-) -> crate::error::AppResult<QuotaFetchResult> {
-    fetch_quota_with_context(
-        access_token,
-        email,
-        skip_cache,
-        &QuotaCloudCodeContext::default(),
-    )
-    .await
-}
-
 pub async fn fetch_quota_with_context(
     access_token: &str,
     email: &str,
@@ -746,7 +712,6 @@ pub async fn fetch_quota_with_context(
                         build_quota_data_from_response(quota_response, subscription_tier.clone());
                     return Ok(QuotaFetchResult {
                         quota: quota_data,
-                        project_id: effective_project_id.clone(),
                         error: None,
                     });
                 }
@@ -798,7 +763,6 @@ pub async fn fetch_quota_with_context(
                         };
                         return Ok(QuotaFetchResult {
                             quota: q,
-                            project_id: effective_project_id.clone(),
                             error: Some(QuotaFetchError {
                                 code: Some(status.as_u16()),
                                 message,
@@ -837,7 +801,6 @@ pub async fn fetch_quota_with_context(
 
                 return Ok(QuotaFetchResult {
                     quota: quota_data,
-                    project_id: effective_project_id.clone(),
                     error: None,
                 });
             }

@@ -6,14 +6,6 @@ const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const USERINFO_URL: &str = "https://www.googleapis.com/oauth2/v2/userinfo";
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 
-pub fn client_id() -> &'static str {
-    CLIENT_ID
-}
-
-pub fn client_secret() -> &'static str {
-    CLIENT_SECRET
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenResponse {
     pub access_token: String,

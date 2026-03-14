@@ -442,6 +442,7 @@ pub fn save_general_config(
         Some(_) | None => current.minimize_behavior.clone(),
     };
     let hide_dock_icon_value = hide_dock_icon.unwrap_or(current.hide_dock_icon);
+    #[cfg(target_os = "macos")]
     let hide_dock_icon_changed = current.hide_dock_icon != hide_dock_icon_value;
 
     let new_config = UserConfig {

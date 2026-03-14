@@ -1,0 +1,165 @@
+name: Build Matrix
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - "main"
+  push:
+    branches:
+      - "feature/build-matrix*"
+      - "feature/build-matrix/**"
+
+concurrency:
+  group: build-matrix-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Sync versions
+        run: npm run sync-version
+
+      - name: Check locales
+        run: node scripts/check_locales.cjs
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  build:
+    name: Build (${{ matrix.label }})
+    needs: preflight
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: "macos-aarch64"
+            platform: "macos-latest"
+            args: "--target aarch64-apple-darwin"
+            release_dir: "src-tauri/target/aarch64-apple-darwin/release"
+          - label: "macos-x86_64"
+            platform: "macos-latest"
+            args: "--target x86_64-apple-darwin"
+            release_dir: "src-tauri/target/x86_64-apple-darwin/release"
+          - label: "macos-universal"
+            platform: "macos-latest"
+            args: "--target universal-apple-darwin"
+            release_dir: "src-tauri/target/universal-apple-darwin/release"
+          - label: "ubuntu-22.04"
+            platform: "ubuntu-22.04"
+            args: ""
+            release_dir: "src-tauri/target/release"
+          - label: "ubuntu-24.04-arm"
+            platform: "ubuntu-24.04-arm"
+            args: ""
+            release_dir: "src-tauri/target/release"
+          - label: "windows-latest"
+            platform: "windows-latest"
+            args: ""
+            release_dir: "src-tauri/target/release"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf pkg-config libsoup-3.0-dev javascriptcoregtk-4.1 libjavascriptcoregtk-4.1-dev
+          sudo apt-get install -y libnm-dev xdg-utils
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Sync versions
+        run: npm run sync-version
+
+      - name: Build app
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          npx tauri build --ci ${{ matrix.args }} 2>&1 | tee "build-${{ matrix.label }}.log"
+
+      - name: Summarize warnings
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          log_file="build-${{ matrix.label }}.log"
+          warnings_file="warnings-${{ matrix.label }}.txt"
+          if grep -n "^warning:" "$log_file" > "$warnings_file"; then
+            warning_count="$(wc -l < "$warnings_file" | tr -d ' ')"
+          else
+            : > "$warnings_file"
+            warning_count="0"
+          fi
+
+          {
+            echo "## ${{ matrix.label }}"
+            echo
+            echo "- warnings: ${warning_count}"
+            echo "- log: build-${{ matrix.label }}.log"
+            if [ -s "$warnings_file" ]; then
+              echo
+              echo '```text'
+              sed -n '1,200p' "$warnings_file"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.label }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            build-${{ matrix.label }}.log
+            warnings-${{ matrix.label }}.txt
+
+      - name: Upload bundles
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.label }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ matrix.release_dir }}/bundle
+

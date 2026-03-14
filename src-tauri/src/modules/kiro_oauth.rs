@@ -88,10 +88,7 @@ fn persist_pending_login(state: Option<&PendingOAuthState>) {
         None => crate::modules::oauth_pending_state::clear(OAUTH_STATE_FILE),
     };
     if let Err(err) = result {
-        logger::log_warn(&format!(
-            "[Kiro OAuth] 持久化登录状态失败，已忽略: {}",
-            err
-        ));
+        logger::log_warn(&format!("[Kiro OAuth] 持久化登录状态失败，已忽略: {}", err));
     }
 }
 

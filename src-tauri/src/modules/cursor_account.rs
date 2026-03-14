@@ -695,14 +695,6 @@ pub fn update_account_tags(account_id: &str, tags: Vec<String>) -> Result<Cursor
 // Import / Export
 // ---------------------------------------------------------------------------
 
-fn is_non_empty_json_value(value: &Value) -> bool {
-    !value.is_null()
-        && !value
-            .as_str()
-            .map(|text| text.trim().is_empty())
-            .unwrap_or(false)
-}
-
 fn clone_object_value(value: Option<&Value>) -> Option<Value> {
     value.and_then(|raw| {
         if raw.is_object() {
@@ -1311,11 +1303,6 @@ async fn fetch_usage_summary_with_client(
         .map_err(|e| format!("解析 Cursor usage JSON 失败: {}", e))
 }
 
-pub async fn fetch_usage_summary(access_token: &str) -> Result<serde_json::Value, String> {
-    let client = build_cursor_http_client()?;
-    fetch_usage_summary_with_client(&client, access_token).await
-}
-
 // ---------------------------------------------------------------------------
 // Refresh (re-reads local state.vscdb + fetches usage from API)
 // ---------------------------------------------------------------------------
@@ -1451,24 +1438,6 @@ pub async fn refresh_account_async(account_id: &str) -> Result<CursorAccount, St
         updated.id, updated.email
     ));
     Ok(updated)
-}
-
-pub fn refresh_account(account_id: &str) -> Result<CursorAccount, String> {
-    let rt = tokio::runtime::Handle::try_current();
-    match rt {
-        Ok(handle) => {
-            let id = account_id.to_string();
-            std::thread::spawn(move || handle.block_on(refresh_account_async(&id)))
-                .join()
-                .map_err(|_| "刷新线程 panic".to_string())?
-        }
-        Err(_) => {
-            let rt = tokio::runtime::Runtime::new()
-                .map_err(|e| format!("创建 tokio runtime 失败: {}", e))?;
-            let id = account_id.to_string();
-            rt.block_on(refresh_account_async(&id))
-        }
-    }
 }
 
 pub async fn refresh_all_tokens() -> Result<Vec<(String, Result<CursorAccount, String>)>, String> {

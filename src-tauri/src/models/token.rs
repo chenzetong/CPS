@@ -40,10 +40,4 @@ impl TokenData {
             session_id,
         }
     }
-
-    #[allow(dead_code)]
-    pub fn with_is_gcp_tos(mut self, is_gcp_tos: Option<bool>) -> Self {
-        self.is_gcp_tos = is_gcp_tos;
-        self
-    }
 }

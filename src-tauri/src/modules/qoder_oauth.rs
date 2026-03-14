@@ -28,8 +28,12 @@ const USER_STATUS_PATH: &str = "/api/v3/user/status";
 const DATA_POLICY_PATH: &str = "/api/v2/config/getDataPolicy";
 const USER_PLAN_PATH: &str = "/api/v2/user/plan";
 const CREDIT_USAGE_PATH: &str = "/api/v2/quota/usage";
+// 保留与官方 Qoder 运行时/IPC 同步的兼容链路；当前仓库里还没有触发入口。
+#[allow(dead_code)]
 const RUNTIME_SYNC_MAX_ATTEMPTS: usize = 12;
+#[allow(dead_code)]
 const RUNTIME_SYNC_RETRY_DELAY_MS: u64 = 500;
+#[allow(dead_code)]
 const QODER_SYNC_EVENT_LOGIN: &str = "login";
 const AUTH_STATUS_AUTHORIZED: i64 = 2;
 const AUTH_STATUS_IP_BANNED_ERROR: i64 = 6;
@@ -62,6 +66,7 @@ struct QoderMachineInfo {
     machine_type: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QoderCosyInfo {
@@ -100,6 +105,7 @@ lazy_static::lazy_static! {
     static ref PENDING_OAUTH_STATE: Arc<Mutex<Option<PendingOAuthState>>> = Arc::new(Mutex::new(None));
 }
 
+#[allow(dead_code)]
 #[cfg(unix)]
 mod ipc {
     use super::*;
@@ -1196,6 +1202,7 @@ fn read_qoder_cached_machine_id() -> Result<Option<String>, String> {
     Ok(machine_id)
 }
 
+#[allow(dead_code)]
 fn read_qoder_cosy_info() -> Result<QoderCosyInfo, String> {
     let shared_cache_dir = default_cosy_info_path()?;
     let info_json_path = shared_cache_dir.join(".info.json");
@@ -1252,6 +1259,7 @@ fn read_qoder_cosy_info() -> Result<QoderCosyInfo, String> {
     Ok(info)
 }
 
+#[allow(dead_code)]
 #[cfg(unix)]
 fn call_qoder_rpc(method: &str, params: Value) -> Result<Value, String> {
     let started = Instant::now();
@@ -1290,6 +1298,7 @@ fn call_qoder_rpc(method: &str, params: Value) -> Result<Value, String> {
     result
 }
 
+#[allow(dead_code)]
 #[cfg(not(unix))]
 async fn send_qoder_ws_request(
     ws_stream: &mut tokio_tungstenite::WebSocketStream<
@@ -1366,6 +1375,7 @@ async fn send_qoder_ws_request(
     }
 }
 
+#[allow(dead_code)]
 #[cfg(not(unix))]
 async fn send_qoder_ws_notification(
     ws_stream: &mut tokio_tungstenite::WebSocketStream<
@@ -1391,6 +1401,7 @@ async fn send_qoder_ws_notification(
     Ok(())
 }
 
+#[allow(dead_code)]
 #[cfg(not(unix))]
 async fn call_qoder_rpc_async(method: String, params: Value) -> Result<Value, String> {
     let info = read_qoder_cosy_info()?;
@@ -1432,6 +1443,7 @@ async fn call_qoder_rpc_async(method: String, params: Value) -> Result<Value, St
     send_qoder_ws_request(&mut ws_stream, &mut next_id, &method, params).await
 }
 
+#[allow(dead_code)]
 #[cfg(not(unix))]
 fn call_qoder_rpc(method: &str, params: Value) -> Result<Value, String> {
     let started = Instant::now();
@@ -1490,6 +1502,7 @@ fn summarize_url_for_log(raw: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn value_kind(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
@@ -1527,6 +1540,7 @@ fn value_to_string(value: &Value) -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
 fn value_to_i64(value: &Value) -> Option<i64> {
     if let Some(number) = value.as_i64() {
         return Some(number);
@@ -1543,6 +1557,7 @@ fn value_to_i64(value: &Value) -> Option<i64> {
     text.parse::<i64>().ok()
 }
 
+#[allow(dead_code)]
 fn value_to_bool(value: &Value) -> Option<bool> {
     if let Some(flag) = value.as_bool() {
         return Some(flag);
@@ -1567,14 +1582,17 @@ fn get_string_from_object(
     get_object_field(object, keys).and_then(value_to_string)
 }
 
+#[allow(dead_code)]
 fn get_i64_from_object(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<i64> {
     get_object_field(object, keys).and_then(value_to_i64)
 }
 
+#[allow(dead_code)]
 fn get_bool_from_object(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<bool> {
     get_object_field(object, keys).and_then(value_to_bool)
 }
 
+#[allow(dead_code)]
 fn build_runtime_user_info_raw(account: &QoderAccount) -> Result<Value, String> {
     let mut user_info = account
         .auth_user_info_raw
@@ -1634,6 +1652,7 @@ fn build_runtime_user_info_raw(account: &QoderAccount) -> Result<Value, String> 
     Ok(user_info)
 }
 
+#[allow(dead_code)]
 fn build_sync_user_info_to_go_payload(user_info: &Value) -> Result<Value, String> {
     let source = user_info
         .as_object()
@@ -1740,6 +1759,7 @@ fn build_sync_user_info_to_go_payload(user_info: &Value) -> Result<Value, String
     }))
 }
 
+#[allow(dead_code)]
 fn build_switch_account_payload(user_info: &Value) -> Option<Value> {
     let source = user_info.as_object()?;
     let user_id = get_string_from_object(source, &["id", "uid"])?;
@@ -1752,6 +1772,7 @@ fn build_switch_account_payload(user_info: &Value) -> Option<Value> {
     Some(Value::Object(payload))
 }
 
+#[allow(dead_code)]
 fn sync_runtime_login_state_once(user_info: &Value) -> Result<(), String> {
     let sync_user_info_payload = build_sync_user_info_to_go_payload(user_info)?;
     call_qoder_rpc("sync.user.info.to.go", sync_user_info_payload)?;
@@ -1767,6 +1788,7 @@ fn sync_runtime_login_state_once(user_info: &Value) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn sync_runtime_login_state(account: &QoderAccount) -> Result<(), String> {
     let user_info = build_runtime_user_info_raw(account)?;
     let mut last_error: Option<String> = None;

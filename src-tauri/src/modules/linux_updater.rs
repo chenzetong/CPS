@@ -19,7 +19,7 @@ mod imp {
     use serde::{Deserialize, Serialize};
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
-    use tauri::{AppHandle, Emitter, Manager};
+    use tauri::{AppHandle, Emitter};
     use tokio::fs;
     use tokio::io::AsyncWriteExt;
     use url::Url;

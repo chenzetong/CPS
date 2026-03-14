@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+#[cfg(not(target_os = "macos"))]
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,7 +13,7 @@ use aes_gcm::aead::generic_array::GenericArray;
 #[cfg(target_os = "windows")]
 use aes_gcm::aead::{Aead, AeadCore, OsRng};
 #[cfg(target_os = "windows")]
-use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use aes_gcm::{Aes256Gcm, KeyInit};
 #[cfg(target_os = "windows")]
 use base64::{engine::general_purpose, Engine as _};
 #[cfg(not(target_os = "windows"))]
@@ -26,6 +27,7 @@ use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
 #[cfg(not(target_os = "windows"))]
 use sha1::Sha1;
+#[cfg(not(target_os = "macos"))]
 use sysinfo::{ProcessRefreshKind, System, UpdateKind};
 use uuid::Uuid;
 
@@ -862,6 +864,7 @@ fn normalize_non_empty_path(value: Option<&str>) -> Option<String> {
         .filter(|text| !text.is_empty())
 }
 
+#[cfg(not(target_os = "macos"))]
 fn parse_user_data_dir_value(raw: &str) -> Option<String> {
     let rest = raw.trim_start();
     if rest.is_empty() {
@@ -888,6 +891,7 @@ fn parse_user_data_dir_value(raw: &str) -> Option<String> {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn extract_user_data_dir(args: &[OsString]) -> Option<String> {
     let tokens: Vec<String> = args
         .iter()
@@ -923,6 +927,7 @@ fn extract_user_data_dir(args: &[OsString]) -> Option<String> {
     None
 }
 
+#[cfg(target_os = "macos")]
 fn split_command_tokens(command_line: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
@@ -959,6 +964,7 @@ fn split_command_tokens(command_line: &str) -> Vec<String> {
     tokens
 }
 
+#[cfg(target_os = "macos")]
 fn extract_user_data_dir_from_command_line(command_line: &str) -> Option<String> {
     let tokens = split_command_tokens(command_line);
     let mut index = 0;
@@ -993,6 +999,7 @@ fn extract_user_data_dir_from_command_line(command_line: &str) -> Option<String>
     None
 }
 
+#[cfg(not(target_os = "macos"))]
 fn is_helper_process(name: &str, args_line: &str) -> bool {
     args_line.contains("--type=")
         || name.contains("helper")
@@ -1497,53 +1504,52 @@ fn detect_windsurf_exec_path() -> Option<PathBuf> {
                 }
             }
         }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
-            candidates.push(
-                Path::new(&local_appdata)
-                    .join("Programs")
-                    .join("Windsurf")
-                    .join("Windsurf.exe"),
-            );
-            candidates.push(
-                Path::new(&local_appdata)
-                    .join("Programs")
-                    .join("Windsurf")
-                    .join("Electron.exe"),
-            );
-        }
-        for candidate in candidates {
-            if candidate.exists() {
-                return Some(candidate);
+        #[cfg(target_os = "windows")]
+        {
+            let mut candidates: Vec<PathBuf> = Vec::new();
+            if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+                candidates.push(
+                    Path::new(&local_appdata)
+                        .join("Programs")
+                        .join("Windsurf")
+                        .join("Windsurf.exe"),
+                );
+                candidates.push(
+                    Path::new(&local_appdata)
+                        .join("Programs")
+                        .join("Windsurf")
+                        .join("Electron.exe"),
+                );
             }
-        }
-        if let Some(path) = modules::process::detect_windows_exec_path_by_signatures(
-            "windsurf",
-            &["Windsurf.exe", "Electron.exe"],
-            &["windsurf"],
-            &["windsurf", "codeium"],
-            &["windsurf", "codeium"],
-        ) {
-            return Some(path);
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let candidates = ["/usr/bin/windsurf", "/opt/windsurf/windsurf"];
-        for candidate in candidates {
-            let path = PathBuf::from(candidate);
-            if path.exists() {
+            for candidate in candidates {
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+            if let Some(path) = modules::process::detect_windows_exec_path_by_signatures(
+                "windsurf",
+                &["Windsurf.exe", "Electron.exe"],
+                &["windsurf"],
+                &["windsurf", "codeium"],
+                &["windsurf", "codeium"],
+            ) {
                 return Some(path);
             }
         }
-    }
 
-    None
+        #[cfg(target_os = "linux")]
+        {
+            let candidates = ["/usr/bin/windsurf", "/opt/windsurf/windsurf"];
+            for candidate in candidates {
+                let path = PathBuf::from(candidate);
+                if path.exists() {
+                    return Some(path);
+                }
+            }
+        }
+
+        return None;
+    }
 }
 
 fn path_looks_like_windsurf(path: &Path) -> bool {
@@ -1610,7 +1616,7 @@ fn sanitize_macos_gui_launch_env(cmd: &mut Command) {
     cmd.env_remove("XPC_SERVICE_NAME");
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn sanitize_macos_gui_launch_env(_cmd: &mut Command) {}
 
 #[cfg(target_os = "windows")]

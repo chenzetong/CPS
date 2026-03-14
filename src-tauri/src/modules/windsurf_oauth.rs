@@ -1409,11 +1409,3 @@ pub async fn refresh_payload_for_account(
 
     build_payload_from_token(&account.github_access_token).await
 }
-
-#[allow(dead_code)]
-fn _map_io_error(err: std::io::Error) -> String {
-    match err.kind() {
-        ErrorKind::AddrInUse => "OAuth 回调端口已被占用".to_string(),
-        _ => format!("I/O 错误: {}", err),
-    }
-}

@@ -12,6 +12,7 @@ fn is_profile_initialized(user_data_dir: &str) -> bool {
     modules::gemini_instance::is_profile_initialized(Path::new(user_data_dir))
 }
 
+#[cfg(not(target_os = "windows"))]
 fn posix_shell_quote(value: &str) -> String {
     if value.is_empty() {
         return "''".to_string();
@@ -365,6 +366,7 @@ pub async fn gemini_get_instance_launch_command(
     })
 }
 
+#[cfg(target_os = "macos")]
 fn escape_applescript(value: &str) -> String {
     value
         .replace('\\', "\\\\")

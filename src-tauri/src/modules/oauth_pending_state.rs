@@ -49,10 +49,15 @@ where
 {
     let path = pending_file_path(file_name)?;
     let temp_path = path.with_extension("tmp");
-    let content =
-        serde_json::to_string_pretty(value).map_err(|e| format!("序列化 OAuth pending 失败: {}", e))?;
-    fs::write(&temp_path, content)
-        .map_err(|e| format!("写入 OAuth pending 临时文件失败({}): {}", temp_path.display(), e))?;
+    let content = serde_json::to_string_pretty(value)
+        .map_err(|e| format!("序列化 OAuth pending 失败: {}", e))?;
+    fs::write(&temp_path, content).map_err(|e| {
+        format!(
+            "写入 OAuth pending 临时文件失败({}): {}",
+            temp_path.display(),
+            e
+        )
+    })?;
     fs::rename(&temp_path, &path).map_err(|e| {
         format!(
             "替换 OAuth pending 文件失败: temp={}, target={}, error={}",

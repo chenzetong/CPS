@@ -323,10 +323,6 @@ pub fn clear_all_pids() -> Result<(), String> {
     save_instance_store(&store)
 }
 
-pub fn detect_and_save_trae_launch_path(force: bool) -> Option<String> {
-    modules::process::detect_and_save_app_path("trae", force)
-}
-
 pub fn build_storage_json_path(user_data_dir: &str) -> PathBuf {
     PathBuf::from(user_data_dir)
         .join("User")

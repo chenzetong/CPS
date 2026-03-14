@@ -136,17 +136,6 @@ pub fn inject_unified_oauth_token_to_path(
     Ok(())
 }
 
-/// 注入 Token 到 Antigravity 默认数据库
-#[allow(dead_code)]
-pub fn inject_token(
-    access_token: &str,
-    refresh_token: &str,
-    expiry: i64,
-) -> Result<String, String> {
-    let db_path = get_db_path()?;
-    inject_token_to_path(&db_path, access_token, refresh_token, expiry)
-}
-
 /// 写入 serviceMachineId 到数据库
 pub fn write_service_machine_id(service_machine_id: &str) -> Result<(), String> {
     let db_path = get_db_path()?;

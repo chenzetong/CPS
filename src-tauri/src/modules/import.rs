@@ -51,12 +51,6 @@ struct ExtensionCredential {
     pub email: Option<String>,
     #[serde(rename = "refreshToken", alias = "refresh_token")]
     pub refresh_token: Option<String>,
-    #[allow(dead_code)]
-    #[serde(rename = "accessToken", alias = "access_token")]
-    pub access_token: Option<String>,
-    #[allow(dead_code)]
-    #[serde(rename = "expiresAt", alias = "expires_at")]
-    pub expires_at: Option<String>,
     #[serde(rename = "projectId", alias = "project_id")]
     pub project_id: Option<String>,
 }

@@ -145,24 +145,6 @@ struct CopilotUsage {
 }
 
 /// 创建系统托盘（完整菜单，包含账号数据加载）
-pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<TrayIcon<R>, tauri::Error> {
-    info!("[Tray] 正在创建系统托盘...");
-
-    let menu = build_tray_menu(app)?;
-
-    let tray = TrayIconBuilder::with_id(TRAY_ID)
-        .icon(app.default_window_icon().unwrap().clone())
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .tooltip("Cockpit Tools")
-        .on_menu_event(handle_menu_event)
-        .on_tray_icon_event(handle_tray_event)
-        .build(app)?;
-
-    info!("[Tray] 系统托盘创建成功");
-    Ok(tray)
-}
-
 /// 创建骨架托盘（无账号文件 I/O，仅基础菜单项，用于快速启动）
 pub fn create_tray_skeleton<R: Runtime>(
     app: &tauri::AppHandle<R>,
@@ -1299,7 +1281,6 @@ fn build_qoder_display_info(lang: &str) -> AccountDisplayInfo {
 struct QoderQuotaBucket {
     used: Option<f64>,
     total: Option<f64>,
-    remaining: Option<f64>,
     percentage: Option<f64>,
 }
 
@@ -1331,21 +1312,6 @@ fn parse_qoder_quota_bucket(
         })
         .or_else(|| fallback.and_then(|(_, t, _)| *t));
 
-    let remaining = raw
-        .as_ref()
-        .and_then(|r| {
-            json_first_f64(&[
-                r.get("remaining").and_then(json_as_f64),
-                r.get("available").and_then(json_as_f64),
-                r.get("left").and_then(json_as_f64),
-            ])
-        })
-        .or_else(|| fallback.and_then(|(_, _, rem)| *rem))
-        .or_else(|| match (total, used) {
-            (Some(t), Some(u)) => Some(t - u),
-            _ => None,
-        });
-
     let percentage = raw
         .as_ref()
         .and_then(|r| {
@@ -1363,7 +1329,6 @@ fn parse_qoder_quota_bucket(
     QoderQuotaBucket {
         used,
         total,
-        remaining,
         percentage,
     }
 }

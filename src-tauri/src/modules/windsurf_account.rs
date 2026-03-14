@@ -209,53 +209,6 @@ fn resolve_payload_api_key(payload: &WindsurfOAuthCompletePayload) -> Option<Str
         })
 }
 
-fn resolve_payload_email(payload: &WindsurfOAuthCompletePayload) -> Option<String> {
-    normalize_email(payload.github_email.as_deref())
-        .or_else(|| pick_string_from_object(payload.windsurf_auth_status_raw.as_ref(), &["email"]))
-        .and_then(|email| normalize_email(Some(email.as_str())))
-}
-
-fn build_account_identity_keys(account: &WindsurfAccount) -> Vec<String> {
-    let mut keys = Vec::new();
-    if let Some(api_key) = resolve_account_api_key(account) {
-        keys.push(format!("api:{}", api_key));
-    }
-    if let Some(email) = resolve_account_email(account) {
-        keys.push(format!("email:{}", email));
-    }
-    keys
-}
-
-fn build_payload_identity_keys(
-    payload: &WindsurfOAuthCompletePayload,
-    normalized_login: &str,
-) -> Vec<String> {
-    let mut keys = Vec::new();
-    if let Some(api_key) = resolve_payload_api_key(payload) {
-        keys.push(format!("api:{}", api_key));
-    }
-    if let Some(email) = resolve_payload_email(payload) {
-        keys.push(format!("email:{}", email));
-    }
-    if keys.is_empty() && !normalized_login.trim().is_empty() {
-        keys.push(format!("login:{}", normalized_login.trim().to_lowercase()));
-    }
-    keys
-}
-
-fn build_account_match_keys(account: &WindsurfAccount) -> Vec<String> {
-    let mut keys = build_account_identity_keys(account);
-    if let Some(login) = normalize_non_empty(Some(account.github_login.as_str())) {
-        keys.push(format!("login:{}", login.to_lowercase()));
-    }
-    keys
-}
-
-fn has_shared_identity_keys(left: &[String], right: &[String]) -> bool {
-    left.iter()
-        .any(|left_key| right.iter().any(|right_key| left_key == right_key))
-}
-
 fn account_apis_are_compatible(left: &WindsurfAccount, right: &WindsurfAccount) -> bool {
     match (
         resolve_account_api_key(left),

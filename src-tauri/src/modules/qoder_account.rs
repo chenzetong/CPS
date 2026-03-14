@@ -866,32 +866,6 @@ pub fn import_from_local() -> Result<Option<QoderAccount>, String> {
     Ok(Some(account))
 }
 
-pub fn refresh_account_from_local(account_id: &str) -> Result<QoderAccount, String> {
-    let target =
-        load_account(account_id).ok_or_else(|| format!("Qoder 账号不存在: {}", account_id))?;
-    let db_path = ensure_default_state_db_path()?;
-    let Some(snapshot) = read_snapshot_from_state_db_path(&db_path)? else {
-        return Err("未找到本地 Qoder 登录信息".to_string());
-    };
-
-    let refreshed = snapshot_to_account(snapshot, Some(&target));
-    if refreshed.id != target.id {
-        return Err("本地当前 Qoder 登录账号与目标账号不一致，请切换后重试".to_string());
-    }
-    upsert_account_record(refreshed)
-}
-
-pub fn refresh_all_from_local() -> Result<i32, String> {
-    let before = list_accounts();
-    if before.is_empty() {
-        return Ok(0);
-    }
-    match import_from_local()? {
-        Some(_) => Ok(1),
-        None => Ok(0),
-    }
-}
-
 fn serialize_raw_or_fallback(raw: &Option<Value>, fallback: Value) -> Result<String, String> {
     let value = raw.clone().unwrap_or(fallback);
     serde_json::to_string(&value).map_err(|e| format!("序列化 Qoder 注入数据失败: {}", e))

@@ -6,7 +6,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, RefreshCw, X } from 'lucide-react';
+import { FileText, FolderOpen, RefreshCw, X } from 'lucide-react';
 import { SideNav } from './components/layout/SideNav';
 import { GlobalModal } from './components/GlobalModal';
 import type { QuickSettingsType } from './components/QuickSettingsPopover';
@@ -117,6 +117,9 @@ const CloseConfirmDialog = lazy(() =>
 );
 const BreakoutModal = lazy(() =>
   import('./components/easter-egg/BreakoutModal').then((module) => ({ default: module.BreakoutModal })),
+);
+const LogViewerModal = lazy(() =>
+  import('./components/LogViewerModal').then((module) => ({ default: module.LogViewerModal })),
 );
 
 interface GeneralConfigTheme {
@@ -359,6 +362,7 @@ function App() {
   const [updateNotificationKey, setUpdateNotificationKey] = useState(0);
   const [updateCheckSource, setUpdateCheckSource] = useState<UpdateCheckSource>('auto');
   const [showCloseDialog, setShowCloseDialog] = useState(false);
+  const [showLogViewer, setShowLogViewer] = useState(false);
   const [showPlatformLayoutModal, setShowPlatformLayoutModal] = useState(false);
   const [platformLayoutRequestedGroupId, setPlatformLayoutRequestedGroupId] = useState<string | null>(null);
   const [showBreakout, setShowBreakout] = useState(false);
@@ -2330,6 +2334,15 @@ function App() {
         onUpdateActionClick={handleQuickUpdateActionClick}
       />
 
+      <button
+        className="log-entry-fab"
+        onClick={() => setShowLogViewer(true)}
+        title={t('manual.dataPrivacy.keywords.5', '日志')}
+        aria-label={t('manual.dataPrivacy.keywords.5', '日志')}
+      >
+        <FileText size={18} />
+      </button>
+
       <Suspense fallback={null}>
         <PlatformLayoutModal
           open={showPlatformLayoutModal}
@@ -2338,6 +2351,10 @@ function App() {
             setShowPlatformLayoutModal(false);
             setPlatformLayoutRequestedGroupId(null);
           }}
+        />
+        <LogViewerModal
+          open={showLogViewer}
+          onClose={() => setShowLogViewer(false)}
         />
       </Suspense>
 

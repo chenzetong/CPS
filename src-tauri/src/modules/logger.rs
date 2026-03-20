@@ -2,6 +2,8 @@ use crate::modules::account::get_data_dir;
 use chrono::{DateTime, Duration, Local};
 use regex::{Captures, Regex};
 use std::fs;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tracing::{error, info, warn};
@@ -9,6 +11,10 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 const LOG_FILE_PREFIX: &str = "app.log";
 const LOG_RETENTION_DAYS: i64 = 3;
+const DEFAULT_LOG_TAIL_LINES: usize = 200;
+const MIN_LOG_TAIL_LINES: usize = 20;
+const MAX_LOG_TAIL_LINES: usize = 5000;
+const LOG_TAIL_SCAN_CHUNK_BYTES: usize = 8192;
 static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b")
         .expect("email regex should be valid")
@@ -39,6 +45,95 @@ fn is_app_log_file(path: &Path) -> bool {
         .and_then(|name| name.to_str())
         .map(|name| name.starts_with(LOG_FILE_PREFIX))
         .unwrap_or(false)
+}
+
+pub fn clamp_log_tail_lines(line_limit: Option<usize>) -> usize {
+    line_limit
+        .unwrap_or(DEFAULT_LOG_TAIL_LINES)
+        .clamp(MIN_LOG_TAIL_LINES, MAX_LOG_TAIL_LINES)
+}
+
+pub fn get_latest_app_log_file() -> Result<PathBuf, String> {
+    let log_dir = get_log_dir()?;
+    let entries = fs::read_dir(&log_dir).map_err(|e| format!("读取日志目录失败: {}", e))?;
+
+    let mut latest: Option<(PathBuf, std::time::SystemTime)> = None;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("读取日志目录项失败: {}", e))?;
+        let path = entry.path();
+        if !path.is_file() || !is_app_log_file(&path) {
+            continue;
+        }
+
+        let modified = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        match &latest {
+            Some((current_path, current_modified)) => {
+                let should_replace = modified > *current_modified
+                    || (modified == *current_modified
+                        && path.file_name().and_then(|name| name.to_str())
+                            > current_path.file_name().and_then(|name| name.to_str()));
+                if should_replace {
+                    latest = Some((path, modified));
+                }
+            }
+            None => {
+                latest = Some((path, modified));
+            }
+        }
+    }
+
+    latest
+        .map(|(path, _)| path)
+        .ok_or_else(|| "未找到可用日志文件".to_string())
+}
+
+pub fn read_log_tail_lines(log_file: &Path, line_limit: usize) -> Result<String, String> {
+    let line_limit = line_limit.max(1);
+    let mut file = File::open(log_file).map_err(|e| format!("打开日志文件失败: {}", e))?;
+    let file_len = file
+        .metadata()
+        .map_err(|e| format!("读取日志文件元数据失败: {}", e))?
+        .len();
+
+    if file_len == 0 {
+        return Ok(String::new());
+    }
+
+    let mut pos = file_len;
+    let mut newline_count = 0usize;
+    let mut start_offset = 0u64;
+    let mut buffer = [0u8; LOG_TAIL_SCAN_CHUNK_BYTES];
+
+    'scan: while pos > 0 {
+        let read_size = usize::min(LOG_TAIL_SCAN_CHUNK_BYTES, pos as usize);
+        pos -= read_size as u64;
+
+        file.seek(SeekFrom::Start(pos))
+            .map_err(|e| format!("读取日志定位失败: {}", e))?;
+        file.read_exact(&mut buffer[..read_size])
+            .map_err(|e| format!("读取日志内容失败: {}", e))?;
+
+        for idx in (0..read_size).rev() {
+            if buffer[idx] != b'\n' {
+                continue;
+            }
+            newline_count += 1;
+            if newline_count > line_limit {
+                start_offset = pos + idx as u64 + 1;
+                break 'scan;
+            }
+        }
+    }
+
+    file.seek(SeekFrom::Start(start_offset))
+        .map_err(|e| format!("读取日志定位失败: {}", e))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|e| format!("读取日志内容失败: {}", e))?;
+    Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
 fn cleanup_expired_logs(log_dir: &Path) {

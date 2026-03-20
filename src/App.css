@@ -68,6 +68,33 @@
   z-index: 1200;
 }
 
+.log-entry-fab {
+  position: fixed;
+  left: 36px;
+  bottom: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1100;
+  transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.log-entry-fab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
 .update-quick-action-btn {
   height: 36px;
   border-radius: 12px;
@@ -113,5 +140,10 @@
   .update-quick-action {
     top: 56px;
     left: 14px;
+  }
+
+  .log-entry-fab {
+    left: 12px;
+    bottom: 12px;
   }
 }

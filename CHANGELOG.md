@@ -7,6 +7,16 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.17.3] - 2026-03-20
+
+### Added
+- **Desktop now includes a built-in live log viewer for runtime diagnostics**: added a floating log entry button in the main window, with latest-log tail view, auto refresh, line-limit control, clear/copy content, copy log path, and one-click open log directory.
+- **Backend log commands now support latest-file snapshot and bounded tail reads**: added latest `app.log*` discovery, tail line clamping, and cross-platform log-directory open commands for frontend diagnostics.
+
+### Changed
+- **CodeBuddy and WorkBuddy usage-state rendering is now unified with explicit abnormal details**: account cards/tables now show a normalized abnormal state with a detail modal and masked account context, and CodeBuddy/WorkBuddy instance quota previews now use shared dosage-notify renderers for consistent output.
+
+---
 ## [0.17.2] - 2026-03-20
 
 ### Changed

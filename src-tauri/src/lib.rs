@@ -245,6 +245,9 @@ pub fn run() {
             commands::system::handle_window_close,
             commands::system::open_folder,
             commands::system::delete_corrupted_file,
+            // Logs Commands
+            commands::logs::logs_get_latest_snapshot,
+            commands::logs::logs_open_log_directory,
             // Wakeup Commands
             commands::wakeup::wakeup_ensure_runtime_ready,
             commands::wakeup::trigger_wakeup,

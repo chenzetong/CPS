@@ -1116,16 +1116,20 @@ export function CodexAccountsPage() {
       const selectedTags = new Set(tagFilter.map(normalizeTag));
       result = result.filter((a) => (a.tags || []).map(normalizeTag).some((tag) => selectedTags.has(tag)));
     }
-    // 分组筛选
+    // 分组筛选 — 仅保留仍存在于 codexGroups 中的 ID，防止已删除分组导致空筛选
     if (groupFilter.length > 0) {
-      const groupAccountIds = new Set<string>();
-      const selectedGroupIds = new Set(groupFilter);
-      for (const group of codexGroups) {
-        if (selectedGroupIds.has(group.id)) {
-          for (const aid of group.accountIds) groupAccountIds.add(aid);
+      const existingGroupIds = new Set(codexGroups.map((g) => g.id));
+      const activeFilter = groupFilter.filter((id) => existingGroupIds.has(id));
+      if (activeFilter.length > 0) {
+        const groupAccountIds = new Set<string>();
+        const selectedGroupIds = new Set(activeFilter);
+        for (const group of codexGroups) {
+          if (selectedGroupIds.has(group.id)) {
+            for (const aid of group.accountIds) groupAccountIds.add(aid);
+          }
         }
+        result = result.filter((a) => groupAccountIds.has(a.id));
       }
-      result = result.filter((a) => groupAccountIds.has(a.id));
     }
     result.sort(compareAccountsBySort);
     return result;

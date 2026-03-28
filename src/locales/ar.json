@@ -2597,18 +2597,35 @@
       }
     },
     "checkin": {
-      "title": "الت签到 اليومي",
+      "title": "التسجيل اليومي",
+      "modalTitle": "التسجيل اليومي",
       "status": "حالة التسجيل",
       "checkedIn": "تم التسجيل",
       "notCheckedIn": "لم يتم التسجيل",
       "button": "تسجيل",
       "button.loading": "جاري التسجيل...",
+      "done": "تم",
       "success": "تم التسجيل بنجاح! {{days}} يوم متتالي",
       "failure": "فشل التسجيل: {{message}}",
       "failure.network": "خطأ في الشبكة، يرجى المحاولة لاحقًا",
       "lastCheckin": "آخر تسجيل: {{time}}",
       "streak": "{{days}} يوم متتالي",
-      "reward": "المكافأة: {{reward}}"
+      "reward": "المكافأة: {{reward}}",
+      "refreshStatus": "تحديث الحالة",
+      "checkAll": "تسجيل الكل",
+      "noAccounts": "لا توجد حسابات",
+      "querying": "جارٍ التحميل...",
+      "streakDays": "{{days}} يوم",
+      "streakRewardCountdown": "يتبقى {{days}} يومًا للحصول على المكافأة الإضافية",
+      "streakRewardToday": "المكافأة الإضافية متاحة اليوم!",
+      "recentDates": "الأيام الأخيرة: ",
+      "quotaCategory": {
+        "base": "الباقة الأساسية",
+        "activity": "مكافأة النشاط",
+        "extra": "أرصدة إضافية",
+        "other": "أخرى",
+        "empty": "لا توجد بيانات حصة"
+      }
     }
   },
   "workbuddy": {

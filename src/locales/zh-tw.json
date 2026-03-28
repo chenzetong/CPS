@@ -2552,17 +2552,34 @@
     },
     "checkin": {
       "title": "每日簽到",
+      "modalTitle": "每日簽到",
       "status": "簽到狀態",
       "checkedIn": "已簽到",
       "notCheckedIn": "未簽到",
       "button": "簽到",
       "button.loading": "簽到中...",
+      "done": "已完成",
       "success": "簽到成功！連續簽到 {{days}} 天",
       "failure": "簽到失敗：{{message}}",
       "failure.network": "網路異常，請稍後重試",
       "lastCheckin": "最後簽到：{{time}}",
       "streak": "連續簽到 {{days}} 天",
-      "reward": "獎勵：{{reward}}"
+      "reward": "獎勵：{{reward}}",
+      "refreshStatus": "刷新狀態",
+      "checkAll": "一鍵簽到",
+      "noAccounts": "暫無帳號",
+      "querying": "查詢中...",
+      "streakDays": "{{days}} 天",
+      "streakRewardCountdown": "再簽 {{days}} 天可得大禮包",
+      "streakRewardToday": "今日可獲得大禮包！",
+      "recentDates": "近期簽到：",
+      "quotaCategory": {
+        "base": "基礎體驗包",
+        "activity": "活動贈送包",
+        "extra": "加量包",
+        "other": "其他",
+        "empty": "暫無配額資料"
+      }
     }
   },
   "workbuddy": {

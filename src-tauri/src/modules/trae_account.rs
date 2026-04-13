@@ -3127,9 +3127,11 @@ async fn refresh_account_async_once(account_id: &str) -> Result<TraeAccount, Str
 }
 
 pub async fn refresh_account_async(account_id: &str) -> Result<TraeAccount, String> {
-    let result = crate::modules::refresh_retry::retry_once_with_delay("Trae Refresh", account_id, || async {
-        refresh_account_async_once(account_id).await
-    })
+    let result = crate::modules::refresh_retry::retry_once_with_delay(
+        "Trae Refresh",
+        account_id,
+        || async { refresh_account_async_once(account_id).await },
+    )
     .await;
     if let Err(err) = &result {
         persist_quota_query_error(account_id, err);

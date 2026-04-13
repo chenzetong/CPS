@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { openPath } from '@tauri-apps/plugin-opener';
 import { CircleAlert, FolderOpen, Save } from 'lucide-react';
 import {
   getCodexConfigTomlPath,
   getCodexQuickConfig,
+  openCodexConfigToml,
   saveCodexQuickConfig,
 } from '../../services/codexService';
 import type { CodexQuickConfig } from '../../types/codex';
@@ -134,7 +134,7 @@ export function CodexQuickConfigCard() {
     setOpening(true);
     setError(null);
     try {
-      await openPath(configPath);
+      await openCodexConfigToml();
     } catch (err) {
       setError(
         t('codex.modelProviders.quickConfig.openFailed', {
@@ -145,7 +145,7 @@ export function CodexQuickConfigCard() {
     } finally {
       setOpening(false);
     }
-  }, [configPath, opening, t]);
+  }, [opening, t]);
 
   const handleSave = useCallback(async () => {
     if (saving || loading) return;

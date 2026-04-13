@@ -20,6 +20,9 @@ const WINDSURF_CLIENT_ID: &str = "3GUryQ7ldAeKEuD2obYnppsnmj58eP5u";
 const APP_USER_AGENT: &str = "antigravity-cockpit-tools";
 const OAUTH_TIMEOUT_SECONDS: u64 = 600;
 const OAUTH_STATE_FILE: &str = "windsurf_oauth_pending.json";
+const FIREBASE_API_KEY: &str = "AIzaSyDsOl-1XpT5err0Tcnx8FFod1H8gVGIycY";
+const FIREBASE_SIGN_IN_URL: &str =
+    "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword";
 
 #[derive(Clone, Serialize, Deserialize)]
 struct PendingOAuthState {
@@ -1239,6 +1242,90 @@ pub async fn build_payload_from_token(token: &str) -> Result<WindsurfOAuthComple
     }
 
     Err("Token 格式不支持：请使用 Windsurf API Key 或 Firebase JWT".to_string())
+}
+
+pub async fn build_payload_from_password(
+    email: &str,
+    password: &str,
+) -> Result<WindsurfOAuthCompletePayload, String> {
+    let email = email.trim();
+    if email.is_empty() || password.is_empty() {
+        return Err("邮箱和密码不能为空".to_string());
+    }
+
+    logger::log_info("[Windsurf PasswordLogin] 开始 Firebase 邮箱密码登录");
+
+    let url = format!("{}?key={}", FIREBASE_SIGN_IN_URL, FIREBASE_API_KEY);
+    let body = json!({
+        "email": email,
+        "password": password,
+        "returnSecureToken": true,
+        "clientType": "CLIENT_TYPE_WEB"
+    });
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Accept", "*/*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9")
+        .header("Cache-Control", "no-cache")
+        .header("Pragma", "no-cache")
+        .header(
+            "Sec-Ch-Ua",
+            r#""Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99""#,
+        )
+        .header("Sec-Ch-Ua-Mobile", "?0")
+        .header("Sec-Ch-Ua-Platform", r#""Windows""#)
+        .header("Sec-Fetch-Dest", "empty")
+        .header("Sec-Fetch-Mode", "cors")
+        .header("Sec-Fetch-Site", "cross-site")
+        .header("X-Client-Version", "Chrome/JsCore/11.0.0/FirebaseCore-web")
+        .header("Referer", "https://windsurf.com/")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Firebase 登录请求失败: {}", e))?;
+
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "<no-body>".to_string());
+
+    if !status.is_success() {
+        let error_msg = serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("error")
+                    .and_then(|error| error.get("message"))
+                    .and_then(Value::as_str)
+                    .map(|message| message.to_string())
+            })
+            .unwrap_or_else(|| text.clone());
+
+        let friendly = match error_msg.as_str() {
+            "EMAIL_NOT_FOUND" => "邮箱不存在".to_string(),
+            "INVALID_PASSWORD" | "INVALID_LOGIN_CREDENTIALS" => "邮箱或密码错误".to_string(),
+            "USER_DISABLED" => "账号已被禁用".to_string(),
+            "TOO_MANY_ATTEMPTS_TRY_LATER" => "尝试次数过多，请稍后再试".to_string(),
+            _ => format!("Firebase 登录失败: {}", error_msg),
+        };
+        return Err(friendly);
+    }
+
+    let firebase_resp: Value =
+        serde_json::from_str(&text).map_err(|e| format!("解析 Firebase 响应失败: {}", e))?;
+
+    let id_token = firebase_resp
+        .get("idToken")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Firebase 响应缺少 idToken".to_string())?;
+
+    logger::log_info("[Windsurf PasswordLogin] Firebase 登录成功，开始获取账号信息");
+
+    build_payload_from_firebase_token(id_token, None).await
 }
 
 pub async fn build_payload_from_local_auth_status(

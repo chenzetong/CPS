@@ -927,8 +927,7 @@ async fn refresh_account_token_once(account_id: &str) -> Result<WindsurfAccount,
         account.quota_query_last_error_at = None;
         account.usage_updated_at = Some(refreshed_at);
     } else {
-        account.quota_query_last_error =
-            Some("未获取到有效配额快照，已保留旧配额缓存".to_string());
+        account.quota_query_last_error = Some("未获取到有效配额快照，已保留旧配额缓存".to_string());
         account.quota_query_last_error_at = Some(chrono::Utc::now().timestamp_millis());
     }
     account.last_used = refreshed_at;
@@ -946,9 +945,11 @@ async fn refresh_account_token_once(account_id: &str) -> Result<WindsurfAccount,
 }
 
 pub async fn refresh_account_token(account_id: &str) -> Result<WindsurfAccount, String> {
-    let result = crate::modules::refresh_retry::retry_once_with_delay("Windsurf Refresh", account_id, || async {
-        refresh_account_token_once(account_id).await
-    })
+    let result = crate::modules::refresh_retry::retry_once_with_delay(
+        "Windsurf Refresh",
+        account_id,
+        || async { refresh_account_token_once(account_id).await },
+    )
     .await;
     if let Err(err) = &result {
         persist_quota_query_error(account_id, err);

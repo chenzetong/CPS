@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil, Search, X } from 'lucide-react'
+import { FolderPlus, Pencil, Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Account } from '../types/account'
 import type { AccountGroup } from '../services/accountGroupService'
@@ -27,6 +27,7 @@ interface GroupAccountPickerModalProps {
   maskAccountText: (value?: string | null) => string
   onClose: () => void
   onConfirm: (payload: { name: string; accountIds: string[] }) => Promise<void> | void
+  mode?: 'edit' | 'addAccounts'
 }
 
 export function GroupAccountPickerModal({
@@ -39,8 +40,10 @@ export function GroupAccountPickerModal({
   maskAccountText,
   onClose,
   onConfirm,
+  mode = 'edit',
 }: GroupAccountPickerModalProps) {
   const { t } = useTranslation()
+  const isQuickAddMode = mode === 'addAccounts'
   const [query, setQuery] = useState('')
   const [groupName, setGroupName] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -54,11 +57,11 @@ export function GroupAccountPickerModal({
     if (!isOpen) return
     setQuery('')
     setGroupName(targetGroup?.name ?? '')
-    setSelected(new Set(targetGroup?.accountIds ?? []))
+    setSelected(isQuickAddMode ? new Set() : new Set(targetGroup?.accountIds ?? []))
     setFilterTypes([])
     setTagFilter([])
     setError('')
-  }, [isOpen, targetGroup])
+  }, [isOpen, isQuickAddMode, targetGroup])
 
   const groupByAccountId = useMemo(() => {
     const result = new Map<string, AccountGroup>()
@@ -90,6 +93,11 @@ export function GroupAccountPickerModal({
     const selectedTags = new Set(tagFilter.map(normalizeAccountTag))
     let next = [...accounts].sort((a, b) => a.email.localeCompare(b.email))
 
+    if (isQuickAddMode && targetGroup) {
+      const existingIds = new Set(targetGroup.accountIds)
+      next = next.filter((account) => !existingIds.has(account.id))
+    }
+
     if (selectedTypes.size > 0) {
       next = next.filter((account) =>
         accountMatchesTypeFilters(account, selectedTypes, verificationStatusMap)
@@ -106,7 +114,7 @@ export function GroupAccountPickerModal({
       const currentGroupName = groupByAccountId.get(account.id)?.name?.toLowerCase() || ''
       return account.email.toLowerCase().includes(normalized) || currentGroupName.includes(normalized)
     })
-  }, [accounts, filterTypes, groupByAccountId, query, tagFilter, verificationStatusMap])
+  }, [accounts, filterTypes, groupByAccountId, isQuickAddMode, query, tagFilter, targetGroup, verificationStatusMap])
 
   const selectedVisibleCount = useMemo(
     () =>
@@ -123,16 +131,18 @@ export function GroupAccountPickerModal({
 
   const hasSelectionChanges = useMemo(() => {
     if (!targetGroup) return false
+    if (isQuickAddMode) return selected.size > 0
     if (selected.size !== targetGroup.accountIds.length) return true
     return targetGroup.accountIds.some((accountId) => !selected.has(accountId))
-  }, [selected, targetGroup])
+  }, [isQuickAddMode, selected, targetGroup])
 
   const trimmedGroupName = groupName.trim()
 
   const hasNameChanges = useMemo(() => {
     if (!targetGroup) return false
+    if (isQuickAddMode) return false
     return trimmedGroupName !== targetGroup.name
-  }, [targetGroup, trimmedGroupName])
+  }, [isQuickAddMode, targetGroup, trimmedGroupName])
 
   const hasChanges = hasNameChanges || hasSelectionChanges
 
@@ -175,16 +185,19 @@ export function GroupAccountPickerModal({
 
   const handleConfirm = async () => {
     if (!targetGroup || !hasChanges || saving) return
-    if (!trimmedGroupName) {
+    if (!isQuickAddMode && !trimmedGroupName) {
       setError(t('platformLayout.groupNameRequired'))
       return
     }
     setSaving(true)
     setError('')
     try {
+      const nextAccountIds = isQuickAddMode
+        ? [...targetGroup.accountIds, ...Array.from(selected)]
+        : Array.from(selected)
       await onConfirm({
-        name: trimmedGroupName,
-        accountIds: Array.from(selected),
+        name: isQuickAddMode ? targetGroup.name : trimmedGroupName,
+        accountIds: nextAccountIds,
       })
       onClose()
     } catch (err) {
@@ -201,8 +214,11 @@ export function GroupAccountPickerModal({
       <div className="modal group-account-picker-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h2 className="group-account-picker-title">
-            <Pencil size={18} />
-            <span>{t('accounts.groups.editTitle')}</span>
+            {isQuickAddMode ? <FolderPlus size={18} /> : <Pencil size={18} />}
+            <span>{isQuickAddMode ? t('accounts.groups.addAccounts') : t('accounts.groups.editTitle')}</span>
+            {isQuickAddMode && (
+              <span className="group-account-picker-target">{targetGroup.name}</span>
+            )}
           </h2>
           <button
             className="modal-close"
@@ -214,17 +230,19 @@ export function GroupAccountPickerModal({
         </div>
 
         <div className="modal-body group-account-picker-body">
-          <div className="group-account-name-field">
-            <label htmlFor="group-account-name">{t('platformLayout.groupName')}</label>
-            <input
-              id="group-account-name"
-              type="text"
-              value={groupName}
-              onChange={(event) => setGroupName(event.target.value)}
-              placeholder={t('accounts.groups.newPlaceholder')}
-              maxLength={30}
-            />
-          </div>
+          {!isQuickAddMode && (
+            <div className="group-account-name-field">
+              <label htmlFor="group-account-name">{t('platformLayout.groupName')}</label>
+              <input
+                id="group-account-name"
+                type="text"
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                placeholder={t('accounts.groups.newPlaceholder')}
+                maxLength={30}
+              />
+            </div>
+          )}
 
           <div className="group-account-toolbar">
             <div className="group-account-search">
@@ -338,9 +356,13 @@ export function GroupAccountPickerModal({
           <button
             className="btn btn-primary"
             onClick={handleConfirm}
-            disabled={!hasChanges || saving || !trimmedGroupName}
+            disabled={!hasChanges || saving || (!isQuickAddMode && !trimmedGroupName)}
           >
-            {saving ? t('common.saving') : `${t('common.save')} (${selected.size})`}
+            {saving
+              ? t('common.saving')
+              : isQuickAddMode
+                ? `${t('accounts.groups.addAccounts')} (${selected.size})`
+                : `${t('common.save')} (${selected.size})`}
           </button>
         </div>
       </div>

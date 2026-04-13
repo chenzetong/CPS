@@ -21,6 +21,11 @@ export async function getCodexConfigTomlPath(): Promise<string> {
   return await invoke('get_codex_config_toml_path');
 }
 
+/** 打开当前 Codex config.toml */
+export async function openCodexConfigToml(): Promise<void> {
+  return await invoke('open_codex_config_toml');
+}
+
 /** 获取 Codex config.toml 快捷配置 */
 export async function getCodexQuickConfig(): Promise<CodexQuickConfig> {
   return await invoke('get_codex_quick_config');

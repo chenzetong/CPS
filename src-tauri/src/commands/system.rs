@@ -455,7 +455,9 @@ pub fn save_auto_backup_settings(
 }
 
 #[tauri::command]
-pub fn update_auto_backup_last_run(last_backup_at: Option<String>) -> Result<AutoBackupSettings, String> {
+pub fn update_auto_backup_last_run(
+    last_backup_at: Option<String>,
+) -> Result<AutoBackupSettings, String> {
     let current = config::get_user_config();
     let normalized_last_backup_at = last_backup_at.and_then(|value| {
         let trimmed = value.trim().to_string();
@@ -508,7 +510,8 @@ pub fn list_auto_backup_files() -> Result<Vec<AutoBackupFileEntry>, String> {
             Some(name) if name.ends_with(".json") => name.to_string(),
             _ => continue,
         };
-        let metadata = fs::metadata(&path).map_err(|err| format!("读取备份文件信息失败: {}", err))?;
+        let metadata =
+            fs::metadata(&path).map_err(|err| format!("读取备份文件信息失败: {}", err))?;
         files.push(AutoBackupFileEntry {
             file_name,
             path: path.to_string_lossy().to_string(),
@@ -547,7 +550,9 @@ pub fn cleanup_auto_backup_files(retention_days: i32) -> Result<Vec<String>, Str
     let normalized_retention_days = config::sanitize_auto_backup_retention_days(retention_days);
     let now = SystemTime::now();
     let cutoff = now
-        .checked_sub(Duration::from_secs(normalized_retention_days as u64 * 24 * 60 * 60))
+        .checked_sub(Duration::from_secs(
+            normalized_retention_days as u64 * 24 * 60 * 60,
+        ))
         .unwrap_or(now);
 
     let mut deleted = Vec::new();
@@ -562,7 +567,8 @@ pub fn cleanup_auto_backup_files(retention_days: i32) -> Result<Vec<String>, Str
             Some(name) if name.ends_with(".json") => name.to_string(),
             _ => continue,
         };
-        let metadata = fs::metadata(&path).map_err(|err| format!("读取备份文件信息失败: {}", err))?;
+        let metadata =
+            fs::metadata(&path).map_err(|err| format!("读取备份文件信息失败: {}", err))?;
         let modified = match metadata.modified() {
             Ok(value) => value,
             Err(_) => continue,

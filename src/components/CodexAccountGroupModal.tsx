@@ -285,10 +285,17 @@ interface CodexAddToGroupModalProps {
   isOpen: boolean;
   onClose: () => void;
   accountIds: string[];
+  sourceGroupId?: string;
   onAdded: () => Promise<void> | void;
 }
 
-export const CodexAddToGroupModal = ({ isOpen, onClose, accountIds, onAdded }: CodexAddToGroupModalProps) => {
+export const CodexAddToGroupModal = ({
+  isOpen,
+  onClose,
+  accountIds,
+  sourceGroupId,
+  onAdded,
+}: CodexAddToGroupModalProps) => {
   const { t } = useTranslation();
   const [groups, setGroups] = useState<CodexAccountGroup[]>([]);
   const [newName, setNewName] = useState('');
@@ -337,13 +344,17 @@ export const CodexAddToGroupModal = ({ isOpen, onClose, accountIds, onAdded }: C
 
   if (!isOpen) return null;
 
+  const selectableGroups = groups.filter((group) => group.id !== sourceGroupId);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal add-to-group-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>
             <FolderPlus size={18} />
-            {t('accounts.groups.addToGroup', '添加至分组')}
+            {sourceGroupId
+              ? t('accounts.groups.moveToGroup')
+              : t('accounts.groups.addToGroup', '添加至分组')}
           </h2>
           <button className="modal-close" onClick={onClose}>
             <X size={18} />
@@ -369,9 +380,9 @@ export const CodexAddToGroupModal = ({ isOpen, onClose, accountIds, onAdded }: C
             </button>
           </div>
 
-          {groups.length > 0 && (
+          {selectableGroups.length > 0 && (
             <div className="add-to-group-list">
-              {groups.map((group) => (
+              {selectableGroups.map((group) => (
                 <div
                   key={group.id}
                   className="add-to-group-item"

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { open } from '@tauri-apps/plugin-dialog';
-import { openPath } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { Settings, RefreshCw, FolderOpen, Zap, X } from 'lucide-react';
 import * as accountService from '../services/accountService';
@@ -660,8 +659,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     if (openingCodexConfig) return;
     setOpeningCodexConfig(true);
     try {
-      const configTomlPath = await codexService.getCodexConfigTomlPath();
-      await openPath(configTomlPath);
+      await codexService.openCodexConfigToml();
     } catch (err) {
       setError(t('quickSettings.error.openCodexConfigFailed', {
         error: String(err),

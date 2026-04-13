@@ -1167,7 +1167,10 @@ pub fn load_user_config() -> Result<UserConfig, String> {
             );
         }
         if !obj.contains_key("auto_backup_last_backup_at") {
-            obj.insert("auto_backup_last_backup_at".to_string(), serde_json::Value::Null);
+            obj.insert(
+                "auto_backup_last_backup_at".to_string(),
+                serde_json::Value::Null,
+            );
         }
 
         if !obj.contains_key("report_enabled") {
@@ -1450,16 +1453,14 @@ pub fn load_user_config() -> Result<UserConfig, String> {
     config.auto_backup_include_config = include_config;
     config.auto_backup_retention_days =
         sanitize_auto_backup_retention_days(config.auto_backup_retention_days);
-    config.auto_backup_last_backup_at = config
-        .auto_backup_last_backup_at
-        .and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        });
+    config.auto_backup_last_backup_at = config.auto_backup_last_backup_at.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    });
 
     Ok(config)
 }

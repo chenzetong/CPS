@@ -8,6 +8,7 @@ use crate::modules::{
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::AppHandle;
 use tauri::Emitter;
+use tauri_plugin_opener::OpenerExt;
 
 static CODEX_POST_REFRESH_CHECK_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
@@ -27,6 +28,18 @@ pub fn get_current_codex_account() -> Result<Option<CodexAccount>, String> {
 pub fn get_codex_config_toml_path() -> Result<String, String> {
     let path = codex_account::get_codex_home().join("config.toml");
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn open_codex_config_toml(app: AppHandle) -> Result<(), String> {
+    let path = codex_account::get_codex_home().join("config.toml");
+    if !path.exists() {
+        return Err(format!("未找到 Codex config.toml 文件: {}", path.display()));
+    }
+
+    app.opener()
+        .open_path(path.to_string_lossy().to_string(), None::<String>)
+        .map_err(|e| format!("打开 Codex config.toml 失败: {}", e))
 }
 
 #[tauri::command]

@@ -33,17 +33,24 @@ import {
   Pencil,
   FolderOpen,
   FolderPlus,
+  ChevronRight,
+  LogOut,
 } from 'lucide-react';
 import { useCodexAccountStore } from '../stores/useCodexAccountStore';
 import * as codexService from '../services/codexService';
 import { TagEditModal } from '../components/TagEditModal';
 import { ExportJsonModal } from '../components/ExportJsonModal';
-import { ModalErrorMessage } from '../components/ModalErrorMessage';
+import { ModalErrorMessage, useModalErrorState } from '../components/ModalErrorMessage';
 import { PaginationControls } from '../components/PaginationControls';
 import { CodexAccountGroupModal, CodexAddToGroupModal } from '../components/CodexAccountGroupModal';
+import { CodexGroupAccountPickerModal } from '../components/CodexGroupAccountPickerModal';
 import {
   type CodexAccountGroup,
+  assignAccountsToCodexGroup,
+  cleanupDeletedCodexAccounts,
+  deleteCodexGroup,
   getCodexAccountGroups,
+  removeAccountsFromCodexGroup,
 } from '../services/codexAccountGroupService';
 import {
   hasCodexAccountStructure,
@@ -181,8 +188,21 @@ export function CodexAccountsPage() {
   // ─── Codex 账号分组 ────────────────────────────────────────────
   const [codexGroups, setCodexGroups] = useState<CodexAccountGroup[]>([]);
   const [groupFilter, setGroupFilter] = useState<string[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [showCodexGroupModal, setShowCodexGroupModal] = useState(false);
   const [showAddToCodexGroupModal, setShowAddToCodexGroupModal] = useState(false);
+  const [groupQuickAddGroupId, setGroupQuickAddGroupId] = useState<string | null>(null);
+  const [groupDeleteConfirm, setGroupDeleteConfirm] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const {
+    message: groupDeleteError,
+    scrollKey: groupDeleteErrorScrollKey,
+    set: setGroupDeleteError,
+  } = useModalErrorState();
+  const [deletingGroup, setDeletingGroup] = useState(false);
+  const [removingGroupAccountIds, setRemovingGroupAccountIds] = useState<Set<string>>(new Set());
 
   const reloadCodexGroups = useCallback(async () => {
     setCodexGroups(await getCodexAccountGroups());
@@ -243,7 +263,7 @@ export function CodexAccountsPage() {
     t, maskAccountText, privacyModeEnabled, togglePrivacyMode,
     viewMode, setViewMode, searchQuery, setSearchQuery,
     sortBy, setSortBy, sortDirection, setSortDirection,
-    selected, toggleSelect, toggleSelectAll,
+    selected, setSelected, toggleSelect, toggleSelectAll,
     tagFilter, groupByTag, setGroupByTag, showTagFilter, setShowTagFilter,
     showTagModal, setShowTagModal, tagFilterRef, availableTags,
     toggleTagFilterValue, clearTagFilter, tagDeleteConfirm, tagDeleteConfirmError, tagDeleteConfirmErrorScrollKey, setTagDeleteConfirm,
@@ -1684,6 +1704,144 @@ export function CodexAccountsPage() {
     buildValidAccountsFilterOption(t, tierCounts.VALID),
   ], [t, tierCounts]);
 
+  const activeGroup = useMemo(() => {
+    if (!activeGroupId) return null;
+    return codexGroups.find((group) => group.id === activeGroupId) ?? null;
+  }, [activeGroupId, codexGroups]);
+
+  const groupQuickAddGroup = useMemo(() => {
+    if (!groupQuickAddGroupId) return null;
+    return codexGroups.find((group) => group.id === groupQuickAddGroupId) ?? null;
+  }, [codexGroups, groupQuickAddGroupId]);
+
+  useEffect(() => {
+    if (activeGroupId && !codexGroups.some((group) => group.id === activeGroupId)) {
+      setActiveGroupId(null);
+    }
+  }, [activeGroupId, codexGroups]);
+
+  useEffect(() => {
+    if (groupQuickAddGroupId && !codexGroups.some((group) => group.id === groupQuickAddGroupId)) {
+      setGroupQuickAddGroupId(null);
+    }
+  }, [codexGroups, groupQuickAddGroupId]);
+
+  useEffect(() => {
+    const existingAccountIds = new Set(accounts.map((account) => account.id));
+    const hasStaleAccountIds = codexGroups.some((group) =>
+      group.accountIds.some((accountId) => !existingAccountIds.has(accountId)),
+    );
+    if (!hasStaleAccountIds) {
+      return;
+    }
+
+    void (async () => {
+      await cleanupDeletedCodexAccounts(existingAccountIds);
+      await reloadCodexGroups();
+    })();
+  }, [accounts, codexGroups, reloadCodexGroups]);
+
+  const handleEnterGroup = useCallback((groupId: string) => {
+    clearGroupFilter();
+    setSelected(new Set());
+    setActiveGroupId(groupId);
+  }, [clearGroupFilter, setSelected]);
+
+  const handleLeaveGroup = useCallback(() => {
+    setSelected(new Set());
+    setActiveGroupId(null);
+  }, [setSelected]);
+
+  const handleRemoveFromGroup = useCallback(async () => {
+    if (!activeGroupId || selected.size === 0) return;
+    try {
+      await removeAccountsFromCodexGroup(activeGroupId, Array.from(selected));
+      setSelected(new Set());
+      await reloadCodexGroups();
+    } catch (error) {
+      console.error('Failed to remove selected codex accounts from group:', error);
+      setMessage({
+        text: t('messages.actionFailed', {
+          action: t('accounts.groups.removeFromGroup'),
+          error: String(error),
+        }),
+        tone: 'error',
+      });
+    }
+  }, [activeGroupId, reloadCodexGroups, selected, setMessage, setSelected, t]);
+
+  const handleRemoveSingleFromGroup = useCallback(
+    async (groupId: string, accountId: string) => {
+      setRemovingGroupAccountIds((prev) => {
+        const next = new Set(prev);
+        next.add(accountId);
+        return next;
+      });
+
+      try {
+        await removeAccountsFromCodexGroup(groupId, [accountId]);
+        if (selected.has(accountId)) {
+          const nextSelected = new Set(selected);
+          nextSelected.delete(accountId);
+          setSelected(nextSelected);
+        }
+        await reloadCodexGroups();
+      } catch (error) {
+        console.error('Failed to remove codex account from group:', error);
+        setMessage({
+          text: t('messages.actionFailed', {
+            action: t('accounts.groups.removeFromGroup'),
+            error: String(error),
+          }),
+          tone: 'error',
+        });
+      } finally {
+        setRemovingGroupAccountIds((prev) => {
+          const next = new Set(prev);
+          next.delete(accountId);
+          return next;
+        });
+      }
+    },
+    [reloadCodexGroups, selected, setMessage, setSelected, t],
+  );
+
+  const requestDeleteGroup = useCallback((groupId: string, groupName: string) => {
+    setGroupDeleteError(null);
+    setGroupDeleteConfirm({
+      id: groupId,
+      name: groupName,
+    });
+  }, [setGroupDeleteError]);
+
+  const handleQuickAddAccountsToGroup = useCallback(async (groupId: string, accountIds: string[]) => {
+    if (accountIds.length === 0) return;
+    await assignAccountsToCodexGroup(groupId, accountIds);
+    await reloadCodexGroups();
+  }, [reloadCodexGroups]);
+
+  const confirmDeleteGroup = useCallback(async () => {
+    if (!groupDeleteConfirm || deletingGroup) return;
+
+    setDeletingGroup(true);
+    setGroupDeleteError(null);
+    try {
+      await deleteCodexGroup(groupDeleteConfirm.id);
+      await reloadCodexGroups();
+      setGroupDeleteConfirm(null);
+      setGroupDeleteError(null);
+    } catch (error) {
+      console.error('Failed to delete codex group:', error);
+      setGroupDeleteError(
+        t('accounts.groups.error.deleteFailed', {
+          error: String(error),
+        }),
+      );
+    } finally {
+      setDeletingGroup(false);
+    }
+  }, [deletingGroup, groupDeleteConfirm, reloadCodexGroups, setGroupDeleteError, t]);
+
   // ─── Filtering & Sorting ────────────────────────────────────────────
   const compareAccountsBySort = useCallback((a: CodexAccount, b: CodexAccount) => {
     const currentFirstDiff = compareCurrentAccountFirst(a.id, b.id, currentAccount?.id);
@@ -1752,9 +1910,17 @@ export function CodexAccountsPage() {
         result = result.filter((a) => groupAccountIds.has(a.id));
       }
     }
+    if (activeGroupId) {
+      const scopedGroup = codexGroups.find((group) => group.id === activeGroupId);
+      if (!scopedGroup) {
+        return [];
+      }
+      const scopedIds = new Set(scopedGroup.accountIds);
+      result = result.filter((account) => scopedIds.has(account.id));
+    }
     result.sort(compareAccountsBySort);
     return result;
-  }, [accounts, codexGroups, compareAccountsBySort, filterTypes, groupFilter, isAbnormalAccount, normalizeTag, resolvePlanKey, resolvePresentation, searchQuery, tagFilter]);
+  }, [accounts, activeGroupId, codexGroups, compareAccountsBySort, filterTypes, groupFilter, isAbnormalAccount, normalizeTag, resolvePlanKey, resolvePresentation, searchQuery, tagFilter]);
 
   const filteredIds = useMemo(() => filteredAccounts.map((account) => account.id), [filteredAccounts]);
   const exportSelectionCount = getScopedSelectedCount(filteredIds);
@@ -1785,6 +1951,20 @@ export function CodexAccountsPage() {
   const paginatedGroupedAccounts = useMemo(
     () => buildPaginatedGroups(groupedAccounts, paginatedAccounts),
     [groupedAccounts, paginatedAccounts],
+  );
+
+  const accountsById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account])),
+    [accounts],
+  );
+
+  const resolveGroupAccounts = useCallback(
+    (group: CodexAccountGroup) =>
+      group.accountIds
+        .map((accountId) => accountsById.get(accountId))
+        .filter((account): account is CodexAccount => Boolean(account))
+        .sort(compareAccountsBySort),
+    [accountsById, compareAccountsBySort],
   );
 
   useEffect(() => {
@@ -2069,6 +2249,109 @@ export function CodexAccountsPage() {
       );
     });
 
+  const renderInlineFolderCards = () => {
+    if (activeGroupId || groupByTag || codexGroups.length === 0) return null;
+
+    return codexGroups.map((group) => {
+      const groupAccounts = resolveGroupAccounts(group);
+      const previewAccounts = groupAccounts.slice(0, 4);
+      const hiddenCount = Math.max(0, groupAccounts.length - previewAccounts.length);
+
+      return (
+        <div
+          key={`codex-folder-${group.id}`}
+          className="codex-account-card folder-inline-card codex-group-folder-card"
+          onClick={() => handleEnterGroup(group.id)}
+        >
+          <div className="folder-inline-header">
+            <div className="folder-inline-icon">
+              <FolderOpen size={24} />
+            </div>
+            <div className="folder-inline-info">
+              <span className="folder-inline-name">{group.name}</span>
+              <span className="folder-inline-count">
+                {t('accounts.groups.accountCount', { count: groupAccounts.length })}
+              </span>
+            </div>
+            <button
+              className="folder-icon-btn"
+              title={t('accounts.groups.addAccounts')}
+              onClick={(event) => {
+                event.stopPropagation();
+                setGroupQuickAddGroupId(group.id);
+              }}
+            >
+              <FolderPlus size={14} />
+            </button>
+            <button
+              className="folder-icon-btn"
+              title={t('accounts.groups.editTitle')}
+              onClick={(event) => {
+                event.stopPropagation();
+                setShowCodexGroupModal(true);
+              }}
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              className="folder-icon-btn folder-delete-btn"
+              title={t('accounts.groups.deleteTitle')}
+              onClick={(event) => {
+                event.stopPropagation();
+                requestDeleteGroup(group.id, group.name);
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+          <div className="folder-inline-preview">
+            {previewAccounts.length === 0 ? (
+              <div className="folder-preview-item more">
+                {t('accounts.groups.accountPickerEmpty')}
+              </div>
+            ) : (
+              previewAccounts.map((account) => {
+                const presentation = resolvePresentation(account);
+                return (
+                  <div
+                    key={`${group.id}-${account.id}`}
+                    className="folder-preview-item"
+                  >
+                    <span
+                      className="folder-preview-email"
+                      title={maskAccountText(presentation.displayName)}
+                    >
+                      {maskAccountText(presentation.displayName)}
+                    </span>
+                    <span className={`tier-badge ${presentation.planClass || 'unknown'}`}>
+                      {presentation.planLabel}
+                    </span>
+                    <button
+                      type="button"
+                      className="folder-preview-remove-btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleRemoveSingleFromGroup(group.id, account.id);
+                      }}
+                      title={t('accounts.groups.removeFromGroup')}
+                      aria-label={`${t('accounts.groups.removeFromGroup')}: ${maskAccountText(presentation.displayName)}`}
+                      disabled={removingGroupAccountIds.has(account.id)}
+                    >
+                      <LogOut size={12} />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+            {hiddenCount > 0 && (
+              <div className="folder-preview-item more">+{hiddenCount}</div>
+            )}
+          </div>
+        </div>
+      );
+    });
+  };
+
   const renderTableRows = (items: typeof filteredAccounts, groupKey?: string) =>
     items.map((account) => {
       const presentation = resolvePresentation(account);
@@ -2254,6 +2537,69 @@ export function CodexAccountsPage() {
       );
     });
 
+  const renderGroupTableRows = () => {
+    if (activeGroupId || groupByTag || codexGroups.length === 0) return null;
+
+    return codexGroups.map((group) => {
+      const groupAccounts = resolveGroupAccounts(group);
+      return (
+        <tr
+          key={`folder-row-${group.id}`}
+          className="folder-table-row"
+          style={{ cursor: 'pointer' }}
+          onClick={() => handleEnterGroup(group.id)}
+        >
+          <td />
+          <td colSpan={3}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <FolderOpen size={16} style={{ color: 'var(--primary)' }} />
+              <strong>{group.name}</strong>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                {t('accounts.groups.accountCount', { count: groupAccounts.length })}
+              </span>
+            </div>
+          </td>
+          <td>
+            <div className="folder-table-actions">
+              <button
+                className="folder-icon-btn"
+                title={t('accounts.groups.addAccounts')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setGroupQuickAddGroupId(group.id);
+                }}
+              >
+                <FolderPlus size={14} />
+              </button>
+              <button
+                className="folder-icon-btn"
+                title={t('accounts.groups.editTitle')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setShowCodexGroupModal(true);
+                }}
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                className="folder-icon-btn folder-delete-btn"
+                title={t('accounts.groups.deleteTitle')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  requestDeleteGroup(group.id, group.name);
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </td>
+        </tr>
+      );
+    });
+  };
+
+  const inlineFolderCards = renderInlineFolderCards();
+
   return (
     <div className="codex-accounts-page">
       <CodexOverviewTabsHeader
@@ -2264,6 +2610,51 @@ export function CodexAccountsPage() {
 
       {activeTab === 'overview' && (<>
         {message && (<div className={`message-bar ${message.tone === 'error' ? 'error' : 'success'}`}>{message.text}<button onClick={() => setMessage(null)}><X size={14} /></button></div>)}
+
+        {activeGroup && (
+          <div className="folder-breadcrumb">
+            <button
+              className="breadcrumb-back"
+              onClick={handleLeaveGroup}
+            >
+              <FolderOpen size={14} />
+              {t('accounts.groups.allGroups')}
+            </button>
+            <ChevronRight size={14} className="breadcrumb-sep" />
+            <span className="breadcrumb-current">
+              {activeGroup.name}
+              <span className="breadcrumb-count">({filteredAccounts.length})</span>
+            </span>
+            <button
+              className="btn btn-secondary breadcrumb-remove-btn"
+              onClick={() => setGroupQuickAddGroupId(activeGroup.id)}
+              title={t('accounts.groups.addAccounts')}
+            >
+              <FolderPlus size={14} />
+              {t('accounts.groups.addAccounts')}
+            </button>
+            {selected.size > 0 && (
+              <>
+                <button
+                  className="btn btn-secondary breadcrumb-remove-btn"
+                  onClick={() => setShowAddToCodexGroupModal(true)}
+                  title={t('accounts.groups.moveToGroup')}
+                >
+                  <FolderPlus size={14} />
+                  {t('accounts.groups.moveToGroup')} ({selected.size})
+                </button>
+                <button
+                  className="btn btn-secondary breadcrumb-remove-btn"
+                  onClick={() => void handleRemoveFromGroup()}
+                  title={t('accounts.groups.removeFromGroup')}
+                >
+                  <LogOut size={14} />
+                  {t('accounts.groups.removeFromGroup')} ({selected.size})
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="toolbar">
           <div className="toolbar-left">
@@ -2329,10 +2720,12 @@ export function CodexAccountsPage() {
             <button className="btn btn-secondary export-btn icon-only" onClick={() => void handleExport(filteredIds)} disabled={exporting || filteredIds.length === 0}
               title={exportSelectionCount > 0 ? `${t('common.shared.export.title', '导出')} (${exportSelectionCount})` : t('common.shared.export.title', '导出')}><Upload size={14} /></button>
             {selected.size > 0 && (<>
-              <button className="btn btn-secondary icon-only" onClick={() => setShowAddToCodexGroupModal(true)} title={t('codex.groups.addToGroup', '添加至分组')}><FolderPlus size={14} /></button>
+              <button className="btn btn-secondary icon-only" onClick={() => setShowAddToCodexGroupModal(true)} title={activeGroupId ? t('accounts.groups.moveToGroup') : t('codex.groups.addToGroup', '添加至分组')}><FolderPlus size={14} /></button>
               <button className="btn btn-danger icon-only" onClick={handleBatchDelete} title={`${t('common.delete', '删除')} (${selected.size})`}><Trash2 size={14} /></button>
             </>)}
-            <button className={`btn btn-secondary icon-only ${groupFilter.length > 0 ? 'btn-filter-active' : ''}`} onClick={() => setShowCodexGroupModal(true)} title={groupFilter.length > 0 ? `${t('accounts.groups.manageTitle', '分组管理')} (${groupFilter.length})` : t('accounts.groups.manageTitle', '分组管理')}><FolderOpen size={14} /></button>
+            {!activeGroupId && (
+              <button className={`btn btn-secondary icon-only ${groupFilter.length > 0 ? 'btn-filter-active' : ''}`} onClick={() => setShowCodexGroupModal(true)} title={groupFilter.length > 0 ? `${t('accounts.groups.manageTitle', '分组管理')} (${groupFilter.length})` : t('accounts.groups.manageTitle', '分组管理')}><FolderOpen size={14} /></button>
+            )}
             <QuickSettingsPopover type="codex" />
           </div>
         </div>
@@ -2362,7 +2755,14 @@ export function CodexAccountsPage() {
               ))}
             </div>
           ) : (
-            <div className="codex-compact-list">{renderCompactRows(paginatedAccounts)}</div>
+            <>
+              {inlineFolderCards && (
+                <div className="codex-group-entry-grid">
+                  {inlineFolderCards}
+                </div>
+              )}
+              <div className="codex-compact-list">{renderCompactRows(paginatedAccounts)}</div>
+            </>
           )
         ) : viewMode === 'grid' ? (
         <div className="grid-view-container">
@@ -2376,7 +2776,7 @@ export function CodexAccountsPage() {
           )}
           {groupByTag ? (<div className="tag-group-list">{paginatedGroupedAccounts.map(({ groupKey, items, totalCount }) => (<div key={groupKey} className="tag-group-section"><div className="tag-group-header"><span className="tag-group-title">{resolveGroupLabel(groupKey)}</span><span className="tag-group-count">{totalCount}</span></div>
             <div className="tag-group-grid codex-accounts-grid">{renderGridCards(items, groupKey)}</div></div>))}</div>
-          ) : (<div className="codex-accounts-grid">{renderGridCards(paginatedAccounts)}</div>)}
+          ) : (<div className="codex-accounts-grid">{inlineFolderCards}{renderGridCards(paginatedAccounts)}</div>)}
         </div>
       ) : groupByTag ? (
           <div className="account-table-container grouped"><table className="account-table"><thead><tr>
@@ -2390,7 +2790,7 @@ export function CodexAccountsPage() {
             <th style={{ width: 40 }}><input type="checkbox" checked={isAllPaginatedSelected} onChange={() => toggleSelectAll(paginatedIds)} /></th>
             <th style={{ width: 260 }}>{t('common.shared.columns.email', '账号')}</th><th style={{ width: 140 }}>{t('common.shared.columns.plan', '订阅')}</th>
             <th>{t('accounts.columns.quota', '配额状态')}</th><th className="sticky-action-header table-action-header">{t('common.shared.columns.actions', '操作')}</th></tr></thead>
-            <tbody>{renderTableRows(paginatedAccounts)}</tbody></table></div>
+            <tbody>{renderGroupTableRows()}{renderTableRows(paginatedAccounts)}</tbody></table></div>
         )}
 
         <PaginationControls
@@ -3000,8 +3400,73 @@ export function CodexAccountsPage() {
           <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setTagDeleteConfirm(null)} disabled={deletingTag}>{t('common.cancel')}</button>
             <button className="btn btn-danger" onClick={confirmDeleteTag} disabled={deletingTag}>{deletingTag ? t('common.processing', '处理中...') : t('common.confirm')}</button></div></div></div>)}
 
+        {groupDeleteConfirm && (
+          <div
+            className="modal-overlay"
+            onClick={() => {
+              if (deletingGroup) return;
+              setGroupDeleteConfirm(null);
+              setGroupDeleteError(null);
+            }}
+          >
+            <div className="modal" onClick={(event) => event.stopPropagation()}>
+              <div className="modal-header">
+                <h2>{t('accounts.groups.deleteTitle')}</h2>
+                <button
+                  className="modal-close"
+                  onClick={() => {
+                    if (deletingGroup) return;
+                    setGroupDeleteConfirm(null);
+                    setGroupDeleteError(null);
+                  }}
+                  aria-label={t('common.close', '关闭')}
+                >
+                  <X />
+                </button>
+              </div>
+              <div className="modal-body">
+                <ModalErrorMessage message={groupDeleteError} scrollKey={groupDeleteErrorScrollKey} />
+                <p>
+                  {t('accounts.groups.deleteConfirm', {
+                    name: groupDeleteConfirm.name,
+                  })}
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setGroupDeleteConfirm(null);
+                    setGroupDeleteError(null);
+                  }}
+                  disabled={deletingGroup}
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => void confirmDeleteGroup()}
+                  disabled={deletingGroup}
+                >
+                  {t('common.delete')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <TagEditModal isOpen={!!showTagModal} initialTags={accounts.find((a) => a.id === showTagModal)?.tags || []} availableTags={availableTags}
           onClose={() => setShowTagModal(null)} onSave={handleSaveTags} />
+
+        <CodexGroupAccountPickerModal
+          isOpen={!!groupQuickAddGroupId}
+          targetGroup={groupQuickAddGroup}
+          accounts={accounts}
+          accountGroups={codexGroups}
+          maskAccountText={maskAccountText}
+          onClose={() => setGroupQuickAddGroupId(null)}
+          onConfirm={({ accountIds }) => handleQuickAddAccountsToGroup(groupQuickAddGroupId!, accountIds)}
+        />
 
         {/* Codex 分组管理弹窗 */}
         <CodexAccountGroupModal
@@ -3018,6 +3483,7 @@ export function CodexAccountsPage() {
           isOpen={showAddToCodexGroupModal}
           onClose={() => setShowAddToCodexGroupModal(false)}
           accountIds={Array.from(selected)}
+          sourceGroupId={activeGroupId ?? undefined}
           onAdded={reloadCodexGroups}
         />
       </>)}

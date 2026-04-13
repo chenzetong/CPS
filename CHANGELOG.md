@@ -7,6 +7,17 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.21.3] - 2026-04-13
+
+### Added
+- **Windsurf account onboarding now supports email/password sign-in again, including batch import**: the add-account dialog now supports single-account login plus batch import from JSON arrays or delimiter-based text, and failed rows return explicit line-level error feedback while successful logins immediately sync managed account data.
+- **Codex account groups now support in-group quick add, direct removal, and group deletion workflows**: users can enter a group as a scoped view, add more accounts from a picker, remove one or many accounts from that group, and delete the group with in-modal confirmation and error feedback.
+
+### Changed
+- **Shared Accounts and Codex account pages now expose faster group-entry actions around folder views**: group cards, table rows, and in-group breadcrumb toolbars now provide direct add-account actions, and moving Codex accounts between groups excludes the current source group to avoid no-op targets.
+- **Opening the live Codex `config.toml` now goes through the desktop backend instead of frontend path opening**: Quick Settings and the model-provider quick config card now resolve and open the active file through the Tauri opener command for more reliable desktop behavior.
+
+---
 ## [0.21.2] - 2026-04-13
 
 ### Added

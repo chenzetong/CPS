@@ -422,6 +422,7 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
   const [showAccountGroupModal, setShowAccountGroupModal] = useState(false)
   const [showAddToGroupModal, setShowAddToGroupModal] = useState(false)
   const [groupAccountPickerGroupId, setGroupAccountPickerGroupId] = useState<string | null>(null)
+  const [groupQuickAddGroupId, setGroupQuickAddGroupId] = useState<string | null>(null)
 
   const reloadAccountGroups = useCallback(async () => {
     setAccountGroups(await getAccountGroups())
@@ -441,12 +442,23 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
     return accountGroups.find((group) => group.id === groupAccountPickerGroupId) || null
   }, [accountGroups, groupAccountPickerGroupId])
 
+  const groupQuickAddGroup = useMemo(() => {
+    if (!groupQuickAddGroupId) return null
+    return accountGroups.find((group) => group.id === groupQuickAddGroupId) || null
+  }, [accountGroups, groupQuickAddGroupId])
+
   // 离开已删除的分组
   useEffect(() => {
     if (activeGroupId && !accountGroups.find((g) => g.id === activeGroupId)) {
       setActiveGroupId(null)
     }
   }, [accountGroups, activeGroupId])
+
+  useEffect(() => {
+    if (groupQuickAddGroupId && !accountGroups.find((group) => group.id === groupQuickAddGroupId)) {
+      setGroupQuickAddGroupId(null)
+    }
+  }, [accountGroups, groupQuickAddGroupId])
   const [sortBy, setSortBy] = useState<string>(() =>
     normalizeAntigravitySortBy(
       localStorage.getItem(ANTIGRAVITY_ACCOUNTS_SORT_BY_STORAGE_KEY)
@@ -2281,6 +2293,16 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
             </div>
             <button
               className="folder-icon-btn"
+              title={t('accounts.groups.addAccounts')}
+              onClick={(e) => {
+                e.stopPropagation()
+                setGroupQuickAddGroupId(group.id)
+              }}
+            >
+              <FolderPlus size={14} />
+            </button>
+            <button
+              className="folder-icon-btn"
               title={t('accounts.groups.editTitle')}
               onClick={(e) => {
                 e.stopPropagation()
@@ -2940,6 +2962,16 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                   <div className="folder-table-actions">
                     <button
                       className="folder-icon-btn"
+                      title={t('accounts.groups.addAccounts')}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setGroupQuickAddGroupId(group.id)
+                      }}
+                    >
+                      <FolderPlus size={14} />
+                    </button>
+                    <button
+                      className="folder-icon-btn"
                       title={t('accounts.groups.editTitle')}
                       onClick={(e) => {
                         e.stopPropagation()
@@ -3017,6 +3049,14 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
               <>
                 <button
                   className="btn btn-secondary breadcrumb-remove-btn"
+                  onClick={() => setGroupQuickAddGroupId(activeGroup.id)}
+                  title={t('accounts.groups.addAccounts')}
+                >
+                  <FolderPlus size={14} />
+                  {t('accounts.groups.addAccounts')}
+                </button>
+                <button
+                  className="btn btn-secondary breadcrumb-remove-btn"
                   onClick={() => setShowAddToGroupModal(true)}
                   title={t('accounts.groups.moveToGroup')}
                 >
@@ -3032,6 +3072,16 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
                   {t('accounts.groups.removeFromGroup')} ({selected.size})
                 </button>
               </>
+            )}
+            {selected.size === 0 && (
+              <button
+                className="btn btn-secondary breadcrumb-remove-btn"
+                onClick={() => setGroupQuickAddGroupId(activeGroup.id)}
+                title={t('accounts.groups.addAccounts')}
+              >
+                <FolderPlus size={14} />
+                {t('accounts.groups.addAccounts')}
+              </button>
             )}
           </div>
         )}
@@ -4384,6 +4434,20 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
         onConfirm={({ name, accountIds }) =>
           handleAssignAccountsToGroup(groupAccountPickerGroupId!, name, accountIds)
         }
+      />
+      <GroupAccountPickerModal
+        isOpen={!!groupQuickAddGroupId}
+        targetGroup={groupQuickAddGroup}
+        accounts={accounts}
+        accountGroups={accountGroups}
+        verificationStatusMap={verificationStatusMap}
+        getVerificationBadge={getVerificationBadge}
+        maskAccountText={maskAccountText}
+        onClose={() => setGroupQuickAddGroupId(null)}
+        onConfirm={({ name, accountIds }) =>
+          handleAssignAccountsToGroup(groupQuickAddGroupId!, name, accountIds)
+        }
+        mode="addAccounts"
       />
 
       {/* 文件损坏弹窗 */}

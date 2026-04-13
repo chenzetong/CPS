@@ -18,6 +18,52 @@
   gap: 20px;
 }
 
+.codex-group-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.codex-group-folder-card {
+  cursor: pointer;
+  min-height: 240px;
+  background: linear-gradient(135deg, #f0f7ff 0%, #e8f4f8 100%);
+  border: 1.5px dashed rgba(29, 78, 216, 0.25);
+}
+
+.codex-group-folder-card:hover {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, #e8f0fe 0%, #dbeafe 100%);
+  box-shadow: 0 12px 28px rgba(29, 78, 216, 0.12);
+}
+
+.codex-group-folder-card .folder-inline-preview {
+  flex: 1;
+  min-height: 120px;
+}
+
+.codex-group-folder-card .folder-preview-item {
+  min-height: 24px;
+}
+
+.codex-group-folder-card .folder-preview-email {
+  max-width: 100%;
+}
+
+[data-theme="dark"] .codex-group-folder-card {
+  background: linear-gradient(135deg, #1a2744 0%, #1e293b 100%);
+  border-color: rgba(96, 165, 250, 0.2);
+}
+
+[data-theme="dark"] .codex-group-folder-card:hover {
+  background: linear-gradient(135deg, #1e3a5f 0%, #1e3050 100%);
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.codex-accounts-page .folder-breadcrumb {
+  animation: fadeUp 0.35s ease both;
+}
+
 /* Codex 账号卡片 */
 .codex-account-card {
   background: var(--bg-card);
@@ -486,6 +532,10 @@
 
 @media (max-width: 640px) {
   .codex-accounts-page .codex-compact-list {
+    grid-template-columns: 1fr;
+  }
+
+  .codex-group-entry-grid {
     grid-template-columns: 1fr;
   }
 }

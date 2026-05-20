@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "Nessun account configurabile nella raccolta attuale del servizio API",
       "customRoutingSave": "Salva routing",
       "customRoutingSaveSuccess": "Routing personalizzato del servizio API aggiornato",
-      "upstreamProxyLabel": "Connessione origine",
-      "upstreamProxySaveSuccess": "Connessione di origine del servizio API aggiornata",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "Proxy globale",
-        "direct": "Diretto"
-      }
+      "upstreamProxyLabel": "URL proxy API",
+      "upstreamProxySaveSuccess": "URL proxy API aggiornato",
+      "upstreamProxyUrlPlaceholder": "Indirizzo proxy API",
+      "upstreamProxySaveAction": "Salva proxy"
     },
     "local": {
       "desc": "Importa l'account attuale da ~/.codex/auth.json",

@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "V aktuální kolekci služby API nejsou žádné nastavitelné účty",
       "customRoutingSave": "Uložit směrování",
       "customRoutingSaveSuccess": "Vlastní směrování služby API bylo aktualizováno",
-      "upstreamProxyLabel": "Nadřazené připojení",
-      "upstreamProxySaveSuccess": "Nadřazené připojení služby API bylo aktualizováno",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "Globální proxy",
-        "direct": "Přímo"
-      }
+      "upstreamProxyLabel": "Adresa API proxy",
+      "upstreamProxySaveSuccess": "Adresa API proxy byla aktualizována",
+      "upstreamProxyUrlPlaceholder": "Adresa API proxy",
+      "upstreamProxySaveAction": "Uložit proxy"
     },
     "local": {
       "desc": "Importovat aktuální účet z ~/.codex/auth.json",

@@ -1969,12 +1969,10 @@
       "customRoutingEmpty": "Tidak ada akun yang dapat dikonfigurasi di koleksi layanan API saat ini",
       "customRoutingSave": "Simpan routing",
       "customRoutingSaveSuccess": "Routing kustom layanan API diperbarui",
-      "upstreamProxyLabel": "Koneksi hulu",
-      "upstreamProxySaveSuccess": "Koneksi hulu layanan API diperbarui",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "Proxy global",
-        "direct": "Langsung"
-      }
+      "upstreamProxyLabel": "URL proxy API",
+      "upstreamProxySaveSuccess": "URL proxy API diperbarui",
+      "upstreamProxyUrlPlaceholder": "Alamat proxy API",
+      "upstreamProxySaveAction": "Simpan proxy"
     },
     "api": {
       "baseUrl": "URL Dasar",

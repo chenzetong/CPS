@@ -1991,12 +1991,10 @@
       "customRoutingEmpty": "No configurable accounts in the current API service collection",
       "customRoutingSave": "Save Custom Routing",
       "customRoutingSaveSuccess": "API service custom routing updated",
-      "upstreamProxyLabel": "Upstream",
-      "upstreamProxySaveSuccess": "API service upstream connection updated",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "Global Proxy",
-        "direct": "Direct"
-      }
+      "upstreamProxyLabel": "API proxy URL",
+      "upstreamProxySaveSuccess": "API proxy URL updated",
+      "upstreamProxyUrlPlaceholder": "API proxy URL",
+      "upstreamProxySaveAction": "Save proxy"
     },
     "api": {
       "baseUrl": "Base URL",

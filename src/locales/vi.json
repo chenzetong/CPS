@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "Không có tài khoản có thể cấu hình trong bộ sưu tập dịch vụ API hiện tại",
       "customRoutingSave": "Lưu định tuyến",
       "customRoutingSaveSuccess": "Đã cập nhật định tuyến tùy chỉnh của dịch vụ API",
-      "upstreamProxyLabel": "Kết nối nguồn",
-      "upstreamProxySaveSuccess": "Đã cập nhật kết nối nguồn của dịch vụ API",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "Proxy chung",
-        "direct": "Trực tiếp"
-      }
+      "upstreamProxyLabel": "URL proxy API",
+      "upstreamProxySaveSuccess": "Đã cập nhật URL proxy API",
+      "upstreamProxyUrlPlaceholder": "Địa chỉ proxy API",
+      "upstreamProxySaveAction": "Lưu proxy"
     },
     "local": {
       "desc": "Nhập tài khoản hiện tại từ ~/.codex/auth.json",

@@ -1991,12 +1991,10 @@
       "customRoutingEmpty": "当前 API 服务集合没有可配置的账号",
       "customRoutingSave": "保存自定义调度",
       "customRoutingSaveSuccess": "API 服务自定义调度已更新",
-      "upstreamProxyLabel": "上游连接",
-      "upstreamProxySaveSuccess": "API 服务上游连接方式已更新",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "跟随全局代理",
-        "direct": "直连上游"
-      }
+      "upstreamProxyLabel": "API 代理地址",
+      "upstreamProxySaveSuccess": "API 代理地址已更新",
+      "upstreamProxyUrlPlaceholder": "API 代理地址",
+      "upstreamProxySaveAction": "保存代理"
     },
     "api": {
       "baseUrl": "基础地址",

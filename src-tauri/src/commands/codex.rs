@@ -5,7 +5,7 @@ use crate::models::codex::{
 use crate::models::codex_local_access::{
     CodexLocalAccessCustomRoutingRule, CodexLocalAccessPortCleanupResult,
     CodexLocalAccessRoutingStrategy, CodexLocalAccessScope, CodexLocalAccessState,
-    CodexLocalAccessTestResult, CodexLocalAccessUpstreamProxyMode,
+    CodexLocalAccessTestResult,
 };
 use crate::modules::{
     codex_account, codex_local_access, codex_oauth, codex_quota, codex_session_visibility,
@@ -960,10 +960,10 @@ pub async fn codex_local_access_update_custom_routing(
 }
 
 #[tauri::command]
-pub async fn codex_local_access_update_upstream_proxy_mode(
-    upstream_proxy_mode: CodexLocalAccessUpstreamProxyMode,
+pub async fn codex_local_access_update_upstream_proxy_config(
+    upstream_proxy_url: Option<String>,
 ) -> Result<CodexLocalAccessState, String> {
-    codex_local_access::update_local_access_upstream_proxy_mode(upstream_proxy_mode).await
+    codex_local_access::update_local_access_upstream_proxy_config(upstream_proxy_url).await
 }
 
 #[tauri::command]

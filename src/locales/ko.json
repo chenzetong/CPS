@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "현재 API 서비스 모음에 설정 가능한 계정이 없습니다",
       "customRoutingSave": "라우팅 저장",
       "customRoutingSaveSuccess": "API 서비스 사용자 지정 라우팅이 업데이트되었습니다",
-      "upstreamProxyLabel": "상위 연결",
-      "upstreamProxySaveSuccess": "API 서비스 상위 연결 방식이 업데이트되었습니다",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "전역 프록시",
-        "direct": "직접 연결"
-      }
+      "upstreamProxyLabel": "API 프록시 주소",
+      "upstreamProxySaveSuccess": "API 프록시 주소가 업데이트되었습니다",
+      "upstreamProxyUrlPlaceholder": "API 프록시 주소",
+      "upstreamProxySaveAction": "프록시 저장"
     },
     "local": {
       "desc": "~/.codex/auth.json에서 현재 로그인된 계정 가져오기",

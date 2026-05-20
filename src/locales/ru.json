@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "В текущей коллекции API-сервиса нет настраиваемых учетных записей",
       "customRoutingSave": "Сохранить маршрутизацию",
       "customRoutingSaveSuccess": "Настраиваемая маршрутизация API-сервиса обновлена",
-      "upstreamProxyLabel": "Внешнее соединение",
-      "upstreamProxySaveSuccess": "Подключение API-сервиса к внешнему узлу обновлено",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "Глобальный прокси",
-        "direct": "Напрямую"
-      }
+      "upstreamProxyLabel": "URL API-прокси",
+      "upstreamProxySaveSuccess": "URL API-прокси обновлён",
+      "upstreamProxyUrlPlaceholder": "Адрес API-прокси",
+      "upstreamProxySaveAction": "Сохранить прокси"
     },
     "local": {
       "desc": "Импортировать текущий аккаунт из ~/.codex/auth.json",

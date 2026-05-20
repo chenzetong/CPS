@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "Geçerli API hizmeti koleksiyonunda yapılandırılabilir hesap yok",
       "customRoutingSave": "Yönlendirmeyi kaydet",
       "customRoutingSaveSuccess": "API hizmeti özel yönlendirmesi güncellendi",
-      "upstreamProxyLabel": "Üst bağlantı",
-      "upstreamProxySaveSuccess": "API hizmetinin üst bağlantısı güncellendi",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "Genel proxy",
-        "direct": "Doğrudan"
-      }
+      "upstreamProxyLabel": "API proxy URL'si",
+      "upstreamProxySaveSuccess": "API proxy URL'si güncellendi",
+      "upstreamProxyUrlPlaceholder": "API proxy adresi",
+      "upstreamProxySaveAction": "Proxy kaydet"
     },
     "local": {
       "desc": "~/.codex/auth.json'dan mevcut hesabı içe aktar",

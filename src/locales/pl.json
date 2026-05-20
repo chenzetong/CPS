@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "Brak konfigurowalnych kont w bieżącej kolekcji usługi API",
       "customRoutingSave": "Zapisz routowanie",
       "customRoutingSaveSuccess": "Niestandardowe routowanie usługi API zostało zaktualizowane",
-      "upstreamProxyLabel": "Połączenie nadrzędne",
-      "upstreamProxySaveSuccess": "Zaktualizowano połączenie nadrzędne usługi API",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "Proxy globalne",
-        "direct": "Bezpośrednio"
-      }
+      "upstreamProxyLabel": "Adres proxy API",
+      "upstreamProxySaveSuccess": "Adres proxy API zaktualizowany",
+      "upstreamProxyUrlPlaceholder": "Adres proxy API",
+      "upstreamProxySaveAction": "Zapisz proxy"
     },
     "local": {
       "desc": "Importuj bieżące konto z ~/.codex/auth.json",

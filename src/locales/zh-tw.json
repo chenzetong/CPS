@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "目前 API 服務集合沒有可設定的帳號",
       "customRoutingSave": "儲存自訂調度",
       "customRoutingSaveSuccess": "API 服務自訂調度已更新",
-      "upstreamProxyLabel": "上游連線",
-      "upstreamProxySaveSuccess": "API 服務上游連線方式已更新",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "跟隨全域代理",
-        "direct": "直連上游"
-      }
+      "upstreamProxyLabel": "API 代理位址",
+      "upstreamProxySaveSuccess": "API 代理位址已更新",
+      "upstreamProxyUrlPlaceholder": "API 代理位址",
+      "upstreamProxySaveAction": "儲存代理"
     },
     "api": {
       "baseUrl": "基礎網址",

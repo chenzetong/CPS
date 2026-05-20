@@ -1920,12 +1920,10 @@
       "customRoutingEmpty": "現在の API サービス集合に設定可能なアカウントはありません",
       "customRoutingSave": "ルーティングを保存",
       "customRoutingSaveSuccess": "API サービスのカスタムルーティングを更新しました",
-      "upstreamProxyLabel": "上流接続",
-      "upstreamProxySaveSuccess": "API サービスの上流接続を更新しました",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "グローバルプロキシ",
-        "direct": "直接接続"
-      }
+      "upstreamProxyLabel": "API プロキシアドレス",
+      "upstreamProxySaveSuccess": "API プロキシアドレスを更新しました",
+      "upstreamProxyUrlPlaceholder": "API プロキシアドレス",
+      "upstreamProxySaveAction": "プロキシを保存"
     },
     "local": {
       "desc": "~/.codex/auth.json から現在ログイン中のアカウントをインポート",

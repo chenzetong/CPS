@@ -1966,12 +1966,10 @@
       "customRoutingEmpty": "لا توجد حسابات قابلة للإعداد في مجموعة خدمة API الحالية",
       "customRoutingSave": "حفظ التوجيه",
       "customRoutingSaveSuccess": "تم تحديث التوجيه المخصص لخدمة API",
-      "upstreamProxyLabel": "اتصال المنبع",
-      "upstreamProxySaveSuccess": "تم تحديث اتصال المنبع لخدمة API",
-      "upstreamProxyMode": {
-        "followGlobalProxy": "الوكيل العام",
-        "direct": "اتصال مباشر"
-      }
+      "upstreamProxyLabel": "عنوان وكيل API",
+      "upstreamProxySaveSuccess": "تم تحديث عنوان وكيل API",
+      "upstreamProxyUrlPlaceholder": "عنوان وكيل API",
+      "upstreamProxySaveAction": "حفظ الوكيل"
     },
     "local": {
       "desc": "استيراد الحساب الحالي من ~/.codex/auth.json",

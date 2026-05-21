@@ -174,7 +174,7 @@ enum UpstreamProxySource {
     ApiService,
     Global,
     SystemEnv,
-    Missing,
+    SystemAuto,
 }
 
 #[derive(Debug, Clone)]
@@ -313,7 +313,7 @@ fn current_upstream_http_client_signature(
     }
 
     UpstreamHttpClientSignature {
-        proxy_source: UpstreamProxySource::Missing,
+        proxy_source: UpstreamProxySource::SystemAuto,
         proxy_url: None,
     }
 }
@@ -346,11 +346,10 @@ fn current_upstream_proxy_diagnostics(
 fn build_upstream_http_client(signature: &UpstreamHttpClientSignature) -> Result<Client, String> {
     let mut builder = Client::builder();
 
-    let proxy_url = signature.proxy_url.as_deref().ok_or_else(|| {
-        "Codex API 服务必须通过代理访问官方上游：请填写 API 代理地址、启用全局代理并配置代理地址，或设置 HTTPS_PROXY / HTTP_PROXY / ALL_PROXY 环境代理。已拒绝直连请求。".to_string()
-    })?;
-    let proxy = Proxy::all(proxy_url).map_err(|e| format!("Codex 上游代理地址无效: {}", e))?;
-    builder = builder.proxy(proxy);
+    if let Some(proxy_url) = signature.proxy_url.as_deref() {
+        let proxy = Proxy::all(proxy_url).map_err(|e| format!("Codex 上游代理地址无效: {}", e))?;
+        builder = builder.proxy(proxy);
+    }
 
     builder
         .build()
@@ -371,9 +370,10 @@ fn log_upstream_http_client_signature(signature: &UpstreamHttpClientSignature) {
             "[CodexLocalAccess] 上游 HTTP 客户端已使用环境代理 proxy_url={}，API 服务上游请求不应用 no_proxy 绕过",
             redact_proxy_url_for_log(proxy_url)
         )),
-        _ => logger::log_warn(
-            "[CodexLocalAccess] 未配置 API 服务代理、全局代理或环境代理，已拒绝直连官方上游",
+        (UpstreamProxySource::SystemAuto, None) => logger::log_info(
+            "[CodexLocalAccess] 未配置 API 服务代理、全局代理或环境代理，已回退到 reqwest 系统自动代理配置",
         ),
+        _ => logger::log_warn("[CodexLocalAccess] 上游 HTTP 客户端代理状态异常"),
     }
 }
 
@@ -5565,8 +5565,8 @@ fn gateway_proxy_diagnostics_message(diagnostics: &UpstreamProxyDiagnostics) -> 
                 "当前 API 代理地址为空，且全局代理未启用或未配置，已尝试使用环境代理。".to_string()
             }
         },
-        UpstreamProxySource::Missing => {
-            "当前 API 代理地址为空，且全局代理与环境代理均未配置，已拒绝直连官方上游。".to_string()
+        UpstreamProxySource::SystemAuto => {
+            "当前 API 代理地址为空，且全局代理与环境代理均未配置，已回退到系统自动代理配置；如仍失败，请在 API 代理地址中填写 Clash 的 HTTP/mixed 端口。".to_string()
         }
     }
 }
@@ -5576,7 +5576,7 @@ fn upstream_proxy_source_code(source: UpstreamProxySource) -> &'static str {
         UpstreamProxySource::ApiService => "api_service",
         UpstreamProxySource::Global => "global",
         UpstreamProxySource::SystemEnv => "system_env",
-        UpstreamProxySource::Missing => "missing_proxy",
+        UpstreamProxySource::SystemAuto => "system_auto",
     }
 }
 
@@ -5593,7 +5593,7 @@ fn gateway_user_visible_error_message(
         .map(|diagnostics| format!(" {}", gateway_proxy_diagnostics_message(diagnostics)))
         .unwrap_or_default();
     format!(
-        "Codex API 服务连接官方上游失败。API 代理地址留空时会依次使用全局代理、环境代理；如需单独出口，可填写 API 代理地址（例如 http://127.0.0.1:7890）后重试。{} 如果 Codex 客户端仍显示 502 且 API 服务没有请求记录，请检查代理工具是否拦截或屏蔽 localhost / 127.0.0.1。原始错误：{}",
+        "Codex API 服务连接官方上游失败。API 代理地址留空时会依次使用全局代理、环境代理、系统自动代理；如需固定出口，建议填写 API 代理地址（例如 http://127.0.0.1:7890）后重试。{} 如果 Codex 客户端仍显示 502 且 API 服务没有请求记录，请检查代理工具是否拦截或屏蔽 localhost / 127.0.0.1。原始错误：{}",
         proxy_context, message
     )
 }

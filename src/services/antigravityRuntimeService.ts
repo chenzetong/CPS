@@ -8,10 +8,14 @@ export interface AntigravityInstalledVersionInfo {
   source: string;
 }
 
+export type AntigravityInstalledVersionScanMode = 'quick' | 'full';
+
 export async function getAntigravityInstalledVersionInfo(
   target?: AntigravityRuntimeTarget,
+  scanMode: AntigravityInstalledVersionScanMode = 'quick',
 ): Promise<AntigravityInstalledVersionInfo | null> {
   return invoke<AntigravityInstalledVersionInfo | null>('get_antigravity_installed_version_info', {
     target,
+    scanMode,
   });
 }

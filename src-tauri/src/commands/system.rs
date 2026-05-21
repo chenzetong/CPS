@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -251,6 +253,12 @@ pub struct AntigravityInstalledVersionInfo {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AntigravityVersionScanMode {
+    Quick,
+    Full,
+}
+
 /// 自动备份设置（前端使用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutoBackupSettings {
@@ -304,8 +312,13 @@ const DEFAULT_UI_SCALE: f64 = 1.0;
 const MIN_UI_SCALE: f64 = 0.8;
 const MAX_UI_SCALE: f64 = 2.0;
 const MAX_STARTUP_WAKEUP_DELAY_SECONDS: i32 = 24 * 60 * 60;
+const ANTIGRAVITY_VERSION_BADGE_TIMEOUT_MS: u64 = 1200;
+const ANTIGRAVITY_VERSION_FULL_SCAN_TIMEOUT_MS: u64 = 30_000;
 const AUTO_SWITCH_ACCOUNT_SCOPE_ALL: &str = "all_accounts";
 const AUTO_SWITCH_ACCOUNT_SCOPE_SELECTED: &str = "selected_accounts";
+static ANTIGRAVITY_VERSION_INFO_CACHE: OnceLock<
+    Mutex<HashMap<String, AntigravityInstalledVersionInfo>>,
+> = OnceLock::new();
 
 fn trim_non_empty(value: &str) -> Option<String> {
     let trimmed = value.trim();
@@ -527,6 +540,41 @@ fn normalize_antigravity_metadata_target(target: Option<&str>) -> Option<&'stati
     }
 }
 
+fn normalize_antigravity_version_scan_mode(raw: Option<&str>) -> AntigravityVersionScanMode {
+    match raw.unwrap_or("").trim().to_ascii_lowercase().as_str() {
+        "full" | "complete" => AntigravityVersionScanMode::Full,
+        _ => AntigravityVersionScanMode::Quick,
+    }
+}
+
+fn antigravity_version_cache() -> &'static Mutex<HashMap<String, AntigravityInstalledVersionInfo>> {
+    ANTIGRAVITY_VERSION_INFO_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn antigravity_version_cache_key(target: Option<&str>) -> String {
+    normalize_antigravity_metadata_target(target)
+        .unwrap_or("all")
+        .to_string()
+}
+
+fn cache_antigravity_installed_version_info(
+    target: Option<&str>,
+    info: &AntigravityInstalledVersionInfo,
+) {
+    if let Ok(mut cache) = antigravity_version_cache().lock() {
+        cache.insert(antigravity_version_cache_key(target), info.clone());
+    }
+}
+
+pub fn get_cached_antigravity_installed_version_info_for_target(
+    target: Option<&str>,
+) -> Option<AntigravityInstalledVersionInfo> {
+    antigravity_version_cache()
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(&antigravity_version_cache_key(target)).cloned())
+}
+
 fn antigravity_metadata_root_matches_target(root: &Path, target: Option<&str>) -> bool {
     let Some(target) = normalize_antigravity_metadata_target(target) else {
         return true;
@@ -553,7 +601,13 @@ fn antigravity_metadata_root_matches_target(root: &Path, target: Option<&str>) -
     }
 }
 
-fn antigravity_metadata_candidates(target: Option<&str>) -> Vec<PathBuf> {
+fn antigravity_metadata_candidates(
+    target: Option<&str>,
+    scan_mode: AntigravityVersionScanMode,
+) -> Vec<PathBuf> {
+    #[cfg(not(target_os = "windows"))]
+    let _ = scan_mode;
+
     let mut candidates = Vec::new();
     let config_path = config::get_user_config().antigravity_app_path;
     let config_path = config_path.trim();
@@ -626,31 +680,37 @@ fn antigravity_metadata_candidates(target: Option<&str>) -> Vec<PathBuf> {
             }
         }
 
-        let push_detected_candidate = |candidates: &mut Vec<PathBuf>, path: PathBuf| {
-            if let Some(root) = normalize_antigravity_metadata_root(&path) {
-                if antigravity_metadata_root_matches_target(&root, target) {
-                    push_unique_antigravity_candidate(candidates, root);
+        if scan_mode == AntigravityVersionScanMode::Full {
+            let push_detected_candidate = |candidates: &mut Vec<PathBuf>, path: PathBuf| {
+                if let Some(root) = normalize_antigravity_metadata_root(&path) {
+                    if antigravity_metadata_root_matches_target(&root, target) {
+                        push_unique_antigravity_candidate(candidates, root);
+                    }
                 }
-            }
-        };
+            };
 
-        match normalize_antigravity_metadata_target(target) {
-            Some("antigravity") => {
-                if let Some(path) = crate::modules::process::detect_antigravity_legacy_exec_path() {
-                    push_detected_candidate(&mut candidates, path);
+            match normalize_antigravity_metadata_target(target) {
+                Some("antigravity") => {
+                    if let Some(path) =
+                        crate::modules::process::detect_antigravity_legacy_exec_path()
+                    {
+                        push_detected_candidate(&mut candidates, path);
+                    }
                 }
-            }
-            Some("antigravity_ide") => {
-                if let Some(path) = crate::modules::process::detect_antigravity_exec_path() {
-                    push_detected_candidate(&mut candidates, path);
+                Some("antigravity_ide") => {
+                    if let Some(path) = crate::modules::process::detect_antigravity_exec_path() {
+                        push_detected_candidate(&mut candidates, path);
+                    }
                 }
-            }
-            _ => {
-                if let Some(path) = crate::modules::process::detect_antigravity_legacy_exec_path() {
-                    push_detected_candidate(&mut candidates, path);
-                }
-                if let Some(path) = crate::modules::process::detect_antigravity_exec_path() {
-                    push_detected_candidate(&mut candidates, path);
+                _ => {
+                    if let Some(path) =
+                        crate::modules::process::detect_antigravity_legacy_exec_path()
+                    {
+                        push_detected_candidate(&mut candidates, path);
+                    }
+                    if let Some(path) = crate::modules::process::detect_antigravity_exec_path() {
+                        push_detected_candidate(&mut candidates, path);
+                    }
                 }
             }
         }
@@ -659,10 +719,11 @@ fn antigravity_metadata_candidates(target: Option<&str>) -> Vec<PathBuf> {
     candidates
 }
 
-pub fn resolve_antigravity_installed_version_info_for_target(
+fn resolve_antigravity_installed_version_info_for_target_with_mode(
     target: Option<&str>,
+    scan_mode: AntigravityVersionScanMode,
 ) -> Option<AntigravityInstalledVersionInfo> {
-    for root in antigravity_metadata_candidates(target) {
+    for root in antigravity_metadata_candidates(target, scan_mode) {
         if let Some(info) = read_antigravity_product_json_metadata(&root) {
             return Some(info);
         }
@@ -673,12 +734,43 @@ pub fn resolve_antigravity_installed_version_info_for_target(
         }
 
         #[cfg(target_os = "windows")]
-        if let Some(info) = read_antigravity_windows_exe_metadata(&root) {
-            return Some(info);
+        if scan_mode == AntigravityVersionScanMode::Full {
+            if let Some(info) = read_antigravity_windows_exe_metadata(&root) {
+                return Some(info);
+            }
         }
     }
 
     None
+}
+
+fn detect_and_cache_antigravity_installed_version_info_for_target(
+    target: Option<&str>,
+    scan_mode: AntigravityVersionScanMode,
+) -> Option<AntigravityInstalledVersionInfo> {
+    let info = resolve_antigravity_installed_version_info_for_target_with_mode(target, scan_mode);
+    if let Some(ref value) = info {
+        cache_antigravity_installed_version_info(target, value);
+    }
+    info
+}
+
+pub fn resolve_antigravity_installed_version_info_for_target(
+    target: Option<&str>,
+) -> Option<AntigravityInstalledVersionInfo> {
+    detect_and_cache_antigravity_installed_version_info_for_target(
+        target,
+        AntigravityVersionScanMode::Full,
+    )
+}
+
+fn resolve_antigravity_installed_version_info_quick_for_target(
+    target: Option<&str>,
+) -> Option<AntigravityInstalledVersionInfo> {
+    detect_and_cache_antigravity_installed_version_info_for_target(
+        target,
+        AntigravityVersionScanMode::Quick,
+    )
 }
 
 fn sanitize_startup_wakeup_delay_seconds(raw: i32) -> i32 {
@@ -2390,12 +2482,31 @@ pub fn detect_app_path(app: String, force: Option<bool>) -> Result<Option<String
 }
 
 #[tauri::command]
-pub fn get_antigravity_installed_version_info(
+pub async fn get_antigravity_installed_version_info(
     target: Option<String>,
+    scan_mode: Option<String>,
 ) -> Result<Option<AntigravityInstalledVersionInfo>, String> {
-    Ok(resolve_antigravity_installed_version_info_for_target(
-        target.as_deref(),
-    ))
+    let scan_mode = normalize_antigravity_version_scan_mode(scan_mode.as_deref());
+    let timeout_ms = match scan_mode {
+        AntigravityVersionScanMode::Quick => ANTIGRAVITY_VERSION_BADGE_TIMEOUT_MS,
+        AntigravityVersionScanMode::Full => ANTIGRAVITY_VERSION_FULL_SCAN_TIMEOUT_MS,
+    };
+    let target_for_task = target.clone();
+
+    let task = tauri::async_runtime::spawn_blocking(move || match scan_mode {
+        AntigravityVersionScanMode::Quick => {
+            resolve_antigravity_installed_version_info_quick_for_target(target_for_task.as_deref())
+        }
+        AntigravityVersionScanMode::Full => {
+            resolve_antigravity_installed_version_info_for_target(target_for_task.as_deref())
+        }
+    });
+
+    match tokio::time::timeout(Duration::from_millis(timeout_ms), task).await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(error)) => Err(format!("Antigravity 版本检测任务失败: {}", error)),
+        Err(_) => Ok(None),
+    }
 }
 
 /// 通知插件关闭/开启唤醒功能（互斥）

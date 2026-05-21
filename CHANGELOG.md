@@ -7,6 +7,18 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.24.3] - 2026-05-21
+
+### Changed
+- **Emergency fix for Codex Local API Service routing when no explicit proxy is configured**: API proxy URL, Cockpit global proxy, and environment proxy variables are still preferred in order, while the service now falls through to reqwest's system proxy discovery instead of stopping before the system auto-proxy path can be used.
+- **Antigravity installed-version lookup now separates quick badge reads from full scans**: the overview badge starts after a short delay, uses cached metadata when possible, and completes a longer scan in the background so version display does not block the page.
+- **Codex plan badges now reuse the raw account plan value with shared styling**: account cards, summaries, and routing views keep backend/local plan labels unchanged while using one presentation path for badge classes.
+
+### Fixed
+- **Legacy Antigravity account switching no longer fails when installed-version metadata is unavailable or unparseable**: cached known versions still block Antigravity `2.0.0` and later, while missing cache data allows the legacy path to proceed.
+- **Codex custom routing account lists now keep their header and rows within a bounded scroll area**: the modal body scrolls correctly and plan badges keep stable sizing in narrow layouts.
+
+---
 ## [0.24.2] - 2026-05-21
 
 ### Fixed

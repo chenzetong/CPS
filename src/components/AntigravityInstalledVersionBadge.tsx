@@ -6,6 +6,8 @@ import {
 } from '../services/antigravityRuntimeService';
 import { useAntigravityRuntimeTarget } from '../hooks/useAntigravityRuntimeTarget';
 
+const INSTALLED_VERSION_DEFER_MS = 250;
+
 export function AntigravityInstalledVersionBadge() {
   const { t } = useTranslation();
   const runtimeTarget = useAntigravityRuntimeTarget();
@@ -14,27 +16,48 @@ export function AntigravityInstalledVersionBadge() {
 
   useEffect(() => {
     let cancelled = false;
+    let timer = 0;
     setLoaded(false);
-    getAntigravityInstalledVersionInfo(runtimeTarget)
-      .then((nextInfo) => {
+
+    const loadVersion = async () => {
+      try {
+        const quickInfo = await getAntigravityInstalledVersionInfo(runtimeTarget, 'quick');
         if (!cancelled) {
-          setInfo(nextInfo);
+          setInfo(quickInfo);
+          setLoaded(!!quickInfo);
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         console.warn('[AntigravityInstalledVersionBadge] failed to load installed version:', error);
         if (!cancelled) {
           setInfo(null);
         }
-      })
-      .finally(() => {
+      }
+
+      try {
+        const fullInfo = await getAntigravityInstalledVersionInfo(runtimeTarget, 'full');
+        if (!cancelled) {
+          if (fullInfo) {
+            setInfo(fullInfo);
+          }
+          setLoaded(true);
+        }
+      } catch (error) {
+        console.warn('[AntigravityInstalledVersionBadge] failed to complete installed version scan:', error);
         if (!cancelled) {
           setLoaded(true);
         }
-      });
+      }
+    };
+
+    timer = window.setTimeout(() => {
+      void loadVersion();
+    }, INSTALLED_VERSION_DEFER_MS);
 
     return () => {
       cancelled = true;
+      if (timer) {
+        window.clearTimeout(timer);
+      }
     };
   }, [runtimeTarget]);
 

@@ -47,10 +47,15 @@ fn compare_versions(left: &str, right: &str) -> Option<std::cmp::Ordering> {
 }
 
 fn ensure_legacy_antigravity_switch_supported() -> Result<(), String> {
-    let Some(info) = crate::commands::system::resolve_antigravity_installed_version_info_for_target(
-        Some("antigravity"),
-    ) else {
-        return Err("ANTIGRAVITY_LEGACY_UNSUPPORTED:未检测到 Antigravity 安装版本，无法确认是否支持旧切号逻辑".to_string());
+    let Some(info) =
+        crate::commands::system::get_cached_antigravity_installed_version_info_for_target(Some(
+            "antigravity",
+        ))
+    else {
+        modules::logger::log_info(
+            "[Antigravity] 未命中旧版安装版本缓存，放行旧版切号逻辑",
+        );
+        return Ok(());
     };
 
     match compare_versions(&info.version, "2.0.0") {
@@ -59,10 +64,13 @@ fn ensure_legacy_antigravity_switch_supported() -> Result<(), String> {
             "ANTIGRAVITY_LEGACY_UNSUPPORTED:暂不支持 Antigravity 2.0.0 及以上版本，请选择小于Antigravity 2.0.0版本或者使用Antigravity IDE"
                 .to_string(),
         ),
-        None => Err(format!(
-            "ANTIGRAVITY_LEGACY_UNSUPPORTED:无法识别 Antigravity 版本 {}，无法确认是否支持旧切号逻辑",
-            info.version
-        )),
+        None => {
+            modules::logger::log_info(&format!(
+                "[Antigravity] 旧版安装版本无法解析，放行旧版切号逻辑: {}",
+                info.version
+            ));
+            Ok(())
+        }
     }
 }
 

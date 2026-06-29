@@ -180,7 +180,7 @@ Core Shell 不应继续承载已迁移平台的业务 UI：
 
 ## 5. 远端索引与 artifact
 
-远端索引只负责发现版本和下载地址。正式桌面端读取 `platform-packages/index.json`，测试桌面端读取 `platform-packages/index.test.json`；平台包 zip 统一放在 `platform-packages/dist`，由不同索引控制正式/测试可见性。每个平台包必须按 OS/arch 提供 artifact。
+远端索引只负责发现版本和下载地址。正式桌面端读取 `platform-packages/index.json`，测试桌面端读取 `platform-packages/index.test.json`；平台包 zip 必须发布为 GitHub Release asset 或等价对象存储资产，禁止提交到 `main`、`platform-test` 等 Git 分支。每个平台包必须按 OS/arch 提供 artifact。
 
 ```json
 {
@@ -196,7 +196,7 @@ Core Shell 不应继续承载已迁移平台的业务 UI：
         {
           "os": "macos",
           "arch": "aarch64",
-          "downloadUrl": "https://raw.githubusercontent.com/org/repo/main/platform-packages/dist/zed-0.26.7-macos-aarch64.zip",
+          "downloadUrl": "https://github.com/org/repo/releases/download/platform-packages-main/zed-0.26.7-macos-aarch64.zip",
           "downloadSizeBytes": 5884337,
           "sha256": "..."
         }
@@ -256,7 +256,7 @@ npm run package:platform-index -- --metadata-dir platform-packages/dist-ci --ver
 4. 使用 `.github/workflows/platform-packages.yml` 或 `npm run package:platform` 分别构建目标 OS/arch 的 zip 与 metadata；`sidecarAdapter` 平台必须覆盖 Windows/macOS/Linux 目标 artifact，不能把单系统 zip 当全平台包发布。
 5. 使用 `npm run package:platform-index` 汇总 metadata，确认 `downloadUrl`、`downloadSizeBytes`、`sha256`、`changelog`、`contributions` 与包内 manifest/runtime 一致。
 6. 先发布到 test channel 验证真实远端下载、安装、卸载、检查更新、更新弹框、更新日志、包大小和当前系统 artifact 匹配。
-7. 平台 zip 统一发布到 `platform-packages/dist`；发布正式通道时只更新 `platform-packages/index.json`，发布测试通道时只更新 `platform-packages/index.test.json`。禁止执行 `npm run sync-version`、`npm run release:preflight`、创建主应用 release commit 或主应用 tag。
+7. 平台 zip 统一发布到平台包 Release asset；发布正式通道时只更新 `platform-packages/index.json` / `platform-packages/index.seed.json`，发布测试通道时只更新 `platform-packages/index.test.json`。禁止执行 `npm run sync-version`、`npm run release:preflight`、创建主应用 release commit 或主应用 tag。
 8. 单平台升级至少执行 `npm run verify:platform-packages`、`node scripts/check_locales.cjs`、`git diff --check`；涉及 adapter 或 remote UI 时补充对应构建、smoke 或类型检查。
 
 ### 5.3 远端测试通道
@@ -269,8 +269,8 @@ npm run package:platform-index -- --metadata-dir platform-packages/dist-ci --ver
 2. 测试桌面端使用 `com.jlcodes.cockpit-tools.test`、测试数据目录 `~/.antigravity_cockpit_test`、测试 updater endpoint `https://github.com/jlcodes99/cockpit-tools/releases/download/test-latest/latest-test.json` 和测试平台包索引 `https://raw.githubusercontent.com/jlcodes99/cockpit-tools/platform-test/platform-packages/index.test.json`。
 3. dev 桌面端继续使用 `com.jlcodes.cockpit-tools.dev` 和 `~/.antigravity_cockpit_dev`，只用于本地开发，不代表远端测试通道。
 4. 测试 App 构建时必须设置 `COCKPIT_TOOLS_PROFILE=test` 与 `VITE_COCKPIT_TOOLS_PROFILE=test`；如需验证指定平台包索引，可额外设置 `COCKPIT_PLATFORM_PACKAGE_INDEX_URL`。
-5. 平台包 zip 统一发布到 `platform-packages/dist`，不按正式/测试拆目录；测试索引必须发布到 `platform-packages/index.test.json`，正式 `platform-packages/index.json` 不得被测试包更新。
-6. `.github/workflows/platform-packages.yml` 的 `workflow_dispatch channel=test` 是平台包测试构建入口；需要真实远端下载时，勾选 `publish_test_branch`，把 zip 发布到 `platform-packages/dist`，把测试 index 发布到 `platform-packages/index.test.json`。
+5. 平台包 zip 统一发布到平台包 Release asset，不提交到 Git 分支；测试索引必须发布到 `platform-packages/index.test.json`，正式 `platform-packages/index.json` 不得被测试包更新。
+6. `.github/workflows/platform-packages.yml` 的 `workflow_dispatch channel=test` 是平台包测试构建入口；需要真实远端下载时，勾选 `publish_test_branch`，把 zip 发布到测试平台包 Release asset，把测试 index 发布到 `platform-packages/index.test.json`。
 7. `.github/workflows/build-matrix.yml` 的 `workflow_dispatch channel=test` 是测试桌面端构建入口；需要真实 Tauri updater 验证时，勾选 `publish_test_release`，把 signed updater artifacts 和 `latest-test.json` 发布到 `test-latest` prerelease。
 8. 测试桌面包默认必须是 Slim：即使勾选 `publish_test_release` 上传测试更新资产，也不得自动内置平台包，平台安装仍通过测试平台包索引远端下载。需要测试“安装后平台已就绪”的 Full/Bootstrap 包时，只能在 `.github/workflows/build-matrix.yml` 的 test channel 显式输入 `bundle_platform_packages=true`。CI 会从测试平台包索引下载当前构建目标匹配的 zip，生成 `platform-packages/bootstrap/index.json` 与 `platform-packages/bootstrap/dist`，再临时加入 Tauri resources；正式包与默认测试包都保持 Slim。
 9. 需要连续测试多个桌面端版本时，使用 `test_version` 输入临时覆盖测试构建版本；为兼容 Windows MSI，测试版本的 prerelease 标识必须是纯数字且单段不超过 `65535`，例如 `1.0.1-1001`、`1.0.1-1002`。该覆盖只允许用于测试通道，不得写入正式版本号或正式更新日志。

@@ -123,7 +123,7 @@ Core Shell + Platform Package + Remote React UI + Sidecar Adapter + runtimeReady
 6. 平台包 zip 必须通过 `npm run package:platform` 生成，禁止手写临时压缩命令。
 7. 多系统远端 artifact 必须使用 `os-arch` 文件名，例如 `zed-0.26.7-macos-aarch64.zip`；本地兼容包才允许继续使用 `zed-0.26.7.zip`。
 8. `.github/workflows/platform-packages.yml` 是标准跨系统构建入口；CI 每个 runner 只输出当前 OS/arch 的 zip 和 metadata JSON，不直接改写远端 index。
-9. 远端正式索引 `platform-packages/index.json` 与测试索引 `platform-packages/index.test.json` 必须通过 `npm run package:platform-index` 基于各 OS/arch metadata 汇总生成，确认 size、sha256、downloadUrl 和 artifact 覆盖后再发布；zip 统一放在 `platform-packages/dist`，由不同索引控制正式/测试可见性。
+9. 远端正式索引 `platform-packages/index.json` 与测试索引 `platform-packages/index.test.json` 必须通过 `npm run package:platform-index` 基于各 OS/arch metadata 汇总生成，确认 size、sha256、downloadUrl 和 artifact 覆盖后再发布；zip 必须作为 GitHub Release asset 或等价对象存储资产发布，禁止提交进 `main`、`platform-test` 等源码/索引分支。
 10. 所有 Rust `sidecarAdapter` 的 Windows adapter exe 必须在编译期嵌入 `Microsoft.Windows.Common-Controls` v6 manifest：adapter crate 必须声明 `build = "build.rs"`，通过共享 `crates/adapter-windows-common-controls-build.rs`、`crates/windows-common-controls-v6.rc` 和 `crates/windows-common-controls-v6.manifest` 编译资源。禁止把外置 `*.exe.manifest` 当作正式平台包修复方案；外置 manifest 只能用于临时定位问题，正式 zip 必须依赖已嵌入资源的 exe。
 11. 平台包 zip 必须从临时 staging 目录生成，staging 只复制 manifest、runtime、remote UI、assets 和当前目标 OS/arch 所需 adapter/helper；禁止直接 zip `platform-packages/<platformId>` 源目录，避免把其它系统 adapter、历史 zip、bootstrap、dist 或调试文件带入当前 artifact。
 12. Rust adapter release 构建必须保持体积优先配置：`opt-level=z`、`lto=true`、`codegen-units=1`、`strip=true`、`panic=abort`。如需为了性能放宽某个平台 adapter，必须先记录体积变化和原因。
@@ -153,7 +153,7 @@ Core Shell + Platform Package + Remote React UI + Sidecar Adapter + runtimeReady
    ```
 6. 带 `--update-index` 的本地索引写入必须串行执行，禁止多个平台并行写 `platform-packages/index.json`。
 7. 正式发布前必须先走 test channel 验证真实远端下载、安装、卸载、检查更新、更新弹框、更新日志、包大小和当前系统 artifact 匹配。
-8. 平台 zip 统一发布到 `platform-packages/dist`，不再按正式/测试拆目录；正式通道只更新 `platform-packages/index.json`，测试通道只更新 `platform-packages/index.test.json`。禁止执行 `npm run sync-version`、`npm run release:preflight`、创建主应用 release commit、创建或推送主应用 tag。
+8. 平台 zip 统一发布到平台包 Release asset，不再按正式/测试拆 Git 目录；正式通道只更新 `platform-packages/index.json` / `platform-packages/index.seed.json`，测试通道只更新 `platform-packages/index.test.json`。禁止执行 `npm run sync-version`、`npm run release:preflight`、创建主应用 release commit、创建或推送主应用 tag。
 9. 单平台升级至少执行 `npm run verify:platform-packages`、`node scripts/check_locales.cjs`、`git diff --check`；涉及 adapter、remote UI 或类型风险时，补充对应平台包构建、smoke 或类型检查。
 
 ### 5.2 远端测试通道
@@ -162,7 +162,7 @@ Core Shell + Platform Package + Remote React UI + Sidecar Adapter + runtimeReady
 
 1. 测试桌面端必须使用 `src-tauri/tauri.test.conf.json`，bundle id 为 `com.jlcodes.cockpit-tools.test`，数据目录为 `~/.antigravity_cockpit_test`。
 2. 测试桌面端 updater endpoint 固定为 `https://github.com/jlcodes99/cockpit-tools/releases/download/test-latest/latest-test.json`；正式用户不会读取该地址。
-3. 平台包 zip 统一放在 `platform-packages/dist`，不按正式/测试拆目录；测试平台包索引固定为 `https://raw.githubusercontent.com/jlcodes99/cockpit-tools/platform-test/platform-packages/index.test.json`，正式用户不会读取该索引。
+3. 平台包 zip 统一放在平台包 Release asset 中，不提交到 Git 分支；测试平台包索引固定为 `https://raw.githubusercontent.com/jlcodes99/cockpit-tools/platform-test/platform-packages/index.test.json`，正式用户不会读取该索引。
 4. 手动构建测试平台包时使用 `.github/workflows/platform-packages.yml` 的 `workflow_dispatch channel=test`；需要真实远端下载时再勾选 `publish_test_branch`。
 5. 手动构建测试桌面端时使用 `.github/workflows/build-matrix.yml` 的 `workflow_dispatch channel=test`；需要真实 Tauri updater 验证时再勾选 `publish_test_release`。
 6. 连续验证升级提示时，只允许通过 `test_version` 临时生成测试版本；为兼容 Windows MSI，测试版本 prerelease 标识必须是纯数字且单段不超过 `65535`，例如 `1.0.1-1001`、`1.0.1-1002`。禁止把测试版本写进正式 `package.json`、正式 `CHANGELOG` 或正式 release tag。

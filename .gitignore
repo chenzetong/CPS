@@ -10,9 +10,11 @@ lerna-debug.log*
 
 node_modules
 dist
-!platform-packages/dist/
-!platform-packages/dist/*.zip
-platform-packages/dist/*-local.zip
+platform-packages/dist/
+platform-packages/dist-ci/
+platform-packages/*/adapter/
+platform-packages/*/ui/remoteEntry.js
+platform-packages/*/ui/style.css
 platform-packages/index.local.json
 dist-ssr
 *.local

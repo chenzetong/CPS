@@ -105,6 +105,7 @@ const PLATFORM_RUST_MODULE_PREFIXES = new Map([
 const cliArgs = process.argv.slice(2).map((value) => value.trim()).filter(Boolean);
 const strictFullHotUpdate = cliArgs.includes('--strict-full-hot-update');
 const sourceOnly = cliArgs.includes('--source-only');
+const verifyLocalZips = cliArgs.includes('--verify-local-zips');
 const requestedIds = new Set(cliArgs.filter((value) => !value.startsWith('--')));
 const issues = [];
 const rows = [];
@@ -139,6 +140,15 @@ function relative(filePath) {
 function sha256(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
+
+function hasLocalZipArtifacts() {
+  if (!fs.existsSync(DIST_DIR) || !fs.statSync(DIST_DIR).isDirectory()) {
+    return false;
+  }
+  return fs.readdirSync(DIST_DIR).some((name) => name.endsWith('.zip'));
+}
+
+const shouldVerifyLocalZips = verifyLocalZips || hasLocalZipArtifacts();
 
 function jsonStable(value) {
   return JSON.stringify(value ?? null);
@@ -439,6 +449,29 @@ function safeZipNameFromUrl(url) {
   return name;
 }
 
+function assertReleaseAssetDownloadUrl(packageId, artifactIndex, downloadUrl) {
+  if (typeof downloadUrl !== 'string' || !downloadUrl.trim()) {
+    fail(`${packageId}: artifact[${artifactIndex}] downloadUrl is required`);
+    return;
+  }
+  if (downloadUrl.includes('raw.githubusercontent.com') && downloadUrl.includes('/platform-packages/dist/')) {
+    fail(`${packageId}: artifact[${artifactIndex}] must not download zip from git raw platform-packages/dist`);
+  }
+  if (!safeZipNameFromUrl(downloadUrl)) {
+    fail(`${packageId}: artifact[${artifactIndex}] has invalid downloadUrl`);
+  }
+}
+
+function assertArtifactMetadata(packageId, artifactIndex, artifact) {
+  assertReleaseAssetDownloadUrl(packageId, artifactIndex, artifact.downloadUrl);
+  if (!Number.isInteger(artifact.downloadSizeBytes) || artifact.downloadSizeBytes <= 0) {
+    fail(`${packageId}: artifact[${artifactIndex}].downloadSizeBytes must be a positive integer`);
+  }
+  if (typeof artifact.sha256 !== 'string' || !/^[a-f0-9]{64}$/iu.test(artifact.sha256)) {
+    fail(`${packageId}: artifact[${artifactIndex}].sha256 must be a 64-char hex string`);
+  }
+}
+
 function listZipEntries(zipPath) {
   try {
     return new Set(
@@ -536,6 +569,22 @@ function verifySidecarAdapterPackage(packageId, manifest, artifacts, workspaceMe
   }
 }
 
+function verifyNoTrackedPlatformPackageArtifacts() {
+  let tracked = '';
+  try {
+    tracked = execFileSync('git', ['ls-files', 'platform-packages/dist', 'platform-packages/test/dist'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    }).trim();
+  } catch (error) {
+    fail(`failed to inspect tracked platform package artifacts: ${error.message}`);
+    return;
+  }
+  if (tracked) {
+    fail(`platform package zip artifacts must not be tracked by git:\n${tracked}`);
+  }
+}
+
 function verifyChangelog(packageId, manifest, indexPackage) {
   assertNonEmptyArray(`${packageId}: manifest.changelog`, manifest.changelog);
   if (!sourceOnly) {
@@ -618,6 +667,21 @@ function assertScopedRemoteStyle(source, packageId) {
   }
 }
 
+function verifyRemoteUiSourceFiles(packageId) {
+  const sourceEntryPath = path.join(PLATFORM_UI_DIR, packageId, 'remote.tsx');
+  const sourceStylePath = path.join(PLATFORM_UI_DIR, packageId, 'style.css');
+  if (!fs.existsSync(sourceEntryPath)) {
+    fail(`${packageId}: missing remote UI source ${relative(sourceEntryPath)}`);
+  } else {
+    const source = fs.readFileSync(sourceEntryPath, 'utf8');
+    assertRemoteExport(source, 'mount', packageId);
+    assertBrowserRuntimeSource(source, packageId);
+  }
+  if (!fs.existsSync(sourceStylePath)) {
+    fail(`${packageId}: missing remote UI style source ${relative(sourceStylePath)}`);
+  }
+}
+
 function verifyPackage(indexPackage, workspaceMembers) {
   const packageId = indexPackage.id;
   const packageRoot = path.join(ROOT, 'platform-packages', packageId);
@@ -691,9 +755,8 @@ function verifyPackage(indexPackage, workspaceMembers) {
   } else {
     const entryPath = path.join(packageRoot, ui.entry || '');
     const stylePath = path.join(packageRoot, ui.style || '');
-    if (!fs.existsSync(entryPath)) {
-      fail(`${packageId}: missing UI entry ${ui.entry}`);
-    } else {
+    verifyRemoteUiSourceFiles(packageId);
+    if (fs.existsSync(entryPath)) {
       const source = fs.readFileSync(entryPath, 'utf8');
       assertRemoteExport(source, 'mount', packageId);
       assertBrowserRuntimeSource(source, packageId);
@@ -702,7 +765,9 @@ function verifyPackage(indexPackage, workspaceMembers) {
       }
     }
     if (ui.style && !fs.existsSync(stylePath)) {
-      fail(`${packageId}: missing UI style ${ui.style}`);
+      if (shouldVerifyLocalZips) {
+        fail(`${packageId}: missing built UI style ${ui.style}`);
+      }
     } else if (ui.style) {
       assertScopedRemoteStyle(fs.readFileSync(stylePath, 'utf8'), packageId);
     }
@@ -713,10 +778,14 @@ function verifyPackage(indexPackage, workspaceMembers) {
     fail(`${packageId}: missing artifacts[]`);
   }
   if (manifest.adapter) {
-    verifySidecarAdapterPackage(packageId, manifest, artifacts, workspaceMembers);
+    verifySidecarAdapterPackage(packageId, manifest, shouldVerifyLocalZips ? artifacts : [], workspaceMembers);
   }
 
-  if (!sourceOnly) {
+  for (const [artifactIndex, artifact] of artifacts.entries()) {
+    assertArtifactMetadata(packageId, artifactIndex, artifact);
+  }
+
+  if (!sourceOnly && shouldVerifyLocalZips) {
     const firstArtifactZipName = safeZipNameFromUrl(artifacts[0]?.downloadUrl || indexPackage.downloadUrl);
     const topZipPath = firstArtifactZipName ? path.join(DIST_DIR, firstArtifactZipName) : null;
     if (!firstArtifactZipName || !topZipPath || !fs.existsSync(topZipPath)) {
@@ -729,7 +798,11 @@ function verifyPackage(indexPackage, workspaceMembers) {
     }
   }
 
-  for (const [artifactIndex, artifact] of artifacts.entries()) {
+  if (verifyLocalZips && !hasLocalZipArtifacts()) {
+    fail(`--verify-local-zips requires local zip files in ${relative(DIST_DIR)}`);
+  }
+
+  if (shouldVerifyLocalZips) for (const [artifactIndex, artifact] of artifacts.entries()) {
     const zipName = safeZipNameFromUrl(artifact.downloadUrl);
     if (!zipName) {
       fail(`${packageId}: artifact[${artifactIndex}] has invalid downloadUrl`);
@@ -1057,8 +1130,17 @@ function verifyPackagingTooling() {
     'package:platform-index',
     '--require-os-arch',
     '--verify-zip-dir',
+    'platform-packages-main',
+    'platform-packages-test',
+    'gh release upload',
   ]) {
     assertIncludes(relative(PLATFORM_PACKAGES_WORKFLOW_PATH), workflow, expected);
+  }
+  if (workflow.includes('git add -f platform-packages/dist/*.zip')) {
+    fail(`${relative(PLATFORM_PACKAGES_WORKFLOW_PATH)} must not commit platform package zip artifacts to git`);
+  }
+  if (workflow.includes('raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/platform-packages/dist')) {
+    fail(`${relative(PLATFORM_PACKAGES_WORKFLOW_PATH)} must not publish main platform package downloads from git raw dist`);
   }
 
   const buildMatrixWorkflow = readText(BUILD_MATRIX_WORKFLOW_PATH, relative(BUILD_MATRIX_WORKFLOW_PATH));
@@ -1309,6 +1391,7 @@ function main() {
   if (requestedIds.size === 0) {
     verifyExpectedPlatformPackageSet(packages);
     verifyPackagingTooling();
+    verifyNoTrackedPlatformPackageArtifacts();
     verifyHostPlatformPackageStore(packages);
     verifyHostPlatformPages(packages);
     verifyRemoteUiSourceReuse(packages);

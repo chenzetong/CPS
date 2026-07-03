@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "{{platform}} パッケージをインストール",
     "packageInstallConfirmDesc": "{{platform}} を開くには先にプラットフォームパッケージが必要です。バージョン {{version}}、サイズ {{size}}。",
     "packageInstallNotReady": "パッケージは処理されましたが、ランタイムはまだ準備できていません",
-    "packageInstallCardTitle": "{{platform}} パッケージは未インストールです",
+    "packageInstallCardTitle": "{{platform}} アカウント管理コンポーネントは未インストールです",
     "packageInstallCardDesc": "バージョン {{version}}、サイズ {{size}} をダウンロードします。インストール後にこのプラットフォームを開きます。",
     "packageUpdateAvailableShort": "更新あり",
     "packageRepairRequired": "修復",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "プラットフォームパッケージの処理に失敗しました。しばらくしてから再試行してください。",
     "packageOperationCanceled": "プラットフォームパッケージの処理をキャンセルしました。",
     "packageOperationRetryHint": "下のボタンで再試行できます。",
-    "packagePageRepairTitle": "{{platform}} パッケージの修復が必要です",
-    "packagePageInstallTitle": "{{platform}} パッケージは未インストールです",
+    "packagePageRepairTitle": "{{platform}} アカウント管理コンポーネントの修復が必要です",
+    "packagePageInstallTitle": "{{platform}} アカウント管理コンポーネントは未インストールです",
     "packagePageInstallDesc": "このページから直接インストールできます。アカウント管理の前に、右上のパッケージ操作からインストールまたは修復することもできます。インストール前はアカウント、OAuth、切り替え、バックグラウンド更新は読み込まれません。",
     "packageDashboardStateDesc": "{{platform}} ページを開くと直接インストールできます。右上の操作から更新、修復、変更履歴の確認もできます。",
     "packageOpenPlatformPage": "プラットフォームページを開く",
@@ -827,6 +827,8 @@
       "appAutoLaunchDesc": "システムログイン後にアプリを自動起動します",
       "tokenKeeper": "アカウント認証の維持",
       "tokenKeeperDesc": "有効にすると、期限が近いアカウント認証を遅延後に小分けでバックグラウンド更新します。無効にすると自動保守は止まり、手動更新、切り替え、インポートは引き続き使えます。",
+      "errorReporting": "テレメトリ診断",
+      "errorReportingDesc": "既定で有効で、起動、UI、プラットフォームパッケージの問題調査にのみ使われます。無効にするとテレメトリ送信は停止します。イベントは秘匿処理され、パスワード、トークン、2FA シークレット、電話番号などの機密情報は含まれません。",
       "platformQuickSettingsTitle": "プラットフォーム設定",
       "platformQuickSettingsDesc": "各プラットフォームの設定は各ページへ移動しました。ここからすばやく開けます。",
       "platformQuickSettingsItemDesc": "プラットフォームページ",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "Claude アカウントの使用量キャッシュをバックグラウンドで自動更新します。",
       "claudeAppPath": "Claude Desktop 起動ターゲット",
       "claudeAppPathDesc": "既定プロファイルは Microsoft Store ターゲットを使用できます。複数インスタンスには実際の Claude.exe が必要です。",
-      "platformQuickSettingsEntryTitle": "{{platform}} 設定入口"
+      "platformQuickSettingsEntryTitle": "{{platform}} 設定入口",
+      "antigravityLaunchOnSwitch": "切り替え時に Antigravity IDE を起動",
+      "antigravityLaunchOnSwitchLabel": "切り替え後にアプリを起動または再起動",
+      "antigravityLaunchOnSwitchDesc": "オフにすると、切り替え時は Antigravity IDE のデフォルトアカウントデータだけを書き込み、アプリを閉じたり起動・再起動したりしません。CLI だけを使う場合に適しています。"
     },
     "network": {
       "apiTitle": "反重力コックピット API",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "API サービスを停止中...",
     "stopApiServiceFailed": "API サービスを停止できませんでした。先に無効化してから再試行してください。",
     "skipThisVersion": "このバージョンをスキップ",
-    "skipFailed": "この更新をスキップできませんでした: {{error}}"
+    "skipFailed": "この更新をスキップできませんでした: {{error}}",
+    "stopApiServiceFailedContinue": "API サービスは正常に停止しませんでした。再起動を続行します..."
   },
   "closeDialog": {
     "title": "ウィンドウを閉じる",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "Freeアカウントのプロキシは不安定な場合があります。注意して使用してください。",
         "restrictFreeDisableConfirmTitle": "Freeアカウントを許可",
         "restrictFreeDisableConfirmMessage": "Freeアカウントのプロキシは不安定な場合があります。使用してもよろしいですか？",
-        "manageMembers": "メンバー管理"
+        "manageMembers": "メンバー管理",
+        "pendingOAuthUnsupported": "この認証待ちアカウントを API サービスに追加するには、先に OAuth 認証を完了してください"
       },
       "entryAction": "API サービスに追加",
       "testAction": "テスト",
@@ -3347,6 +3354,18 @@
       "completed": "削除完了",
       "preparing": "削除タスクを準備中...",
       "retryFailed": "失敗分を再試行"
+    },
+    "pendingAuth": {
+      "badge": "認証待ち",
+      "emailRequired": "アカウントのメールアドレスを入力してください",
+      "saving": "認証待ちアカウントを保存しています...",
+      "saved": "認証待ちアカウントを保存しました",
+      "saveFailed": "認証待ちアカウントの保存に失敗しました：{{error}}",
+      "emailLabel": "認証待ちアカウント",
+      "emailPlaceholder": "OpenAI アカウントのメールアドレスを入力",
+      "saveDraft": "認証待ちカードを保存",
+      "authorizeAction": "認証して追加",
+      "cardHint": "メモは保存済みです。OAuth 完了後に使用できます。"
     }
   },
   "githubCopilot": {

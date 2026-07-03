@@ -381,7 +381,7 @@
     "packageInstallConfirmTitle": "تثبيت حزمة {{platform}}",
     "packageInstallConfirmDesc": "يحتاج {{platform}} إلى تنزيل حزمة المنصة قبل الفتح. الإصدار {{version}}، الحجم {{size}}.",
     "packageInstallNotReady": "تمت معالجة الحزمة، لكن بيئة التشغيل ليست جاهزة بعد.",
-    "packageInstallCardTitle": "حزمة {{platform}} غير مثبتة",
+    "packageInstallCardTitle": "مكوّن إدارة حسابات {{platform}} غير مثبت",
     "packageInstallCardDesc": "سيتم تنزيل الإصدار {{version}} بحجم {{size}}. ستُفتح المنصة بعد التثبيت.",
     "packageUpdateAvailableShort": "تحديث",
     "packageRepairRequired": "إصلاح",
@@ -432,8 +432,8 @@
     "packageOperationFailedFriendly": "فشلت عملية حزمة المنصة. يرجى المحاولة لاحقًا.",
     "packageOperationCanceled": "تم إلغاء عملية حزمة المنصة.",
     "packageOperationRetryHint": "يمكنك النقر على الزر أدناه لإعادة المحاولة.",
-    "packagePageRepairTitle": "حزمة {{platform}} تحتاج إلى إصلاح",
-    "packagePageInstallTitle": "حزمة {{platform}} غير مثبتة",
+    "packagePageRepairTitle": "مكوّن إدارة حسابات {{platform}} يحتاج إلى إصلاح",
+    "packagePageInstallTitle": "مكوّن إدارة حسابات {{platform}} غير مثبت",
     "packagePageInstallDesc": "يمكنك التثبيت مباشرة من هذه الصفحة، أو استخدام إجراءات الحزمة أعلى اليمين للتثبيت أو الإصلاح قبل إدارة الحسابات. لن يتم تحميل الحسابات أو OAuth أو التبديل أو التحديث الخلفي قبل التثبيت.",
     "packageDashboardStateDesc": "افتح صفحة {{platform}} للتثبيت مباشرة، أو استخدم إجراءات أعلى اليمين للتحديث أو الإصلاح أو عرض سجل التغييرات.",
     "packageOpenPlatformPage": "فتح صفحة المنصة",
@@ -870,6 +870,8 @@
       "appAutoLaunchDesc": "تشغيل التطبيق تلقائيًا بعد تسجيل الدخول إلى النظام",
       "tokenKeeper": "إبقاء تفويض الحساب نشطًا",
       "tokenKeeperDesc": "عند التفعيل، يحدّث التطبيق في الخلفية تفويض الحسابات القريبة من الانتهاء بعد تأخير وبشكل دفعات؛ عند إيقافه تتوقف الصيانة التلقائية ويبقى التحديث اليدوي والتبديل والاستيراد فقط.",
+      "errorReporting": "تشخيص القياس",
+      "errorReportingDesc": "مفعّل افتراضياً ويُستخدم فقط لاستكشاف مشاكل البدء والواجهة وحزم المنصات. عند إيقافه لا تُرسل أحداث قياس. تُنقّح الأحداث ولا تتضمن كلمات مرور أو رموزاً أو أسرار 2FA أو أرقام هاتف أو بيانات حساسة أخرى.",
       "platformQuickSettingsTitle": "إعدادات المنصات",
       "platformQuickSettingsDesc": "نُقلت إعدادات كل منصة إلى صفحتها. افتحها بسرعة من هنا.",
       "platformQuickSettingsItemDesc": "صفحة المنصة",
@@ -939,7 +941,10 @@
       "claudeAutoRefreshDesc": "يحدّث ذاكرة الحصة المؤقتة لحسابات Claude تلقائيًا في الخلفية.",
       "claudeAppPath": "هدف تشغيل Claude Desktop",
       "claudeAppPathDesc": "يمكن للملف الافتراضي استخدام هدف Microsoft Store؛ أما الملفات متعددة المثيلات فتحتاج Claude.exe الحقيقي.",
-      "platformQuickSettingsEntryTitle": "{{platform}} مدخل الإعدادات"
+      "platformQuickSettingsEntryTitle": "{{platform}} مدخل الإعدادات",
+      "antigravityLaunchOnSwitch": "تشغيل Antigravity IDE عند التبديل",
+      "antigravityLaunchOnSwitchLabel": "تشغيل التطبيق أو إعادة تشغيله بعد التبديل",
+      "antigravityLaunchOnSwitchDesc": "عند الإيقاف، يكتب التبديل بيانات الحساب الافتراضي في Antigravity IDE فقط. لن يتم إغلاق التطبيق أو تشغيله أو إعادة تشغيله، وهذا مناسب لاستخدام CLI فقط."
     },
     "network": {
       "apiTitle": "واجهة برمجة تطبيقات قمرة القيادة المضادة للجاذبية",
@@ -1772,7 +1777,8 @@
     "stoppingApiService": "جارٍ إيقاف خدمة API...",
     "stopApiServiceFailed": "تعذّر إيقاف خدمة API. عطّلها أولًا ثم أعد المحاولة.",
     "skipThisVersion": "تخطي هذا الإصدار",
-    "skipFailed": "تعذر تخطي هذا التحديث: {{error}}"
+    "skipFailed": "تعذر تخطي هذا التحديث: {{error}}",
+    "stopApiServiceFailedContinue": "لم تتوقف خدمة API بشكل صحيح. ستتم متابعة إعادة التشغيل..."
   },
   "closeDialog": {
     "title": "إغلاق النافذة",
@@ -1956,7 +1962,8 @@
         "freeNoticeUnstable": "قد يكون وكيل الحسابات المجانية غير مستقر. استخدمه بحذر.",
         "restrictFreeDisableConfirmTitle": "السماح بالحسابات المجانية",
         "restrictFreeDisableConfirmMessage": "قد يكون وكيل الحسابات المجانية غير مستقر. هل تريد المتابعة؟",
-        "manageMembers": "إدارة الأعضاء"
+        "manageMembers": "إدارة الأعضاء",
+        "pendingOAuthUnsupported": "أكمل تفويض OAuth قبل إضافة هذا الحساب المعلّق إلى خدمة API"
       },
       "entryAction": "إضافة إلى خدمة API",
       "testAction": "اختبار",
@@ -3393,6 +3400,18 @@
       "completed": "اكتمل الحذف",
       "preparing": "جارٍ تحضير مهمة الحذف...",
       "retryFailed": "إعادة الفاشلة"
+    },
+    "pendingAuth": {
+      "badge": "بانتظار التفويض",
+      "emailRequired": "أدخل بريد الحساب",
+      "saving": "جارٍ حفظ الحساب المعلّق...",
+      "saved": "تم حفظ الحساب المعلّق",
+      "saveFailed": "فشل حفظ الحساب المعلّق: {{error}}",
+      "emailLabel": "حساب معلّق",
+      "emailPlaceholder": "أدخل بريد حساب OpenAI",
+      "saveDraft": "حفظ بطاقة معلّقة",
+      "authorizeAction": "تفويض",
+      "cardHint": "تم حفظ الملاحظات. أكمل OAuth لاستخدام الحساب."
     }
   },
   "githubCopilot": {

@@ -145,6 +145,12 @@ pub struct CodexAccount {
     pub token_updated_at: Option<i64>,
     #[serde(default = "default_token_source_mode")]
     pub token_source_mode: String,
+    #[serde(
+        default,
+        alias = "authorizationStatus",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub authorization_status: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub requires_reauth: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -385,6 +391,7 @@ impl CodexAccount {
             token_generation: 0,
             token_updated_at: Some(now),
             token_source_mode: default_token_source_mode(),
+            authorization_status: None,
             requires_reauth: false,
             reauth_reason: None,
             quota: None,

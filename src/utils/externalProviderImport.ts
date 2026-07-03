@@ -22,6 +22,20 @@ type RawExternalProviderImportPayload = {
   platform?: unknown;
   target?: unknown;
   page?: unknown;
+  mode?: unknown;
+  action?: unknown;
+  email?: unknown;
+  accountEmail?: unknown;
+  account_email?: unknown;
+  note?: unknown;
+  accountNote?: unknown;
+  account_note?: unknown;
+  twoFactorSecret?: unknown;
+  two_factor_secret?: unknown;
+  accountPassword?: unknown;
+  account_password?: unknown;
+  phoneNumber?: unknown;
+  phone_number?: unknown;
   token?: unknown;
   importToken?: unknown;
   payload?: unknown;
@@ -130,6 +144,37 @@ function readString(raw: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
+function normalizePendingOAuthMode(raw: unknown): string {
+  return readString(raw)
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') ?? '';
+}
+
+function buildCodexPendingOAuthImportToken(
+  payload: RawExternalProviderImportPayload,
+): string {
+  const mode = normalizePendingOAuthMode(payload.mode ?? payload.action);
+  if (mode !== 'pending_oauth' && mode !== 'oauth_pending') return '';
+
+  const email = readString(payload.email ?? payload.accountEmail ?? payload.account_email);
+  if (!email) return '';
+
+  const pendingPayload: Record<string, string> = {
+    mode: 'pending_oauth',
+    email,
+  };
+  const note = readString(payload.note ?? payload.accountNote ?? payload.account_note);
+  const twoFactorSecret = readString(payload.twoFactorSecret ?? payload.two_factor_secret);
+  const accountPassword = readString(payload.accountPassword ?? payload.account_password);
+  const phoneNumber = readString(payload.phoneNumber ?? payload.phone_number);
+  if (note) pendingPayload.account_note = note;
+  if (twoFactorSecret) pendingPayload.two_factor_secret = twoFactorSecret;
+  if (accountPassword) pendingPayload.account_password = accountPassword;
+  if (phoneNumber) pendingPayload.phone_number = phoneNumber;
+  return JSON.stringify(pendingPayload);
+}
+
 function resolvePage(providerId: PlatformId, rawPage: unknown): Page {
   const candidate = readString(rawPage);
   if (candidate && IMPORT_TARGET_PAGES.has(candidate as Page)) {
@@ -159,10 +204,13 @@ export function normalizeExternalProviderImportPayload(
   );
   if (!providerId) return null;
 
-  const token =
+  const explicitToken =
     readString(
       payload.token ?? payload.importToken ?? payload.payload ?? payload.importPayload,
     ) ?? '';
+  const token =
+    explicitToken ||
+    (providerId === 'codex' ? buildCodexPendingOAuthImportToken(payload) : '');
   const importUrl = readString(payload.importUrl ?? payload.import_url);
   const apiBaseUrl = readString(
     payload.apiBaseUrl ?? payload.api_base_url ?? payload.baseUrl ?? payload.base_url,

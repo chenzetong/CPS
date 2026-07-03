@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "Установить пакет {{platform}}",
     "packageInstallConfirmDesc": "Для открытия {{platform}} нужен пакет платформы. Версия {{version}}, размер {{size}}.",
     "packageInstallNotReady": "Пакет обработан, но среда выполнения еще не готова.",
-    "packageInstallCardTitle": "Пакет {{platform}} не установлен",
+    "packageInstallCardTitle": "Компонент управления аккаунтами {{platform}} не установлен",
     "packageInstallCardDesc": "Будет загружена версия {{version}}, размер {{size}}. После установки платформа откроется.",
     "packageUpdateAvailableShort": "Обновить",
     "packageRepairRequired": "Исправить",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "Операция с пакетом платформы не удалась. Повторите попытку позже.",
     "packageOperationCanceled": "Операция с пакетом платформы отменена.",
     "packageOperationRetryHint": "Можно нажать кнопку ниже, чтобы повторить попытку.",
-    "packagePageRepairTitle": "Пакет {{platform}} требует исправления",
-    "packagePageInstallTitle": "Пакет {{platform}} не установлен",
+    "packagePageRepairTitle": "Компонент управления аккаунтами {{platform}} требует восстановления",
+    "packagePageInstallTitle": "Компонент управления аккаунтами {{platform}} не установлен",
     "packagePageInstallDesc": "Можно установить прямо с этой страницы либо использовать действия пакета в правом верхнем углу для установки или восстановления перед управлением аккаунтами. До установки аккаунты, OAuth, переключение и фоновое обновление не загружаются.",
     "packageDashboardStateDesc": "Откройте страницу {{platform}}, чтобы установить напрямую, либо используйте действия справа сверху для обновления, восстановления или просмотра журнала изменений.",
     "packageOpenPlatformPage": "Открыть страницу платформы",
@@ -827,6 +827,8 @@
       "appAutoLaunchDesc": "Автоматически запускать приложение после входа в систему",
       "tokenKeeper": "Поддерживать авторизацию аккаунтов",
       "tokenKeeperDesc": "Если включено, приложение с задержкой и небольшими партиями обновляет в фоне авторизации аккаунтов, срок которых скоро истечёт; если выключено, автоматическое поддержание прекращается, но ручное обновление, переключение и импорт остаются доступны.",
+      "errorReporting": "Диагностика телеметрии",
+      "errorReportingDesc": "Включена по умолчанию и используется только для разбора проблем запуска, интерфейса и пакетов платформ. При отключении телеметрия не отправляется. События очищаются и не содержат пароли, токены, секреты 2FA, телефоны или другие чувствительные данные.",
       "platformQuickSettingsTitle": "Настройки платформ",
       "platformQuickSettingsDesc": "Настройки каждой платформы теперь на её странице. Быстро откройте их здесь.",
       "platformQuickSettingsItemDesc": "Страница платформы",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "Автоматически обновляет кэш квоты аккаунтов Claude в фоне.",
       "claudeAppPath": "Цель запуска Claude Desktop",
       "claudeAppPathDesc": "Стандартный профиль может использовать цель Microsoft Store; нескольким экземплярам нужен реальный Claude.exe.",
-      "platformQuickSettingsEntryTitle": "{{platform}} вход в настройки"
+      "platformQuickSettingsEntryTitle": "{{platform}} вход в настройки",
+      "antigravityLaunchOnSwitch": "Запускать Antigravity IDE при переключении",
+      "antigravityLaunchOnSwitchLabel": "Запускать или перезапускать после переключения",
+      "antigravityLaunchOnSwitchDesc": "Если выключено, переключение только запишет данные учетной записи по умолчанию Antigravity IDE. Приложение не будет закрываться, запускаться или перезапускаться, что удобно для сценариев только CLI."
     },
     "network": {
       "apiTitle": "API антигравитационной кабины",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "Остановка API-сервиса...",
     "stopApiServiceFailed": "Не удалось остановить службу API. Сначала отключите её и повторите попытку.",
     "skipThisVersion": "Пропустить эту версию",
-    "skipFailed": "Не удалось пропустить это обновление: {{error}}"
+    "skipFailed": "Не удалось пропустить это обновление: {{error}}",
+    "stopApiServiceFailedContinue": "Служба API не остановилась корректно. Перезапуск продолжается..."
   },
   "closeDialog": {
     "title": "Закрыть окно",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "Прокси Free-аккаунтов может быть нестабильным. Используйте с осторожностью.",
         "restrictFreeDisableConfirmTitle": "Разрешить Free-аккаунты",
         "restrictFreeDisableConfirmMessage": "Прокси Free-аккаунтов может быть нестабильным. Вы уверены, что хотите их использовать?",
-        "manageMembers": "Управление участниками"
+        "manageMembers": "Управление участниками",
+        "pendingOAuthUnsupported": "Завершите OAuth-авторизацию перед добавлением этого аккаунта в сервис API"
       },
       "entryAction": "Добавить в API-сервис",
       "testAction": "Тест",
@@ -3347,6 +3354,18 @@
       "completed": "Удаление завершено",
       "preparing": "Подготовка удаления...",
       "retryFailed": "Повторить сбои"
+    },
+    "pendingAuth": {
+      "badge": "Ожидает входа",
+      "emailRequired": "Введите e-mail аккаунта",
+      "saving": "Сохранение аккаунта в ожидании...",
+      "saved": "Аккаунт в ожидании сохранен",
+      "saveFailed": "Не удалось сохранить аккаунт в ожидании: {{error}}",
+      "emailLabel": "Аккаунт в ожидании",
+      "emailPlaceholder": "Введите e-mail аккаунта OpenAI",
+      "saveDraft": "Сохранить карточку",
+      "authorizeAction": "Авторизовать",
+      "cardHint": "Заметки сохранены. Завершите OAuth, чтобы использовать аккаунт."
     }
   },
   "githubCopilot": {

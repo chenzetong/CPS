@@ -251,6 +251,9 @@ pub struct UserConfig {
     /// 切换 Codex 时是否自动启动/重启 Codex App
     #[serde(default = "default_codex_launch_on_switch")]
     pub codex_launch_on_switch: bool,
+    /// 切换 Antigravity IDE 时是否自动启动/重启应用
+    #[serde(default = "default_antigravity_launch_on_switch")]
+    pub antigravity_launch_on_switch: bool,
     /// 切换 Codex 时是否自动重启指定应用
     #[serde(default = "default_codex_restart_specified_app_on_switch")]
     pub codex_restart_specified_app_on_switch: bool,
@@ -633,6 +636,9 @@ fn default_openclaw_auth_overwrite_on_switch() -> bool {
 fn default_codex_launch_on_switch() -> bool {
     true
 }
+fn default_antigravity_launch_on_switch() -> bool {
+    true
+}
 fn default_codex_restart_specified_app_on_switch() -> bool {
     false
 }
@@ -836,6 +842,7 @@ impl Default for UserConfig {
             ghcp_launch_on_switch: default_ghcp_launch_on_switch(),
             openclaw_auth_overwrite_on_switch: default_openclaw_auth_overwrite_on_switch(),
             codex_launch_on_switch: default_codex_launch_on_switch(),
+            antigravity_launch_on_switch: default_antigravity_launch_on_switch(),
             codex_restart_specified_app_on_switch: default_codex_restart_specified_app_on_switch(),
             codex_local_access_entry_visible: default_codex_local_access_entry_visible(),
             antigravity_dual_switch_no_restart_enabled:
@@ -1267,6 +1274,13 @@ pub fn load_user_config() -> Result<UserConfig, String> {
             obj.insert(
                 "codex_local_access_entry_visible".to_string(),
                 json!(default_codex_local_access_entry_visible()),
+            );
+        }
+
+        if !obj.contains_key("antigravity_launch_on_switch") {
+            obj.insert(
+                "antigravity_launch_on_switch".to_string(),
+                json!(default_antigravity_launch_on_switch()),
             );
         }
 

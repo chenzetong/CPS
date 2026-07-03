@@ -3,6 +3,7 @@ pub mod app_data;
 pub mod atomic_write;
 pub mod config;
 pub mod db;
+pub mod diagnostics;
 pub mod external_import;
 pub mod floating_card_window;
 pub mod group_settings;

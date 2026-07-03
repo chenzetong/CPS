@@ -54,6 +54,7 @@ import {
   Wrench,
   Terminal,
   Link2,
+  ChevronDown,
 } from "lucide-react";
 import { useCodexAccountStore } from "../stores/useCodexAccountStore";
 import { useCodexInstanceStore } from "../stores/useCodexInstanceStore";
@@ -97,6 +98,7 @@ import {
   isCodexApiKeyAccount,
   isCodexChatCompletionsApiKeyAccount,
   isCodexNewApiAccount,
+  isCodexPendingOAuthAccount,
   isCodexTeamLikePlan,
   type CodexApiProviderMode,
   type CodexQuotaErrorInfo,
@@ -242,7 +244,10 @@ import { formatCodexSessionVisibilityRepairMessage } from "../utils/codexSession
 import {
   getMfaOtpToken,
   getMfaTimeRemaining,
+  loadSavedMfaRecords,
   parseMfaCredentialInput,
+  upsertSavedMfaRecord,
+  type MfaRecord,
 } from "../utils/mfaVault";
 import md5 from "blueimp-md5";
 
@@ -389,6 +394,17 @@ function hasCodexAccountNoteDetails(account?: CodexAccount | null): boolean {
   );
 }
 
+function hasCodexAccountNoteFormDetails(
+  form?: CodexAccountNoteFormState | null,
+): boolean {
+  return Boolean(
+    form?.note.trim() ||
+      form?.twoFactorSecret.trim() ||
+      form?.accountPassword.trim() ||
+      form?.phoneNumber.trim(),
+  );
+}
+
 function getCodexAccountNoteTitle(account: CodexAccount, fallback: string): string {
   return (
     account.account_note?.trim() ||
@@ -397,6 +413,15 @@ function getCodexAccountNoteTitle(account: CodexAccount, fallback: string): stri
     account.phone_number?.trim() ||
     fallback
   );
+}
+
+function formatMfaRecordOption(record: MfaRecord, fallback: string): string {
+  const accountName = record.accountName.trim();
+  if (accountName) return accountName;
+  const secret = record.secret.trim();
+  if (!secret) return fallback;
+  if (secret.length <= 14) return secret;
+  return `${secret.slice(0, 6)}...${secret.slice(-4)}`;
 }
 
 function hasSensitiveAccountNoteFieldInJson(jsonContent: string): boolean {
@@ -1370,6 +1395,18 @@ export function CodexAccountsContent() {
   const [accountNoteCopiedKey, setAccountNoteCopiedKey] = useState<
     string | null
   >(null);
+  const [pendingOAuthEmailInput, setPendingOAuthEmailInput] = useState("");
+  const [pendingOAuthNoteForm, setPendingOAuthNoteForm] =
+    useState<CodexAccountNoteFormState>(EMPTY_CODEX_ACCOUNT_NOTE_FORM);
+  const [pendingOAuthFieldErrors, setPendingOAuthFieldErrors] =
+    useState<CodexAccountNoteFieldErrors & { email?: string }>({});
+  const [pendingOAuthNoteModalOpen, setPendingOAuthNoteModalOpen] =
+    useState(false);
+  const [savingPendingOAuthAccount, setSavingPendingOAuthAccount] =
+    useState(false);
+  const [savedMfaRecords, setSavedMfaRecords] = useState<MfaRecord[]>([]);
+  const [accountNoteMfaPickerOpen, setAccountNoteMfaPickerOpen] =
+    useState(false);
   const [mfaTimeRemaining, setMfaTimeRemaining] = useState(
     getMfaTimeRemaining,
   );
@@ -1475,12 +1512,16 @@ export function CodexAccountsContent() {
     showAddModal,
     addTab,
     addStatus,
+    setAddStatus,
     addMessage,
+    setAddMessage,
     tokenInput,
     setTokenInput,
     importing,
     openAddModal,
     closeAddModal,
+    resetAddModalState,
+    setShowAddModal,
     externalImportProgress,
     closeExternalImportProgressModal,
     formatDate,
@@ -1491,6 +1532,10 @@ export function CodexAccountsContent() {
 
   const reauthTargetAccountId = reauthTargetAccount?.id?.trim() ?? "";
   const reauthTargetEmail = reauthTargetAccount?.email?.trim() ?? "";
+  const isReauthTargetPendingOAuth = reauthTargetAccount
+    ? isCodexPendingOAuthAccount(reauthTargetAccount)
+    : false;
+  const shouldShowPendingOAuthDraftForm = !reauthTargetAccount;
   const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [batchImportSessionId, setBatchImportSessionId] = useState<
     string | null
@@ -1822,6 +1867,16 @@ export function CodexAccountsContent() {
     (tab: string, targetAccount?: CodexAccount | null) => {
       setReauthTargetAccount(targetAccount ?? null);
       setReauthEmailCopied(false);
+      if (targetAccount && isCodexPendingOAuthAccount(targetAccount)) {
+        setPendingOAuthEmailInput(targetAccount.email ?? "");
+        setPendingOAuthNoteForm(buildCodexAccountNoteForm(targetAccount));
+        setPendingOAuthNoteModalOpen(false);
+      } else {
+        setPendingOAuthEmailInput("");
+        setPendingOAuthNoteForm(EMPTY_CODEX_ACCOUNT_NOTE_FORM);
+        setPendingOAuthNoteModalOpen(false);
+      }
+      setPendingOAuthFieldErrors({});
       openAddModal(tab);
     },
     [openAddModal],
@@ -1830,6 +1885,10 @@ export function CodexAccountsContent() {
   const closeCodexAddModal = useCallback(() => {
     setReauthTargetAccount(null);
     setReauthEmailCopied(false);
+    setPendingOAuthEmailInput("");
+    setPendingOAuthNoteForm(EMPTY_CODEX_ACCOUNT_NOTE_FORM);
+    setPendingOAuthFieldErrors({});
+    setPendingOAuthNoteModalOpen(false);
     closeAddModal();
   }, [closeAddModal]);
 
@@ -1846,6 +1905,10 @@ export function CodexAccountsContent() {
     if (showAddModal) return;
     setReauthTargetAccount(null);
     setReauthEmailCopied(false);
+    setPendingOAuthEmailInput("");
+    setPendingOAuthNoteForm(EMPTY_CODEX_ACCOUNT_NOTE_FORM);
+    setPendingOAuthFieldErrors({});
+    setPendingOAuthNoteModalOpen(false);
   }, [showAddModal]);
 
   useEffect(() => {
@@ -3491,28 +3554,95 @@ export function CodexAccountsContent() {
       accounts.find((account) => account.id === editingAccountNoteId) || null,
     [accounts, editingAccountNoteId],
   );
+  const activeAccountNoteMode = editingAccountNoteAccount
+    ? "account"
+    : pendingOAuthNoteModalOpen
+      ? "pendingOAuth"
+      : null;
+  const activeAccountNoteForm =
+    activeAccountNoteMode === "pendingOAuth"
+      ? pendingOAuthNoteForm
+      : editingAccountNoteForm;
+  const activeAccountNoteSaving =
+    savingAccountNote ||
+    (activeAccountNoteMode === "pendingOAuth" && savingPendingOAuthAccount);
+  const activeAccountNoteDisplayName =
+    activeAccountNoteMode === "pendingOAuth"
+      ? pendingOAuthEmailInput.trim() ||
+        t("codex.pendingAuth.emailLabel", "待授权账号")
+      : editingAccountNoteAccount
+        ? buildCodexAccountPresentation(editingAccountNoteAccount, t).displayName
+        : "";
+
+  const refreshSavedMfaRecords = useCallback(() => {
+    setSavedMfaRecords(loadSavedMfaRecords());
+  }, []);
+
+  const updateActiveAccountNoteForm = useCallback(
+    (update: Partial<CodexAccountNoteFormState>) => {
+      if (activeAccountNoteMode === "pendingOAuth") {
+        setPendingOAuthNoteForm((prev) => ({ ...prev, ...update }));
+        setPendingOAuthFieldErrors((prev) => ({
+          ...prev,
+          twoFactorSecret: undefined,
+        }));
+        setAddStatus("idle");
+        setAddMessage("");
+      } else {
+        setEditingAccountNoteForm((prev) => ({ ...prev, ...update }));
+      }
+      setAccountNoteFieldErrors((prev) => ({
+        ...prev,
+        twoFactorSecret: undefined,
+      }));
+      setAccountNoteError(null);
+    },
+    [
+      activeAccountNoteMode,
+      setAccountNoteError,
+      setAddMessage,
+      setAddStatus,
+    ],
+  );
 
   const openAccountNoteModal = useCallback(
     (account: CodexAccount) => {
       setEditingAccountNoteId(account.id);
       setEditingAccountNoteForm(buildCodexAccountNoteForm(account));
+      setPendingOAuthNoteModalOpen(false);
       setAccountNoteFieldErrors({});
       setAccountNoteSecretVisible(true);
       setAccountNotePasswordVisible(true);
       setAccountNoteCopiedKey(null);
+      setAccountNoteMfaPickerOpen(false);
+      refreshSavedMfaRecords();
       setAccountNoteError(null);
     },
-    [setAccountNoteError],
+    [refreshSavedMfaRecords, setAccountNoteError],
   );
 
+  const openPendingOAuthNoteModal = useCallback(() => {
+    setPendingOAuthNoteModalOpen(true);
+    setEditingAccountNoteId(null);
+    setAccountNoteFieldErrors({});
+    setAccountNoteSecretVisible(true);
+    setAccountNotePasswordVisible(true);
+    setAccountNoteCopiedKey(null);
+    setAccountNoteMfaPickerOpen(false);
+    refreshSavedMfaRecords();
+    setAccountNoteError(null);
+  }, [refreshSavedMfaRecords, setAccountNoteError]);
+
   const closeAccountNoteModal = useCallback(() => {
-    if (savingAccountNote) return;
+    if (savingAccountNote || savingPendingOAuthAccount) return;
     setEditingAccountNoteId(null);
     setEditingAccountNoteForm(EMPTY_CODEX_ACCOUNT_NOTE_FORM);
+    setPendingOAuthNoteModalOpen(false);
     setAccountNoteFieldErrors({});
     setAccountNoteCopiedKey(null);
+    setAccountNoteMfaPickerOpen(false);
     setAccountNoteError(null);
-  }, [savingAccountNote, setAccountNoteError]);
+  }, [savingAccountNote, savingPendingOAuthAccount, setAccountNoteError]);
 
   const loadApiServiceAppSpeed = useCallback(async () => {
     try {
@@ -3594,12 +3724,12 @@ export function CodexAccountsContent() {
   );
 
   const handleSubmitAccountNote = useCallback(async () => {
-    if (!editingAccountNoteId || savingAccountNote) return;
+    if (!activeAccountNoteMode || activeAccountNoteSaving) return;
     setSavingAccountNote(true);
     setAccountNoteError(null);
     setAccountNoteFieldErrors({});
     try {
-      const rawTwoFactorSecret = editingAccountNoteForm.twoFactorSecret.trim();
+      const rawTwoFactorSecret = activeAccountNoteForm.twoFactorSecret.trim();
       const parsedTwoFactorSecret = rawTwoFactorSecret
         ? parseMfaCredentialInput(rawTwoFactorSecret)
         : null;
@@ -3612,22 +3742,48 @@ export function CodexAccountsContent() {
         });
         return;
       }
-      await store.updateAccountNote(
-        editingAccountNoteId,
-        {
-          note: editingAccountNoteForm.note,
-          twoFactorSecret: parsedTwoFactorSecret?.secret ?? rawTwoFactorSecret,
-          accountPassword: editingAccountNoteForm.accountPassword,
-          phoneNumber: editingAccountNoteForm.phoneNumber,
-        },
-      );
+      const normalizedTwoFactorSecret =
+        parsedTwoFactorSecret?.secret ?? rawTwoFactorSecret;
+      const noteUpdate = {
+        note: activeAccountNoteForm.note,
+        twoFactorSecret: normalizedTwoFactorSecret,
+        accountPassword: activeAccountNoteForm.accountPassword,
+        phoneNumber: activeAccountNoteForm.phoneNumber,
+      };
+
+      if (normalizedTwoFactorSecret) {
+        const nextRecords = upsertSavedMfaRecord({
+          secret: normalizedTwoFactorSecret,
+          accountName:
+            activeAccountNoteDisplayName ||
+            parsedTwoFactorSecret?.accountName ||
+            null,
+          remark: activeAccountNoteForm.note,
+        });
+        setSavedMfaRecords(nextRecords);
+      }
+
+      if (activeAccountNoteMode === "pendingOAuth") {
+        setPendingOAuthNoteForm(noteUpdate);
+        setPendingOAuthFieldErrors((prev) => ({
+          ...prev,
+          twoFactorSecret: undefined,
+        }));
+      } else if (editingAccountNoteId) {
+        await store.updateAccountNote(editingAccountNoteId, noteUpdate);
+        setEditingAccountNoteForm(EMPTY_CODEX_ACCOUNT_NOTE_FORM);
+      } else {
+        return;
+      }
+
       setMessage({
         text: t("codex.accountNote.saved", "账号备注已保存"),
         tone: "success",
       });
       setEditingAccountNoteId(null);
-      setEditingAccountNoteForm(EMPTY_CODEX_ACCOUNT_NOTE_FORM);
+      setPendingOAuthNoteModalOpen(false);
       setAccountNoteCopiedKey(null);
+      setAccountNoteMfaPickerOpen(false);
     } catch (error) {
       setAccountNoteError(
         t("codex.accountNote.saveFailed", {
@@ -3639,19 +3795,26 @@ export function CodexAccountsContent() {
       setSavingAccountNote(false);
     }
   }, [
+    activeAccountNoteDisplayName,
+    activeAccountNoteForm,
+    activeAccountNoteMode,
+    activeAccountNoteSaving,
     editingAccountNoteId,
-    editingAccountNoteForm,
-    savingAccountNote,
     setAccountNoteError,
     setMessage,
     store,
     t,
   ]);
 
-  const editingAccountNoteOtpToken = useMemo(() => {
-    const secret = editingAccountNoteForm.twoFactorSecret.trim();
+  const activeAccountNoteOtpToken = useMemo(() => {
+    const secret = activeAccountNoteForm.twoFactorSecret.trim();
     return secret ? getMfaOtpToken(secret) : "";
-  }, [editingAccountNoteForm.twoFactorSecret, mfaTimeRemaining]);
+  }, [activeAccountNoteForm.twoFactorSecret, mfaTimeRemaining]);
+
+  const pendingOAuthHasNoteDetails = useMemo(
+    () => hasCodexAccountNoteFormDetails(pendingOAuthNoteForm),
+    [pendingOAuthNoteForm],
+  );
 
   const copyAccountNoteValue = useCallback(
     async (copyKey: string, value?: string | null) => {
@@ -4032,11 +4195,19 @@ export function CodexAccountsContent() {
     [quickSwitchApiKeyId, selectedQuickSwitchProvider],
   );
   const oauthAccounts = useMemo(
-    () => accounts.filter((account) => !isCodexApiKeyAccount(account)),
+    () =>
+      accounts.filter(
+        (account) =>
+          !isCodexApiKeyAccount(account) &&
+          !isCodexPendingOAuthAccount(account),
+      ),
     [accounts],
   );
   const isOAuthBindingEligibleAccount = useCallback((account: CodexAccount) => {
-    return Boolean(account.tokens.refresh_token?.trim());
+    return (
+      !isCodexPendingOAuthAccount(account) &&
+      Boolean(account.tokens.refresh_token?.trim())
+    );
   }, []);
   const oauthBindingEligibleAccounts = useMemo(
     () => oauthAccounts.filter(isOAuthBindingEligibleAccount),
@@ -4542,9 +4713,102 @@ export function CodexAccountsContent() {
     };
   }, []);
 
-  // Hook provides setAddStatus/setAddMessage but we need refs to page's versions
-  const { setAddStatus, setAddMessage, resetAddModalState, setShowAddModal } =
-    page;
+  const buildPendingOAuthNoteUpdate = useCallback(() => {
+    const rawTwoFactorSecret = pendingOAuthNoteForm.twoFactorSecret.trim();
+    const parsedTwoFactorSecret = rawTwoFactorSecret
+      ? parseMfaCredentialInput(rawTwoFactorSecret)
+      : null;
+    if (rawTwoFactorSecret && !parsedTwoFactorSecret) {
+      setPendingOAuthFieldErrors((prev) => ({
+        ...prev,
+        twoFactorSecret: t(
+          "codex.accountNote.twoFactorSecretInvalid",
+          "2FA 秘钥格式无效，请输入 Base32 secret 或 otpauth:// 链接",
+        ),
+      }));
+      openPendingOAuthNoteModal();
+      return null;
+    }
+
+    return {
+      note: pendingOAuthNoteForm.note,
+      twoFactorSecret: parsedTwoFactorSecret?.secret ?? rawTwoFactorSecret,
+      accountPassword: pendingOAuthNoteForm.accountPassword,
+      phoneNumber: pendingOAuthNoteForm.phoneNumber,
+    };
+  }, [openPendingOAuthNoteModal, pendingOAuthNoteForm, t]);
+
+  const handleSavePendingOAuthAccount = useCallback(async () => {
+    if (savingPendingOAuthAccount) return;
+    const email = pendingOAuthEmailInput.trim();
+    setPendingOAuthFieldErrors({});
+    setOauthPrepareError(null);
+    setAddStatus("idle");
+    setAddMessage("");
+
+    if (!email) {
+      setPendingOAuthFieldErrors({
+        email: t("codex.pendingAuth.emailRequired", "请输入账号邮箱"),
+      });
+      return;
+    }
+
+    const noteUpdate = buildPendingOAuthNoteUpdate();
+    if (!noteUpdate) return;
+
+    setSavingPendingOAuthAccount(true);
+    setAddStatus("loading");
+    setAddMessage(t("codex.pendingAuth.saving", "正在保存待授权账号..."));
+    try {
+      const account = await codexService.createPendingCodexOAuthAccount(
+        email,
+        noteUpdate,
+      );
+      if (noteUpdate.twoFactorSecret.trim()) {
+        setSavedMfaRecords(
+          upsertSavedMfaRecord({
+            secret: noteUpdate.twoFactorSecret,
+            accountName: email,
+            remark: noteUpdate.note,
+          }),
+        );
+      }
+      await fetchAccounts();
+      await emitAccountsChanged({
+        platformId: "codex",
+        accountId: account.id,
+        reason: "pending_oauth",
+      });
+      setAddStatus("success");
+      setAddMessage(t("codex.pendingAuth.saved", "待授权账号已保存"));
+      setReauthTargetAccount(account);
+      setTimeout(() => {
+        setShowAddModal(false);
+        resetAddModalState();
+      }, 900);
+    } catch (error) {
+      setAddStatus("error");
+      setAddMessage(
+        t("codex.pendingAuth.saveFailed", {
+          defaultValue: "保存待授权账号失败：{{error}}",
+          error: String(error).replace(/^Error:\s*/, ""),
+        }),
+      );
+    } finally {
+      setSavingPendingOAuthAccount(false);
+    }
+  }, [
+    buildPendingOAuthNoteUpdate,
+    fetchAccounts,
+    pendingOAuthEmailInput,
+    resetAddModalState,
+    savingPendingOAuthAccount,
+    setAddMessage,
+    setAddStatus,
+    setShowAddModal,
+    t,
+    setSavedMfaRecords,
+  ]);
 
   const handleOauthPrepareError = useCallback(
     (e: unknown) => {
@@ -7607,6 +7871,11 @@ export function CodexAccountsContent() {
           summary.cooldown += 1;
           return;
         }
+        if (isCodexPendingOAuthAccount(account)) {
+          summary.authError += 1;
+          summary.abnormal += 1;
+          return;
+        }
         if (isBlockingCodexQuotaError(account.quota_error)) {
           summary.quotaLimited += 1;
           return;
@@ -9119,7 +9388,8 @@ export function CodexAccountsContent() {
       const targetIds = groupAccounts
         .filter(
           (account) =>
-            !isCodexApiKeyAccount(account) || isCodexNewApiAccount(account),
+            !isCodexPendingOAuthAccount(account) &&
+            (!isCodexApiKeyAccount(account) || isCodexNewApiAccount(account)),
         )
         .map((account) => account.id);
 
@@ -9184,9 +9454,10 @@ export function CodexAccountsContent() {
     const teamAccountIds = paginatedAccounts
       .filter(
         (account) =>
-          !hasCodexAccountStructure(account) ||
-          (isCodexTeamLikePlan(account.plan_type) &&
-            !hasCodexAccountName(account)),
+          !isCodexPendingOAuthAccount(account) &&
+          (!hasCodexAccountStructure(account) ||
+            (isCodexTeamLikePlan(account.plan_type) &&
+              !hasCodexAccountName(account))),
       )
       .map((account) => account.id);
     if (teamAccountIds.length === 0) return;
@@ -9229,7 +9500,7 @@ export function CodexAccountsContent() {
   );
 
   const renderResetCreditControls = (account: CodexAccount) => {
-    if (isCodexApiKeyAccount(account)) return null;
+    if (isCodexApiKeyAccount(account) || isCodexPendingOAuthAccount(account)) return null;
 
     const creditDetails = getResetCreditDetails(account);
     const availableCount = getResetCreditsAvailable(account);
@@ -9278,13 +9549,17 @@ export function CodexAccountsContent() {
       const isCurrent = overviewCurrentAccountId === account.id;
       const isSelected = selected.has(account.id);
       const isApiKeyAccount = isCodexApiKeyAccount(account);
+      const isPendingOAuthAccount = isCodexPendingOAuthAccount(account);
       const isChatCompletionsApiKey =
         isCodexChatCompletionsApiKeyAccount(account);
       const compactQuotaItems = resolveCompactQuotaItems(presentation);
       const subscriptionInfo = resolveSubscriptionPresentation(account);
       const showCompactExpiry =
-        !isApiKeyAccount && subscriptionInfo.bucket !== "active";
+        !isPendingOAuthAccount &&
+        !isApiKeyAccount &&
+        subscriptionInfo.bucket !== "active";
       const showSubscriptionRefreshAction =
+        !isPendingOAuthAccount &&
         !isApiKeyAccount &&
         (subscriptionInfo.bucket === "missing" ||
           subscriptionInfo.bucket === "expired");
@@ -9350,7 +9625,7 @@ export function CodexAccountsContent() {
               </span>
             )}
           </div>
-          {renderAccountSpeedSelect(account, true)}
+          {!isPendingOAuthAccount && renderAccountSpeedSelect(account, true)}
           {!isApiKeyAccount && (
             <button
               className={`codex-compact-note-btn ${hasCodexAccountNoteDetails(account) ? "has-note" : ""}`}
@@ -9364,18 +9639,28 @@ export function CodexAccountsContent() {
               <FileText size={13} />
             </button>
           )}
-          <button
-            className={`codex-compact-switch-btn ${!isCurrent ? "success" : ""}`}
-            onClick={() => handleSwitch(account.id)}
-            disabled={!!switching}
-            title={t("codex.switch", "切换")}
-          >
-            {switching === account.id ? (
-              <RefreshCw size={14} className="loading-spinner" />
-            ) : (
-              <Play size={14} />
-            )}
-          </button>
+          {isPendingOAuthAccount ? (
+            <button
+              className="codex-compact-switch-btn success"
+              onClick={() => openCodexAddModal("oauth", account)}
+              title={t("codex.pendingAuth.authorizeAction", "授权添加")}
+            >
+              <Globe size={14} />
+            </button>
+          ) : (
+            <button
+              className={`codex-compact-switch-btn ${!isCurrent ? "success" : ""}`}
+              onClick={() => handleSwitch(account.id)}
+              disabled={!!switching}
+              title={t("codex.switch", "切换")}
+            >
+              {switching === account.id ? (
+                <RefreshCw size={14} className="loading-spinner" />
+              ) : (
+                <Play size={14} />
+              )}
+            </button>
+          )}
         </div>
       );
     });
@@ -9386,6 +9671,7 @@ export function CodexAccountsContent() {
       const meta = resolveAccountMeta(account);
       const isCurrent = overviewCurrentAccountId === account.id;
       const isApiKeyAccount = isCodexApiKeyAccount(account);
+      const isPendingOAuthAccount = isCodexPendingOAuthAccount(account);
       const isNewApiAccount = isCodexNewApiAccount(account);
       const isChatCompletionsApiKey =
         isCodexChatCompletionsApiKeyAccount(account);
@@ -9395,7 +9681,7 @@ export function CodexAccountsContent() {
       const planClass = presentation.planClass || "unknown";
       const isSelected = selected.has(account.id);
       const quotaItems =
-        isApiKeyAccount && !isNewApiAccount
+        isPendingOAuthAccount || (isApiKeyAccount && !isNewApiAccount)
           ? []
           : showCodeReviewQuota
             ? presentation.quotaItems
@@ -9414,7 +9700,8 @@ export function CodexAccountsContent() {
       const accountIssueMeta = reauthErrorMeta.rawMessage
         ? reauthErrorMeta
         : quotaErrorMeta;
-      const hasQuotaError = Boolean(accountIssueMeta.rawMessage);
+      const hasQuotaError =
+        !isPendingOAuthAccount && Boolean(accountIssueMeta.rawMessage);
       const isQuotaRefreshNotice =
         !reauthErrorMeta.rawMessage &&
         quotaErrorMeta.isRefreshRequestFailure &&
@@ -9427,6 +9714,7 @@ export function CodexAccountsContent() {
           : accountIssueMeta.statusCode ||
             t("codex.quotaError.badge", "配额异常");
       const showReauthorizeAction =
+        !isPendingOAuthAccount &&
         !isApiKeyAccount &&
         hasQuotaError &&
         shouldOfferReauthorizeAction(accountIssueMeta);
@@ -9459,7 +9747,8 @@ export function CodexAccountsContent() {
           apiKeyUsageProvider?.integrationType === "new_api" ||
           apiKeyUsageProvider?.integrationType === "sub2api");
       const shouldRenderQuotaSection =
-        showApiKeyUsagePanel || !isApiKeyAccount || isNewApiAccount;
+        !isPendingOAuthAccount &&
+        (showApiKeyUsagePanel || !isApiKeyAccount || isNewApiAccount);
       const displayPlanClass = isSponsorApiKeyAccount
         ? "sponsor-api"
         : isQuotaAwareApiKeyAccount
@@ -9480,6 +9769,7 @@ export function CodexAccountsContent() {
       const subscriptionInfo = resolveSubscriptionPresentation(account);
       const isSubscriptionInfoMissing = subscriptionInfo.bucket === "missing";
       const showSubscriptionRefreshAction =
+        !isPendingOAuthAccount &&
         !isApiKeyAccount &&
         (subscriptionInfo.bucket === "missing" ||
           subscriptionInfo.bucket === "expired");
@@ -9488,10 +9778,10 @@ export function CodexAccountsContent() {
         refreshing === account.id;
       const resetCreditControls = renderResetCreditControls(account);
       return (
-        <div
-          key={groupKey ? `${groupKey}-${account.id}` : account.id}
-          className={`codex-account-card ${isCurrent ? "current" : ""} ${isSelected ? "selected" : ""} ${isNewApiAccount ? "new-api-exclusive" : ""} ${isQuotaAwareApiKeyAccount ? "api-key-usage-account" : ""} ${isSponsorApiKeyAccount ? "sponsor-api-account" : ""}`}
-        >
+          <div
+            key={groupKey ? `${groupKey}-${account.id}` : account.id}
+            className={`codex-account-card ${isCurrent ? "current" : ""} ${isSelected ? "selected" : ""} ${isPendingOAuthAccount ? "pending-oauth-account" : ""} ${isNewApiAccount ? "new-api-exclusive" : ""} ${isQuotaAwareApiKeyAccount ? "api-key-usage-account" : ""} ${isSponsorApiKeyAccount ? "sponsor-api-account" : ""}`}
+          >
           <div className="card-top">
             <div className="card-select">
               <input
@@ -9550,10 +9840,11 @@ export function CodexAccountsContent() {
               {displayPlanLabel}
             </span>
           </div>
-          {(meta.accountContextText ||
-            isInLocalAccess ||
-            (!isApiKeyAccount && hasCodexAccountNoteDetails(account)) ||
-            resetCreditControls) && (
+          {!isPendingOAuthAccount &&
+            (meta.accountContextText ||
+              isInLocalAccess ||
+              (!isApiKeyAccount && hasCodexAccountNoteDetails(account)) ||
+              resetCreditControls) && (
             <div className="account-sub-line">
               {meta.accountContextText && (
                 <span
@@ -9572,13 +9863,20 @@ export function CodexAccountsContent() {
               {resetCreditControls}
             </div>
           )}
-          {!isApiKeyAccount && (
+          {!isApiKeyAccount && !isPendingOAuthAccount && (
             <div className="account-sub-line">
               <span className="codex-login-subline" title={signInLine}>
                 {meta.signedInWithText} | {accountIdLabel}:{" "}
                 {maskAccountText(accountIdText)}
               </span>
             </div>
+          )}
+          {isPendingOAuthAccount && (
+            <>
+              <div className="account-sub-line codex-pending-auth-note-line">
+                {renderAccountNoteButton(account)}
+              </div>
+            </>
           )}
           {isApiKeyAccount && (
             <>
@@ -9621,6 +9919,29 @@ export function CodexAccountsContent() {
               {moreTagCount > 0 && (
                 <span className="tag-pill more">+{moreTagCount}</span>
               )}
+            </div>
+          )}
+          {isPendingOAuthAccount && (
+            <div className="codex-quota-section codex-pending-quota-section">
+              <div className="quota-error-inline codex-pending-auth-action">
+                <Globe size={14} />
+                <span>
+                  {t(
+                    "codex.pendingAuth.cardHint",
+                    "备注已保存，完成 OAuth 后即可使用",
+                  )}
+                </span>
+                <button
+                  className="btn btn-sm btn-outline"
+                  onClick={() => openCodexAddModal("oauth", account)}
+                  title={t("codex.pendingAuth.authorizeAction", "授权添加")}
+                >
+                  {t("common.shared.addModal.oauth", "OAuth 授权")}
+                </button>
+              </div>
+              <div className="quota-empty">
+                {t("common.shared.quota.noData", "暂无配额数据")}
+              </div>
             </div>
           )}
           {shouldRenderQuotaSection && (
@@ -9706,7 +10027,7 @@ export function CodexAccountsContent() {
               )}
             </div>
           )}
-          {!isApiKeyAccount && (
+          {!isApiKeyAccount && !isPendingOAuthAccount && (
             <div
               className={`codex-subscription-footer ${subscriptionInfo.tone}`}
               title={subscriptionInfo.titleText}
@@ -9750,21 +10071,23 @@ export function CodexAccountsContent() {
           )}
           <div className="codex-card-bottom">
             <span className="card-date">{formatDate(account.created_at)}</span>
-            {renderAccountSpeedSelect(account)}
+            {!isPendingOAuthAccount && renderAccountSpeedSelect(account)}
             <div className="card-footer">
               <div className="card-actions">
-                <button
-                  className="card-action-btn"
-                  onClick={() => void handleLaunchCodexCli(account)}
-                  disabled={cliLaunchingAccountId === account.id}
-                  title={t("codex.cli.quickLaunch", "CLI 快速启动")}
-                >
-                  {cliLaunchingAccountId === account.id ? (
-                    <RefreshCw size={14} className="loading-spinner" />
-                  ) : (
-                    <Terminal size={14} />
-                  )}
-                </button>
+                {!isPendingOAuthAccount && (
+                  <button
+                    className="card-action-btn"
+                    onClick={() => void handleLaunchCodexCli(account)}
+                    disabled={cliLaunchingAccountId === account.id}
+                    title={t("codex.cli.quickLaunch", "CLI 快速启动")}
+                  >
+                    {cliLaunchingAccountId === account.id ? (
+                      <RefreshCw size={14} className="loading-spinner" />
+                    ) : (
+                      <Terminal size={14} />
+                    )}
+                  </button>
+                )}
                 {isNewApiAccount && (
                   <button
                     className="card-action-btn"
@@ -9812,19 +10135,21 @@ export function CodexAccountsContent() {
                     <Pencil size={14} />
                   </button>
                 )}
-                <button
-                  className={`card-action-btn ${!isCurrent ? "success" : ""}`}
-                  onClick={() => handleSwitch(account.id)}
-                  disabled={!!switching}
-                  title={t("codex.switch", "切换")}
-                >
-                  {switching === account.id ? (
-                    <RefreshCw size={14} className="loading-spinner" />
-                  ) : (
-                    <Play size={14} />
-                  )}
-                </button>
-                {(!isApiKeyAccount ||
+                {!isPendingOAuthAccount && (
+                  <button
+                    className={`card-action-btn ${!isCurrent ? "success" : ""}`}
+                    onClick={() => handleSwitch(account.id)}
+                    disabled={!!switching}
+                    title={t("codex.switch", "切换")}
+                  >
+                    {switching === account.id ? (
+                      <RefreshCw size={14} className="loading-spinner" />
+                    ) : (
+                      <Play size={14} />
+                    )}
+                  </button>
+                )}
+                {!isPendingOAuthAccount && (!isApiKeyAccount ||
                   isNewApiAccount ||
                   canRefreshApiKeyUsage(account, apiKeyUsageProvider)) && (
                   <button
@@ -10602,7 +10927,8 @@ export function CodexAccountsContent() {
           );
           const refreshableCount = groupAccounts.filter(
             (account) =>
-              !isCodexApiKeyAccount(account) || isCodexNewApiAccount(account),
+              !isCodexPendingOAuthAccount(account) &&
+              (!isCodexApiKeyAccount(account) || isCodexNewApiAccount(account)),
           ).length;
           const isGroupRefreshing = refreshingGroupId === group.id;
           const groupRefreshDisabled =
@@ -10744,6 +11070,7 @@ export function CodexAccountsContent() {
       const meta = resolveAccountMeta(account);
       const isCurrent = overviewCurrentAccountId === account.id;
       const isApiKeyAccount = isCodexApiKeyAccount(account);
+      const isPendingOAuthAccount = isCodexPendingOAuthAccount(account);
       const isNewApiAccount = isCodexNewApiAccount(account);
       const isChatCompletionsApiKey =
         isCodexChatCompletionsApiKeyAccount(account);
@@ -10752,7 +11079,7 @@ export function CodexAccountsContent() {
       const isSavingApiKeyName = savingApiKeyNameId === account.id;
       const planClass = presentation.planClass || "unknown";
       const quotaItems =
-        isApiKeyAccount && !isNewApiAccount
+        isPendingOAuthAccount || (isApiKeyAccount && !isNewApiAccount)
           ? []
           : showCodeReviewQuota
             ? presentation.quotaItems
@@ -10771,7 +11098,8 @@ export function CodexAccountsContent() {
       const accountIssueMeta = reauthErrorMeta.rawMessage
         ? reauthErrorMeta
         : quotaErrorMeta;
-      const hasQuotaError = Boolean(accountIssueMeta.rawMessage);
+      const hasQuotaError =
+        !isPendingOAuthAccount && Boolean(accountIssueMeta.rawMessage);
       const isQuotaRefreshNotice =
         !reauthErrorMeta.rawMessage &&
         quotaErrorMeta.isRefreshRequestFailure &&
@@ -10784,6 +11112,7 @@ export function CodexAccountsContent() {
           : accountIssueMeta.statusCode ||
             t("codex.quotaError.badge", "配额异常");
       const showReauthorizeAction =
+        !isPendingOAuthAccount &&
         !isApiKeyAccount &&
         hasQuotaError &&
         shouldOfferReauthorizeAction(accountIssueMeta);
@@ -10829,6 +11158,7 @@ export function CodexAccountsContent() {
       const isInLocalAccess = localAccessAccountIdSet.has(account.id);
       const subscriptionInfo = resolveSubscriptionPresentation(account);
       const showSubscriptionRefreshAction =
+        !isPendingOAuthAccount &&
         !isApiKeyAccount &&
         (subscriptionInfo.bucket === "missing" ||
           subscriptionInfo.bucket === "expired");
@@ -10839,7 +11169,7 @@ export function CodexAccountsContent() {
       return (
         <tr
           key={groupKey ? `${groupKey}-${account.id}` : account.id}
-          className={`${isCurrent ? "current" : ""} ${isNewApiAccount ? "new-api-exclusive" : ""} ${isQuotaAwareApiKeyAccount ? "api-key-usage-account" : ""} ${isSponsorApiKeyAccount ? "sponsor-api-account" : ""}`}
+          className={`${isCurrent ? "current" : ""} ${isPendingOAuthAccount ? "pending-oauth-account" : ""} ${isNewApiAccount ? "new-api-exclusive" : ""} ${isQuotaAwareApiKeyAccount ? "api-key-usage-account" : ""} ${isSponsorApiKeyAccount ? "sponsor-api-account" : ""}`}
         >
           <td>
             <input
@@ -10886,12 +11216,13 @@ export function CodexAccountsContent() {
                     {t("codex.current", "当前")}
                   </span>
                 )}
-                {renderAccountSpeedSelect(account, true)}
+                {!isPendingOAuthAccount && renderAccountSpeedSelect(account, true)}
               </div>
-              {(meta.accountContextText ||
-                isInLocalAccess ||
-                (!isApiKeyAccount && hasCodexAccountNoteDetails(account)) ||
-                resetCreditControls) && (
+              {!isPendingOAuthAccount &&
+                (meta.accountContextText ||
+                  isInLocalAccess ||
+                  (!isApiKeyAccount && hasCodexAccountNoteDetails(account)) ||
+                  resetCreditControls) && (
                 <div className="account-sub-line codex-account-meta-inline">
                   {meta.accountContextText && (
                     <span
@@ -10910,13 +11241,29 @@ export function CodexAccountsContent() {
                   {resetCreditControls}
                 </div>
               )}
-              {!isApiKeyAccount && (
+              {!isApiKeyAccount && !isPendingOAuthAccount && (
                 <div className="account-sub-line codex-account-meta-inline">
                   <span className="codex-login-subline" title={signInLine}>
                     {meta.signedInWithText} | {accountIdLabel}:{" "}
                     {maskAccountText(accountIdText)}
                   </span>
                 </div>
+              )}
+              {isPendingOAuthAccount && (
+                <>
+                  <div className="account-sub-line codex-account-meta-inline codex-pending-auth-note-line">
+                    {renderAccountNoteButton(account)}
+                  </div>
+                  <div className="codex-pending-auth-card-hint table">
+                    <Globe size={14} />
+                    <span>
+                      {t(
+                        "codex.pendingAuth.cardHint",
+                        "备注已保存，完成 OAuth 后即可使用",
+                      )}
+                    </span>
+                  </div>
+                </>
               )}
               {isApiKeyAccount && (
                 <>
@@ -10975,7 +11322,9 @@ export function CodexAccountsContent() {
             </span>
           </td>
           <td>
-            {isApiKeyAccount ? (
+            {isPendingOAuthAccount ? (
+              <span className="codex-subscription-table-empty">-</span>
+            ) : isApiKeyAccount ? (
               isNewApiAccount ? (
                 <div
                   className="codex-subscription-table-cell"
@@ -11023,7 +11372,29 @@ export function CodexAccountsContent() {
             )}
           </td>
           <td>
-            {showApiKeyUsagePanel ? (
+            {isPendingOAuthAccount ? (
+              <div className="quota-grid">
+                <div className="quota-error-inline table codex-pending-auth-action">
+                  <Globe size={12} />
+                  <span>
+                    {t(
+                      "codex.pendingAuth.cardHint",
+                      "备注已保存，完成 OAuth 后即可使用",
+                    )}
+                  </span>
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={() => openCodexAddModal("oauth", account)}
+                    title={t("codex.pendingAuth.authorizeAction", "授权添加")}
+                  >
+                    {t("common.shared.addModal.oauth", "OAuth 授权")}
+                  </button>
+                </div>
+                <span style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                  {t("common.shared.quota.noData", "暂无配额数据")}
+                </span>
+              </div>
+            ) : showApiKeyUsagePanel ? (
               renderApiKeyUsagePanel(account, apiKeyUsageProvider, "table")
             ) : isChatCompletionsApiKey ? (
               <span className="codex-subscription-table-empty">-</span>
@@ -11100,18 +11471,20 @@ export function CodexAccountsContent() {
           </td>
           <td className="sticky-action-cell table-action-cell">
             <div className="action-buttons">
-              <button
-                className="action-btn"
-                onClick={() => void handleLaunchCodexCli(account)}
-                disabled={cliLaunchingAccountId === account.id}
-                title={t("codex.cli.quickLaunch", "CLI 快速启动")}
-              >
-                {cliLaunchingAccountId === account.id ? (
-                  <RefreshCw size={14} className="loading-spinner" />
-                ) : (
-                  <Terminal size={14} />
-                )}
-              </button>
+              {!isPendingOAuthAccount && (
+                <button
+                  className="action-btn"
+                  onClick={() => void handleLaunchCodexCli(account)}
+                  disabled={cliLaunchingAccountId === account.id}
+                  title={t("codex.cli.quickLaunch", "CLI 快速启动")}
+                >
+                  {cliLaunchingAccountId === account.id ? (
+                    <RefreshCw size={14} className="loading-spinner" />
+                  ) : (
+                    <Terminal size={14} />
+                  )}
+                </button>
+              )}
               {isNewApiAccount && (
                 <button
                   className="action-btn"
@@ -11159,21 +11532,24 @@ export function CodexAccountsContent() {
                   <Pencil size={14} />
                 </button>
               )}
-              <button
-                className={`action-btn ${!isCurrent ? "success" : ""}`}
-                onClick={() => handleSwitch(account.id)}
-                disabled={!!switching}
-                title={t("codex.switch", "切换")}
-              >
-                {switching === account.id ? (
-                  <RefreshCw size={14} className="loading-spinner" />
-                ) : (
-                  <Play size={14} />
-                )}
-              </button>
-              {(!isApiKeyAccount ||
-                isNewApiAccount ||
-                canRefreshApiKeyUsage(account, apiKeyUsageProvider)) && (
+              {!isPendingOAuthAccount && (
+                <button
+                  className={`action-btn ${!isCurrent ? "success" : ""}`}
+                  onClick={() => handleSwitch(account.id)}
+                  disabled={!!switching}
+                  title={t("codex.switch", "切换")}
+                >
+                  {switching === account.id ? (
+                    <RefreshCw size={14} className="loading-spinner" />
+                  ) : (
+                    <Play size={14} />
+                  )}
+                </button>
+              )}
+              {!isPendingOAuthAccount &&
+                (!isApiKeyAccount ||
+                  isNewApiAccount ||
+                  canRefreshApiKeyUsage(account, apiKeyUsageProvider)) && (
                 <button
                   className="action-btn"
                   onClick={() =>
@@ -11234,7 +11610,8 @@ export function CodexAccountsContent() {
       const groupAccounts = resolveGroupAccounts(group);
       const refreshableCount = groupAccounts.filter(
         (account) =>
-          !isCodexApiKeyAccount(account) || isCodexNewApiAccount(account),
+          !isCodexPendingOAuthAccount(account) &&
+          (!isCodexApiKeyAccount(account) || isCodexNewApiAccount(account)),
       ).length;
       const isGroupRefreshing = refreshingGroupId === group.id;
       const groupRefreshDisabled =
@@ -13333,16 +13710,21 @@ export function CodexAccountsContent() {
                   </button>
                 </div>
                 <div className="modal-body">
-                  <MfaQuickCodeSelect />
+                  {addTab !== "oauth" && <MfaQuickCodeSelect />}
                   {addTab === "oauth" && (
                     <div className="add-section">
                       {reauthTargetEmail && (
                         <div className="oauth-link codex-reauth-email-block">
                           <label>
-                            {t(
-                              "codex.oauth.reauthEmailLabel",
-                              "本次重新授权账号",
-                            )}
+                            {isReauthTargetPendingOAuth
+                              ? t(
+                                  "codex.pendingAuth.emailLabel",
+                                  "待授权账号",
+                                )
+                              : t(
+                                  "codex.oauth.reauthEmailLabel",
+                                  "本次重新授权账号",
+                                )}
                           </label>
                           <div className="oauth-url-box">
                             <input
@@ -13375,6 +13757,83 @@ export function CodexAccountsContent() {
                               )}
                             </button>
                           </div>
+                        </div>
+                      )}
+                      {reauthTargetAccount && (
+                        <div className="codex-reauth-note-summary">
+                          {renderAccountNoteButton(reauthTargetAccount)}
+                        </div>
+                      )}
+                      {shouldShowPendingOAuthDraftForm && (
+                        <div className="codex-pending-oauth-draft">
+                          <div className="oauth-link">
+                            <label>
+                              {t(
+                                "codex.pendingAuth.emailLabel",
+                                "待授权账号",
+                              )}
+                            </label>
+                            <div className="oauth-url-box oauth-manual-input">
+                              <input
+                                type="email"
+                                value={pendingOAuthEmailInput}
+                                onChange={(event) => {
+                                  setPendingOAuthEmailInput(event.target.value);
+                                  setPendingOAuthFieldErrors((prev) => ({
+                                    ...prev,
+                                    email: undefined,
+                                  }));
+                                  setAddStatus("idle");
+                                  setAddMessage("");
+                                }}
+                                placeholder={t(
+                                  "codex.pendingAuth.emailPlaceholder",
+                                  "输入 OpenAI 账号邮箱",
+                                )}
+                                disabled={
+                                  savingPendingOAuthAccount ||
+                                  isReauthTargetPendingOAuth
+                                }
+                              />
+                            </div>
+                            {pendingOAuthFieldErrors.email && (
+                              <span className="codex-account-note-field-error">
+                                {pendingOAuthFieldErrors.email}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className={`codex-account-note-chip ${pendingOAuthHasNoteDetails ? "has-note" : "empty-note"}`}
+                            onClick={openPendingOAuthNoteModal}
+                            disabled={savingPendingOAuthAccount}
+                          >
+                            <FileText size={12} />
+                            <span>
+                              {pendingOAuthHasNoteDetails
+                                ? t("codex.accountNote.short", "账号备注")
+                                : t("codex.accountNote.addShort", "加备注")}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-full"
+                            onClick={() => void handleSavePendingOAuthAccount()}
+                            disabled={
+                              savingPendingOAuthAccount ||
+                              !pendingOAuthEmailInput.trim()
+                            }
+                          >
+                            {savingPendingOAuthAccount ? (
+                              <RefreshCw size={16} className="loading-spinner" />
+                            ) : (
+                              <FileText size={16} />
+                            )}
+                            {t(
+                              "codex.pendingAuth.saveDraft",
+                              "保存待授权卡片",
+                            )}
+                          </button>
                         </div>
                       )}
                       <p className="section-desc">
@@ -15991,7 +16450,7 @@ export function CodexAccountsContent() {
             onSave={handleSaveTags}
           />
 
-          {editingAccountNoteAccount && (
+          {activeAccountNoteMode && (
             <div className="modal-overlay">
               <div
                 className="modal codex-account-note-modal"
@@ -16003,7 +16462,7 @@ export function CodexAccountsContent() {
                     className="modal-close"
                     onClick={closeAccountNoteModal}
                     aria-label={t("common.close", "关闭")}
-                    disabled={savingAccountNote}
+                    disabled={activeAccountNoteSaving}
                   >
                     <X />
                   </button>
@@ -16015,10 +16474,7 @@ export function CodexAccountsContent() {
                   />
                   <p className="codex-account-note-desc">
                     {t("codex.accountNote.desc", {
-                      account: maskAccountText(
-                        resolvePresentation(editingAccountNoteAccount)
-                          .displayName,
-                      ),
+                      account: maskAccountText(activeAccountNoteDisplayName),
                       defaultValue:
                         "给 {{account}} 填写 2FA、密码、手机号和其他备注。",
                     })}
@@ -16035,32 +16491,41 @@ export function CodexAccountsContent() {
                             : ""
                         }`}
                         type={accountNoteSecretVisible ? "text" : "password"}
-                        value={editingAccountNoteForm.twoFactorSecret}
+                        value={activeAccountNoteForm.twoFactorSecret}
                         onChange={(event) => {
-                          setEditingAccountNoteForm((prev) => ({
-                            ...prev,
+                          updateActiveAccountNoteForm({
                             twoFactorSecret: event.target.value,
-                          }));
-                          setAccountNoteFieldErrors((prev) => ({
-                            ...prev,
-                            twoFactorSecret: undefined,
-                          }));
-                          setAccountNoteError(null);
+                          });
                         }}
                         placeholder={t(
                           "codex.accountNote.twoFactorSecretPlaceholder",
                           "Base32 secret 或 otpauth:// 链接",
                         )}
-                        disabled={savingAccountNote}
+                        disabled={activeAccountNoteSaving}
                         autoFocus
                       />
+                      <button
+                        type="button"
+                        className="codex-account-note-icon-btn"
+                        onClick={() => {
+                          refreshSavedMfaRecords();
+                          setAccountNoteMfaPickerOpen((prev) => !prev);
+                        }}
+                        disabled={
+                          activeAccountNoteSaving || savedMfaRecords.length === 0
+                        }
+                        aria-label={t("mfaQuick.selectLabel", "选择 2FA 秘钥")}
+                        title={t("mfaQuick.selectLabel", "选择 2FA 秘钥")}
+                      >
+                        <ChevronDown size={14} />
+                      </button>
                       <button
                         type="button"
                         className="codex-account-note-icon-btn"
                         onClick={() =>
                           setAccountNoteSecretVisible((prev) => !prev)
                         }
-                        disabled={savingAccountNote}
+                        disabled={activeAccountNoteSaving}
                         aria-label={
                           accountNoteSecretVisible
                             ? t("codex.accountNote.hide", "隐藏")
@@ -16084,12 +16549,12 @@ export function CodexAccountsContent() {
                         onClick={() =>
                           void copyAccountNoteValue(
                             "modal:twoFactorSecret",
-                            editingAccountNoteForm.twoFactorSecret,
+                            activeAccountNoteForm.twoFactorSecret,
                           )
                         }
                         disabled={
-                          savingAccountNote ||
-                          !editingAccountNoteForm.twoFactorSecret.trim()
+                          activeAccountNoteSaving ||
+                          !activeAccountNoteForm.twoFactorSecret.trim()
                         }
                         aria-label={t("common.copy", "复制")}
                         title={t("common.copy", "复制")}
@@ -16101,27 +16566,58 @@ export function CodexAccountsContent() {
                         )}
                       </button>
                     </div>
+                    {accountNoteMfaPickerOpen && savedMfaRecords.length > 0 ? (
+                      <div
+                        className="codex-account-note-mfa-picker"
+                        role="listbox"
+                        aria-label={t("mfaQuick.selectLabel", "选择 2FA 秘钥")}
+                      >
+                        {savedMfaRecords.map((record) => (
+                          <button
+                            key={record.id}
+                            type="button"
+                            className="codex-account-note-mfa-option"
+                            onClick={() => {
+                              updateActiveAccountNoteForm({
+                                twoFactorSecret: record.secret,
+                              });
+                              setAccountNoteMfaPickerOpen(false);
+                            }}
+                          >
+                            <span>
+                              {formatMfaRecordOption(
+                                record,
+                                t("mfaQuick.unnamedSecret", "未命名秘钥"),
+                              )}
+                            </span>
+                            {record.remark?.trim() ? (
+                              <em>{record.remark.trim()}</em>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     {accountNoteFieldErrors.twoFactorSecret ? (
                       <span className="codex-account-note-field-error">
                         {accountNoteFieldErrors.twoFactorSecret}
                       </span>
-                    ) : editingAccountNoteForm.twoFactorSecret.trim() &&
-                      editingAccountNoteOtpToken ? (
+                    ) : activeAccountNoteForm.twoFactorSecret.trim() &&
+                      activeAccountNoteOtpToken ? (
                       <div className="codex-account-note-otp-preview">
                         <span>
                           {t("codex.accountNote.currentOtp", "当前验证码")}
                         </span>
-                        <strong>{editingAccountNoteOtpToken}</strong>
+                        <strong>{activeAccountNoteOtpToken}</strong>
                         <button
                           type="button"
                           className="codex-account-note-icon-btn"
                           onClick={() =>
                             void copyAccountNoteValue(
                               "modal:otp",
-                              editingAccountNoteOtpToken,
+                              activeAccountNoteOtpToken,
                             )
                           }
-                          disabled={savingAccountNote}
+                          disabled={activeAccountNoteSaving}
                           aria-label={t("common.copy", "复制")}
                           title={t("common.copy", "复制")}
                         >
@@ -16138,7 +16634,7 @@ export function CodexAccountsContent() {
                           })}
                         </em>
                       </div>
-                    ) : editingAccountNoteForm.twoFactorSecret.trim() ? (
+                    ) : activeAccountNoteForm.twoFactorSecret.trim() ? (
                       <span className="codex-account-note-field-error">
                         {t(
                           "codex.accountNote.twoFactorSecretInvalid",
@@ -16155,19 +16651,17 @@ export function CodexAccountsContent() {
                       <input
                         className="codex-account-note-input"
                         type={accountNotePasswordVisible ? "text" : "password"}
-                        value={editingAccountNoteForm.accountPassword}
+                        value={activeAccountNoteForm.accountPassword}
                         onChange={(event) => {
-                          setEditingAccountNoteForm((prev) => ({
-                            ...prev,
+                          updateActiveAccountNoteForm({
                             accountPassword: event.target.value,
-                          }));
-                          setAccountNoteError(null);
+                          });
                         }}
                         placeholder={t(
                           "codex.accountNote.passwordPlaceholder",
                           "登录密码或临时密码",
                         )}
-                        disabled={savingAccountNote}
+                        disabled={activeAccountNoteSaving}
                       />
                       <button
                         type="button"
@@ -16175,7 +16669,7 @@ export function CodexAccountsContent() {
                         onClick={() =>
                           setAccountNotePasswordVisible((prev) => !prev)
                         }
-                        disabled={savingAccountNote}
+                        disabled={activeAccountNoteSaving}
                         aria-label={
                           accountNotePasswordVisible
                             ? t("codex.accountNote.hide", "隐藏")
@@ -16199,12 +16693,12 @@ export function CodexAccountsContent() {
                         onClick={() =>
                           void copyAccountNoteValue(
                             "modal:password",
-                            editingAccountNoteForm.accountPassword,
+                            activeAccountNoteForm.accountPassword,
                           )
                         }
                         disabled={
-                          savingAccountNote ||
-                          !editingAccountNoteForm.accountPassword.trim()
+                          activeAccountNoteSaving ||
+                          !activeAccountNoteForm.accountPassword.trim()
                         }
                         aria-label={t("common.copy", "复制")}
                         title={t("common.copy", "复制")}
@@ -16225,19 +16719,17 @@ export function CodexAccountsContent() {
                       <input
                         className="codex-account-note-input"
                         type="tel"
-                        value={editingAccountNoteForm.phoneNumber}
+                        value={activeAccountNoteForm.phoneNumber}
                         onChange={(event) => {
-                          setEditingAccountNoteForm((prev) => ({
-                            ...prev,
+                          updateActiveAccountNoteForm({
                             phoneNumber: event.target.value,
-                          }));
-                          setAccountNoteError(null);
+                          });
                         }}
                         placeholder={t(
                           "codex.accountNote.phoneNumberPlaceholder",
                           "绑定手机号",
                         )}
-                        disabled={savingAccountNote}
+                        disabled={activeAccountNoteSaving}
                       />
                       <button
                         type="button"
@@ -16245,12 +16737,12 @@ export function CodexAccountsContent() {
                         onClick={() =>
                           void copyAccountNoteValue(
                             "modal:phoneNumber",
-                            editingAccountNoteForm.phoneNumber,
+                            activeAccountNoteForm.phoneNumber,
                           )
                         }
                         disabled={
-                          savingAccountNote ||
-                          !editingAccountNoteForm.phoneNumber.trim()
+                          activeAccountNoteSaving ||
+                          !activeAccountNoteForm.phoneNumber.trim()
                         }
                         aria-label={t("common.copy", "复制")}
                         title={t("common.copy", "复制")}
@@ -16269,19 +16761,17 @@ export function CodexAccountsContent() {
                     </span>
                     <textarea
                       className="codex-account-note-textarea"
-                      value={editingAccountNoteForm.note}
+                      value={activeAccountNoteForm.note}
                       onChange={(event) => {
-                        setEditingAccountNoteForm((prev) => ({
-                          ...prev,
+                        updateActiveAccountNoteForm({
                           note: event.target.value,
-                        }));
-                        setAccountNoteError(null);
+                        });
                       }}
                       placeholder={t(
                         "codex.accountNote.placeholder",
                         "其他交付备注、辅助邮箱或账号说明",
                       )}
-                      disabled={savingAccountNote}
+                      disabled={activeAccountNoteSaving}
                       rows={4}
                     />
                   </label>
@@ -16290,16 +16780,16 @@ export function CodexAccountsContent() {
                   <button
                     className="btn btn-secondary"
                     onClick={closeAccountNoteModal}
-                    disabled={savingAccountNote}
+                    disabled={activeAccountNoteSaving}
                   >
                     {t("common.cancel", "取消")}
                   </button>
                   <button
                     className="btn btn-primary"
                     onClick={() => void handleSubmitAccountNote()}
-                    disabled={savingAccountNote}
+                    disabled={activeAccountNoteSaving}
                   >
-                    {savingAccountNote
+                    {activeAccountNoteSaving
                       ? t("common.saving", "保存中...")
                       : t("common.save", "保存")}
                   </button>

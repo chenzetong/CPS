@@ -536,7 +536,7 @@
     "packageInstallConfirmTitle": "Install {{platform}} package",
     "packageInstallConfirmDesc": "{{platform}} needs its platform package before it can open. Version {{version}}, size {{size}}.",
     "packageInstallNotReady": "The package was processed, but the runtime is not ready yet.",
-    "packageInstallCardTitle": "{{platform}} package is not installed",
+    "packageInstallCardTitle": "{{platform}} account management component is not installed",
     "packageInstallCardDesc": "Download version {{version}}, size {{size}}. This platform will open after installation.",
     "packageUpdateAvailableShort": "Update",
     "packageRepairRequired": "Repair",
@@ -587,8 +587,8 @@
     "packageOperationFailedFriendly": "Platform package operation failed. Please try again later.",
     "packageOperationCanceled": "Platform package operation canceled.",
     "packageOperationRetryHint": "You can click the button below to try again.",
-    "packagePageRepairTitle": "{{platform}} package needs repair",
-    "packagePageInstallTitle": "{{platform}} package is not installed",
+    "packagePageRepairTitle": "{{platform}} account management component needs repair",
+    "packagePageInstallTitle": "{{platform}} account management component is not installed",
     "packagePageInstallDesc": "Install directly from this page, or use the top-right package actions to install or repair before managing accounts. Accounts, OAuth, switching, and background refresh will not load before installation.",
     "packageDashboardStateDesc": "Open the {{platform}} page to install directly, or use the top-right actions to update, repair, or view the changelog.",
     "packageOpenPlatformPage": "Open platform page",
@@ -1023,6 +1023,8 @@
       "appAutoLaunchDesc": "Automatically start the app after system sign-in",
       "tokenKeeper": "Account authorization keep-alive",
       "tokenKeeperDesc": "When enabled, the app refreshes nearly expired account authorization in the background after a delay and in small batches. When disabled, automatic keep-alive stops; manual refresh, switching, and import still work.",
+      "errorReporting": "Telemetry diagnostics",
+      "errorReportingDesc": "On by default and used only to troubleshoot startup, UI, and platform package issues. Turning it off stops telemetry submissions. Events are redacted and do not include passwords, tokens, 2FA secrets, phone numbers, or other sensitive data.",
       "platformQuickSettingsTitle": "Platform settings",
       "platformQuickSettingsDesc": "Platform settings now live on each platform page. Open them quickly here.",
       "platformQuickSettingsItemDesc": "Platform page",
@@ -1191,7 +1193,10 @@
       "claudeAutoRefreshDesc": "Automatically refresh cached quota for Claude accounts in the background.",
       "claudeAppPath": "Claude Desktop launch target",
       "claudeAppPathDesc": "The default profile can use a Microsoft Store target; multi-instance profiles need the real Claude.exe.",
-      "platformQuickSettingsEntryTitle": "{{platform}} settings entry"
+      "platformQuickSettingsEntryTitle": "{{platform}} settings entry",
+      "antigravityLaunchOnSwitch": "Launch Antigravity IDE on switch",
+      "antigravityLaunchOnSwitchLabel": "Start or restart app after switch",
+      "antigravityLaunchOnSwitchDesc": "When off, switching only writes the default Antigravity IDE account data. It will not close, start, or restart the app, which fits CLI-only workflows."
     },
     "network": {
       "apiTitle": "Antigravity Cockpit API",
@@ -1924,7 +1929,8 @@
     "installFailed": "System installation failed. Try again later or download manually.",
     "restartRequiredAfterInstall": "The update is installed. Restart the app manually to finish switching.",
     "stoppingApiService": "Stopping API service...",
-    "stopApiServiceFailed": "Couldn't stop the API service. Disable it first and try again."
+    "stopApiServiceFailed": "Couldn't stop the API service. Disable it first and try again.",
+    "stopApiServiceFailedContinue": "The API service did not stop cleanly. Restarting anyway..."
   },
   "closeDialog": {
     "title": "Close Window",
@@ -2327,7 +2333,8 @@
         "selected": "In API Service",
         "available": "Regular Overview",
         "manageMembers": "Manage Members",
-        "save": "Save Collection"
+        "save": "Save Collection",
+        "pendingOAuthUnsupported": "Finish OAuth authorization before adding this pending account to the API service"
       },
       "oauthBinding": {
         "desc": "Optional. Only OAuth accounts with a refresh_token can be selected. Without a link, the API service keeps the original API-key flow; after linking, sign-in uses the OAuth account and Provider uses the API service config.",
@@ -3545,6 +3552,18 @@
       "completed": "Delete complete",
       "preparing": "Preparing delete task...",
       "retryFailed": "Retry failed"
+    },
+    "pendingAuth": {
+      "badge": "Pending auth",
+      "emailRequired": "Enter the account email",
+      "saving": "Saving pending account...",
+      "saved": "Pending account saved",
+      "saveFailed": "Failed to save pending account: {{error}}",
+      "emailLabel": "Pending account",
+      "emailPlaceholder": "Enter the OpenAI account email",
+      "saveDraft": "Save pending card",
+      "authorizeAction": "Authorize",
+      "cardHint": "Notes saved. Finish OAuth to use this account."
     }
   },
   "codebuddy": {

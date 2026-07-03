@@ -55,6 +55,13 @@ export interface PlatformPackageState {
   changelog: PlatformPackageChangelogEntry[];
 }
 
+export interface PlatformPackageBootstrapState {
+  running: boolean;
+  completed: boolean;
+  installedPlatforms: PlatformId[];
+  errorMessage?: string | null;
+}
+
 export interface PlatformPackageVersionEntry {
   platformId: PlatformId;
   version: string;

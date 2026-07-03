@@ -1,12 +1,17 @@
 use crate::modules::platform_package::{
-    self, PlatformPackageState, PlatformPackageUiEntry, PlatformPackageVersionHistory,
-    PlatformUiDevConfig,
+    self, PlatformPackageBootstrapState, PlatformPackageState, PlatformPackageUiEntry,
+    PlatformPackageVersionHistory, PlatformUiDevConfig,
 };
 use tauri::AppHandle;
 
 #[tauri::command]
 pub fn list_platform_packages(app: AppHandle) -> Result<Vec<PlatformPackageState>, String> {
     platform_package::list_platform_packages(&app)
+}
+
+#[tauri::command]
+pub fn get_platform_package_bootstrap_state() -> PlatformPackageBootstrapState {
+    platform_package::get_platform_package_bootstrap_state()
 }
 
 #[tauri::command]

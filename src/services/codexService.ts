@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { callPlatformAdapter } from './platformAdapterService';
 import {
   CodexAccount,
   CodexAccountNoteUpdate,
@@ -381,6 +382,16 @@ export async function addCodexAccountWithApiKey(
     apiModelVisionSupport: apiModelVisionSupport ?? {},
     apiVisionRoutingModel: apiVisionRoutingModel ?? null,
     accountName: accountName ?? null,
+  });
+}
+
+export async function createPendingCodexOAuthAccount(
+  email: string,
+  update: CodexAccountNoteUpdate,
+): Promise<CodexAccount> {
+  return await callPlatformAdapter<CodexAccount>('codex', 'accounts.createPendingOAuth', {
+    email,
+    ...update,
   });
 }
 

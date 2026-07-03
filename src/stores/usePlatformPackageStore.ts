@@ -1,9 +1,14 @@
 import { create } from 'zustand';
 import type { PlatformId } from '../types/platform';
-import type { PlatformPackageState, PlatformPackageVersionHistory } from '../types/platformPackage';
+import type {
+  PlatformPackageBootstrapState,
+  PlatformPackageState,
+  PlatformPackageVersionHistory,
+} from '../types/platformPackage';
 import {
   cancelPlatformPackageOperation,
   checkPlatformPackageUpdate,
+  getPlatformPackageBootstrapState,
   installPlatformPackage,
   installPlatformPackageFromLocalZip,
   installPlatformPackageVersion,
@@ -335,7 +340,12 @@ interface PlatformPackageStoreState {
   initialized: boolean;
   loading: boolean;
   error: string | null;
+  bootstrapRunning: boolean;
+  bootstrapCompleted: boolean;
+  bootstrapError: string | null;
   refresh: () => Promise<PlatformPackageState[]>;
+  refreshBootstrapState: () => Promise<PlatformPackageBootstrapState>;
+  setBootstrapState: (state: PlatformPackageBootstrapState) => void;
   prepareUpdates: () => Promise<PlatformPackageState[] | null>;
   checkUpdate: (platformId: PlatformId) => Promise<PlatformPackageState>;
   installPackage: (platformId: PlatformId) => Promise<PlatformPackageState>;
@@ -549,6 +559,9 @@ export const usePlatformPackageStore = create<PlatformPackageStoreState>((set, g
   initialized: false,
   loading: false,
   error: null,
+  bootstrapRunning: true,
+  bootstrapCompleted: false,
+  bootstrapError: null,
 
   refresh: async () => {
     set({ loading: true, error: null });
@@ -568,6 +581,20 @@ export const usePlatformPackageStore = create<PlatformPackageStoreState>((set, g
       set({ loading: false, initialized: false, error: message });
       throw error;
     }
+  },
+
+  refreshBootstrapState: async () => {
+    const bootstrapState = await getPlatformPackageBootstrapState();
+    get().setBootstrapState(bootstrapState);
+    return bootstrapState;
+  },
+
+  setBootstrapState: (bootstrapState) => {
+    set({
+      bootstrapRunning: bootstrapState.running,
+      bootstrapCompleted: bootstrapState.completed,
+      bootstrapError: bootstrapState.errorMessage ?? null,
+    });
   },
 
   prepareUpdates: async () => {
@@ -683,11 +710,17 @@ export const usePlatformPackageStore = create<PlatformPackageStoreState>((set, g
 
   isRuntimeReady: (platformId) => {
     const state = get();
+    if (state.bootstrapRunning) {
+      return false;
+    }
     return isPlatformRuntimeReady(state.packages, platformId);
   },
 
   canOpenPlatform: (platformId) => {
     const state = get();
+    if (state.bootstrapRunning) {
+      return false;
+    }
     return isPlatformRuntimeReady(state.packages, platformId);
   },
 }));

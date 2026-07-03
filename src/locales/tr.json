@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "{{platform}} paketini kur",
     "packageInstallConfirmDesc": "{{platform}} açılmadan önce platform paketini indirmelidir. Sürüm {{version}}, boyut {{size}}.",
     "packageInstallNotReady": "Paket işlendi, ancak çalışma zamanı henüz hazır değil.",
-    "packageInstallCardTitle": "{{platform}} paketi kurulu değil",
+    "packageInstallCardTitle": "{{platform}} hesap yönetimi bileşeni kurulu değil",
     "packageInstallCardDesc": "Sürüm {{version}}, boyut {{size}} indirilecek. Kurulumdan sonra platform açılacak.",
     "packageUpdateAvailableShort": "Güncelle",
     "packageRepairRequired": "Onar",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "Platform paketi işlemi başarısız oldu. Lütfen daha sonra tekrar deneyin.",
     "packageOperationCanceled": "Platform paketi işlemi iptal edildi.",
     "packageOperationRetryHint": "Aşağıdaki düğmeyle yeniden deneyebilirsiniz.",
-    "packagePageRepairTitle": "{{platform}} paketinin onarılması gerekiyor",
-    "packagePageInstallTitle": "{{platform}} paketi yüklü değil",
+    "packagePageRepairTitle": "{{platform}} hesap yönetimi bileşeninin onarılması gerekiyor",
+    "packagePageInstallTitle": "{{platform}} hesap yönetimi bileşeni kurulu değil",
     "packagePageInstallDesc": "Bu sayfadan doğrudan kurabilir veya hesapları yönetmeden önce sağ üstteki paket işlemleriyle kurulum ya da onarım yapabilirsiniz. Kurulumdan önce hesaplar, OAuth, geçiş ve arka plan yenileme yüklenmez.",
     "packageDashboardStateDesc": "Doğrudan kurmak için {{platform}} sayfasını açın veya güncelleme, onarım ya da değişiklik günlüğü için sağ üstteki işlemleri kullanın.",
     "packageOpenPlatformPage": "Platform sayfasını aç",
@@ -827,6 +827,8 @@
       "appAutoLaunchDesc": "Sistem oturumundan sonra uygulamayı otomatik başlat",
       "tokenKeeper": "Hesap yetkilendirmesini canlı tut",
       "tokenKeeperDesc": "Açıldığında uygulama süresi yaklaşan hesap yetkilendirmelerini gecikmeli ve küçük gruplar halinde arka planda yeniler; kapatıldığında otomatik bakım durur, elle yenileme, geçiş ve içe aktarma çalışmaya devam eder.",
+      "errorReporting": "Telemetri tanılama",
+      "errorReportingDesc": "Varsayılan olarak açıktır ve yalnızca başlatma, UI ve platform paketi sorunlarını incelemek için kullanılır. Kapatıldığında telemetri gönderilmez. Olaylar ayıklanır; parola, token, 2FA sırrı, telefon veya diğer hassas verileri içermez.",
       "platformQuickSettingsTitle": "Platform ayarları",
       "platformQuickSettingsDesc": "Her platformun ayarları artık kendi sayfasında. Buradan hızlıca açın.",
       "platformQuickSettingsItemDesc": "Platform sayfası",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "Claude hesaplarının kota önbelleğini arka planda otomatik yeniler.",
       "claudeAppPath": "Claude Desktop başlatma hedefi",
       "claudeAppPathDesc": "Varsayılan profil Microsoft Store hedefi kullanabilir; çoklu örnekler gerçek Claude.exe ister.",
-      "platformQuickSettingsEntryTitle": "{{platform}} ayar girişi"
+      "platformQuickSettingsEntryTitle": "{{platform}} ayar girişi",
+      "antigravityLaunchOnSwitch": "Geciste Antigravity IDE ac",
+      "antigravityLaunchOnSwitchLabel": "Gecisten sonra uygulamayi ac veya yeniden baslat",
+      "antigravityLaunchOnSwitchDesc": "Kapaliyken gecis yalnizca varsayilan Antigravity IDE hesap verisini yazar. Uygulama kapatilmaz, acilmaz veya yeniden baslatilmaz; yalnizca CLI kullanan akislar icin uygundur."
     },
     "network": {
       "apiTitle": "Yerçekimine Karşı Kokpit API'si",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "API hizmeti durduruluyor...",
     "stopApiServiceFailed": "API hizmeti durdurulamadı. Önce devre dışı bırakıp tekrar deneyin.",
     "skipThisVersion": "Bu sürümü atla",
-    "skipFailed": "Bu güncelleme atlanamadı: {{error}}"
+    "skipFailed": "Bu güncelleme atlanamadı: {{error}}",
+    "stopApiServiceFailedContinue": "API hizmeti düzgün kapanmadı. Yine de yeniden başlatılıyor..."
   },
   "closeDialog": {
     "title": "Pencereyi kapat",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "Free hesap proxy'si kararsız olabilir. Dikkatli kullanın.",
         "restrictFreeDisableConfirmTitle": "Free hesaplara izin ver",
         "restrictFreeDisableConfirmMessage": "Free hesap proxy'si kararsız olabilir. Kullanmak istediğinizden emin misiniz?",
-        "manageMembers": "Üyeleri yönet"
+        "manageMembers": "Üyeleri yönet",
+        "pendingOAuthUnsupported": "Bu bekleyen hesabı API hizmetine eklemeden önce OAuth yetkilendirmesini tamamlayın"
       },
       "entryAction": "API hizmetine ekle",
       "testAction": "Dene",
@@ -3347,6 +3354,18 @@
       "completed": "Silme tamamlandı",
       "preparing": "Silme görevi hazırlanıyor...",
       "retryFailed": "Hatalıları dene"
+    },
+    "pendingAuth": {
+      "badge": "Yetki bekliyor",
+      "emailRequired": "Hesap e-postasını girin",
+      "saving": "Bekleyen hesap kaydediliyor...",
+      "saved": "Bekleyen hesap kaydedildi",
+      "saveFailed": "Bekleyen hesap kaydedilemedi: {{error}}",
+      "emailLabel": "Bekleyen hesap",
+      "emailPlaceholder": "OpenAI hesap e-postasını girin",
+      "saveDraft": "Bekleyen kartı kaydet",
+      "authorizeAction": "Yetkilendir",
+      "cardHint": "Notlar kaydedildi. Kullanmak için OAuth’u tamamlayın."
     }
   },
   "githubCopilot": {

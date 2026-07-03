@@ -49,6 +49,7 @@ export interface CodexAccount {
   token_generation?: number;
   token_updated_at?: number;
   token_source_mode?: string;
+  authorization_status?: string | null;
   requires_reauth?: boolean;
   reauth_reason?: string;
   quota?: CodexQuota;
@@ -583,6 +584,24 @@ export function isCodexApiKeyAccount(account: CodexAccount): boolean {
   return (account.auth_mode || "").trim().toLowerCase() === "apikey";
 }
 
+export function isCodexPendingOAuthAccount(account: CodexAccount): boolean {
+  if (isCodexApiKeyAccount(account)) return false;
+  if ((account.authorization_status || "").trim().toLowerCase() === "pending") {
+    return true;
+  }
+  const tokens = account.tokens;
+  const hasToken = Boolean(
+    tokens?.id_token?.trim() ||
+      tokens?.access_token?.trim() ||
+      tokens?.refresh_token?.trim(),
+  );
+  return (
+    !hasToken &&
+    !(account.user_id || "").trim() &&
+    !(account.account_id || "").trim()
+  );
+}
+
 export function isCodexNewApiAccount(account: CodexAccount): boolean {
   const providerId = (account.api_provider_id || "").trim().toLowerCase();
   const planType = (account.plan_type || "").trim().toUpperCase();
@@ -664,6 +683,9 @@ function normalizeCodexAuthFilePlanType(
 }
 
 function getCodexPlanBadgeLabel(account: CodexAccount): string {
+  if (isCodexPendingOAuthAccount(account)) {
+    return "PENDING";
+  }
   if (isCodexNewApiAccount(account)) {
     return account.plan_type?.trim() || "Cockpit Api";
   }
@@ -684,6 +706,9 @@ function getCodexPlanBadgeLabel(account: CodexAccount): string {
 }
 
 function getCodexPlanBadgeClass(account: CodexAccount): string {
+  if (isCodexPendingOAuthAccount(account)) {
+    return "pending";
+  }
   if (isCodexNewApiAccount(account)) {
     return "api-key new-api-exclusive";
   }
@@ -720,6 +745,9 @@ export function getCodexPlanBadgePresentation(
 }
 
 export function getCodexPlanFilterKey(account: CodexAccount): string {
+  if (isCodexPendingOAuthAccount(account)) {
+    return "PENDING";
+  }
   return normalizeCodexPlanKey(account.plan_type).toUpperCase();
 }
 

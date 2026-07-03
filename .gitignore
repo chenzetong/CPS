@@ -13,6 +13,8 @@ dist
 platform-packages/dist/
 platform-packages/dist-ci/
 platform-packages/dist-local/
+platform-packages/bootstrap/index.json
+platform-packages/bootstrap/dist/
 platform-packages/test/dist/
 platform-packages/*/adapter/
 platform-packages/*/ui/remoteEntry.js

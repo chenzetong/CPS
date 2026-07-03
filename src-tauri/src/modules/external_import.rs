@@ -52,6 +52,71 @@ fn parse_boolean_like(value: Option<&String>) -> bool {
     matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
 }
 
+fn normalize_pending_oauth_mode(value: Option<&String>) -> String {
+    value
+        .map(|value| normalize_lookup_key(value))
+        .unwrap_or_default()
+}
+
+fn read_query_string(query: &HashMap<String, String>, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| query.get(*key))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn build_codex_pending_oauth_token(query: &HashMap<String, String>) -> Option<String> {
+    let mode = normalize_pending_oauth_mode(
+        query
+            .get("mode")
+            .or_else(|| query.get("action"))
+            .or_else(|| query.get("auth_mode"))
+            .or_else(|| query.get("authmode")),
+    );
+    if !matches!(mode.as_str(), "pending_oauth" | "oauth_pending") {
+        return None;
+    }
+
+    let email = read_query_string(query, &["email", "account_email", "accountemail"])?;
+    let mut payload = serde_json::Map::new();
+    payload.insert(
+        "mode".to_string(),
+        serde_json::Value::String("pending_oauth".to_string()),
+    );
+    payload.insert("email".to_string(), serde_json::Value::String(email));
+
+    if let Some(note) = read_query_string(query, &["note", "account_note", "accountnote"]) {
+        payload.insert("account_note".to_string(), serde_json::Value::String(note));
+    }
+    if let Some(secret) = read_query_string(
+        query,
+        &[
+            "two_factor_secret",
+            "twofactorsecret",
+            "totp_secret",
+            "totpsecret",
+        ],
+    ) {
+        payload.insert(
+            "two_factor_secret".to_string(),
+            serde_json::Value::String(secret),
+        );
+    }
+    if let Some(password) =
+        read_query_string(query, &["account_password", "accountpassword", "password"])
+    {
+        payload.insert(
+            "account_password".to_string(),
+            serde_json::Value::String(password),
+        );
+    }
+    if let Some(phone) = read_query_string(query, &["phone_number", "phonenumber", "phone"]) {
+        payload.insert("phone_number".to_string(), serde_json::Value::String(phone));
+    }
+
+    Some(serde_json::Value::Object(payload).to_string())
+}
+
 fn resolve_provider_and_page(value: &str) -> Option<(&'static str, &'static str)> {
     let normalized = normalize_lookup_key(value);
     match normalized.as_str() {
@@ -176,7 +241,7 @@ fn parse_external_import_url_with_reason(
     let (provider_id, page) = resolve_provider_and_page(provider_raw)
         .ok_or_else(|| format!("平台值不支持: {}", provider_raw))?;
 
-    let token = query
+    let mut token = query
         .get("token")
         .or_else(|| query.get("import_token"))
         .or_else(|| query.get("importtoken"))
@@ -185,6 +250,9 @@ fn parse_external_import_url_with_reason(
         .or_else(|| query.get("importpayload"))
         .map(|value| value.trim().to_string())
         .unwrap_or_default();
+    if token.is_empty() && provider_id == "codex" {
+        token = build_codex_pending_oauth_token(&query).unwrap_or_default();
+    }
     let import_url = query
         .get("import_url")
         .or_else(|| query.get("importurl"))
@@ -483,6 +551,24 @@ mod tests {
         assert_eq!(payload.provider_id, "codex");
         assert!(payload.auto_import);
         assert!(payload.activate);
+    }
+
+    #[test]
+    fn parse_codex_pending_oauth_link_without_token() {
+        let raw = "cockpit-tools://provider-import?platform=codex&mode=pending_oauth&email=pending%40example.com&account_note=handoff&two_factor_secret=JBSWY3DPEHPK3PXP&account_password=pwd&phone_number=%2B15550001111&auto_import=true";
+        let payload = parse_external_import_url(raw).expect("payload");
+        assert_eq!(payload.provider_id, "codex");
+        assert_eq!(payload.page, "codex");
+        assert_eq!(payload.import_url, None);
+        assert!(payload.auto_import);
+
+        let parsed: serde_json::Value = serde_json::from_str(&payload.token).expect("json token");
+        assert_eq!(parsed["mode"], "pending_oauth");
+        assert_eq!(parsed["email"], "pending@example.com");
+        assert_eq!(parsed["account_note"], "handoff");
+        assert_eq!(parsed["two_factor_secret"], "JBSWY3DPEHPK3PXP");
+        assert_eq!(parsed["account_password"], "pwd");
+        assert_eq!(parsed["phone_number"], "+15550001111");
     }
 
     #[test]

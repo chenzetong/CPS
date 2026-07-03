@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "Nainstalovat balíček {{platform}}",
     "packageInstallConfirmDesc": "{{platform}} před otevřením potřebuje balíček platformy. Verze {{version}}, velikost {{size}}.",
     "packageInstallNotReady": "Balíček byl zpracován, ale runtime ještě není připraven.",
-    "packageInstallCardTitle": "Balíček {{platform}} není nainstalován",
+    "packageInstallCardTitle": "Komponenta správy účtů {{platform}} není nainstalována",
     "packageInstallCardDesc": "Stáhněte verzi {{version}}, velikost {{size}}. Platforma se po instalaci otevře.",
     "packageUpdateAvailableShort": "Aktualizace",
     "packageRepairRequired": "Opravit",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "Operace s balíčkem platformy selhala. Zkuste to prosím později.",
     "packageOperationCanceled": "Operace s balíčkem platformy byla zrušena.",
     "packageOperationRetryHint": "Můžete kliknout na tlačítko níže a zkusit to znovu.",
-    "packagePageRepairTitle": "Balíček {{platform}} vyžaduje opravu",
-    "packagePageInstallTitle": "Balíček {{platform}} není nainstalován",
+    "packagePageRepairTitle": "Komponenta správy účtů {{platform}} vyžaduje opravu",
+    "packagePageInstallTitle": "Komponenta správy účtů {{platform}} není nainstalována",
     "packagePageInstallDesc": "Instalaci lze spustit přímo na této stránce, případně použít akce balíčku vpravo nahoře pro instalaci nebo opravu před správou účtů. Účty, OAuth, přepínání ani obnovování na pozadí se před instalací nenačtou.",
     "packageDashboardStateDesc": "Otevřete stránku {{platform}} pro přímou instalaci, případně použijte akce vpravo nahoře pro aktualizaci, opravu nebo zobrazení změn.",
     "packageOpenPlatformPage": "Otevřít stránku platformy",
@@ -824,6 +824,8 @@
       "appAutoLaunchDesc": "Po přihlášení do systému spustit aplikaci automaticky",
       "tokenKeeper": "Udržovat autorizaci účtů",
       "tokenKeeperDesc": "Po zapnutí aplikace po prodlevě a po dávkách obnovuje autorizace účtů, kterým brzy vyprší platnost; po vypnutí se automatická údržba zastaví a zůstane jen ruční obnovení, přepnutí a import.",
+      "errorReporting": "Telemetrická diagnostika",
+      "errorReportingDesc": "Ve výchozím stavu je zapnutá a slouží jen k řešení problémů se spuštěním, rozhraním a balíčky platforem. Po vypnutí se telemetrie neodesílá. Události jsou očištěné a neobsahují hesla, tokeny, tajné klíče 2FA, telefony ani jiná citlivá data.",
       "platformQuickSettingsTitle": "Nastavení platforem",
       "platformQuickSettingsDesc": "Nastavení každé platformy je nyní na její stránce. Otevřete je rychle zde.",
       "platformQuickSettingsItemDesc": "Stránka platformy",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "Automaticky na pozadí obnovuje mezipaměť kvóty účtů Claude.",
       "claudeAppPath": "Cíl spuštění Claude Desktop",
       "claudeAppPathDesc": "Výchozí profil může použít cíl Microsoft Store; více instancí potřebuje skutečný Claude.exe.",
-      "platformQuickSettingsEntryTitle": "{{platform}} vstup do nastavení"
+      "platformQuickSettingsEntryTitle": "{{platform}} vstup do nastavení",
+      "antigravityLaunchOnSwitch": "Spustit Antigravity IDE pri prepnuti",
+      "antigravityLaunchOnSwitchLabel": "Po prepnuti spustit nebo restartovat aplikaci",
+      "antigravityLaunchOnSwitchDesc": "Pri vypnuti prepnuti pouze zapise vychozi data uctu Antigravity IDE. Aplikace se nezavre, nespusti ani nerestartuje, vhodne pro praci pouze s CLI."
     },
     "network": {
       "apiTitle": "Antigravity Cockpit API​",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "Zastavuji službu API...",
     "stopApiServiceFailed": "Službu API se nepodařilo zastavit. Nejprve ji zakažte a zkuste to znovu.",
     "skipThisVersion": "Přeskočit tuto verzi",
-    "skipFailed": "Tuto aktualizaci se nepodařilo přeskočit: {{error}}"
+    "skipFailed": "Tuto aktualizaci se nepodařilo přeskočit: {{error}}",
+    "stopApiServiceFailedContinue": "Služba API se neukončila korektně. Přesto pokračuje restart..."
   },
   "closeDialog": {
     "title": "Zavřít okno",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "Proxy pro Free účty může být nestabilní. Používejte opatrně.",
         "restrictFreeDisableConfirmTitle": "Povolit Free účty",
         "restrictFreeDisableConfirmMessage": "Proxy pro Free účty může být nestabilní. Opravdu je chcete použít?",
-        "manageMembers": "Spravovat členy"
+        "manageMembers": "Spravovat členy",
+        "pendingOAuthUnsupported": "Před přidáním tohoto čekajícího účtu do služby API dokončete autorizaci OAuth"
       },
       "entryAction": "Přidat do API služby",
       "testAction": "Otestovat",
@@ -3347,6 +3354,18 @@
       "completed": "Mazání dokončeno",
       "preparing": "Příprava mazání...",
       "retryFailed": "Opakovat selhané"
+    },
+    "pendingAuth": {
+      "badge": "Čeká na auth",
+      "emailRequired": "Zadejte e-mail účtu",
+      "saving": "Ukládá se čekající účet...",
+      "saved": "Čekající účet uložen",
+      "saveFailed": "Čekající účet se nepodařilo uložit: {{error}}",
+      "emailLabel": "Čekající účet",
+      "emailPlaceholder": "Zadejte e-mail účtu OpenAI",
+      "saveDraft": "Uložit čekající kartu",
+      "authorizeAction": "Autorizovat",
+      "cardHint": "Poznámky uloženy. Pro použití dokončete OAuth."
     }
   },
   "githubCopilot": {

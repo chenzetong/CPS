@@ -6,12 +6,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { Settings, RefreshCw, FolderOpen, Zap, X } from 'lucide-react';
 import { useEscClose } from '../hooks/useEscClose';
 import * as accountService from '../services/accountService';
-import * as codexService from '../services/codexService';
 import { getAccountGroups, type AccountGroup } from '../services/accountGroupService';
 import {
-  getCodexAccountGroups,
-  type CodexAccountGroup,
-} from '../services/codexAccountGroupService';
+  getCodexHostQuickConfig,
+  listCodexHostAccountGroups,
+  listCodexHostAccounts,
+  openCodexHostConfigToml,
+  saveCodexHostQuickConfig,
+  type CodexHostAccount,
+  type CodexHostAccountGroup,
+  type CodexHostQuickConfig,
+} from '../services/codexHostAdapterService';
 import {
   AutoSwitchAccountScopeSelector,
   type AutoSwitchAccountScopeMode,
@@ -22,10 +27,6 @@ import {
   buildAccountTierFilterOptions,
 } from '../utils/accountFilters';
 import { getSubscriptionTier } from '../utils/account';
-import {
-  isCodexCodeReviewQuotaVisibleByDefault,
-  persistCodexCodeReviewQuotaVisible,
-} from '../utils/codexPreferences';
 import {
   FEATURE_UNLOCK_CHANGED_EVENT,
   type FeatureUnlockChangedDetail,
@@ -39,7 +40,6 @@ import {
   saveCurrentAccountRefreshMinutesMap,
 } from '../utils/currentAccountRefresh';
 import type { Account } from '../types/account';
-import type { CodexAccount, CodexQuickConfig } from '../types/codex';
 import { getDisplayGroups, type DisplayGroup } from '../services/groupService';
 import { usePlatformRuntimeSupport } from '../hooks/usePlatformRuntimeSupport';
 import {
@@ -101,6 +101,7 @@ interface GeneralConfig {
   ghcp_launch_on_switch: boolean;
   openclaw_auth_overwrite_on_switch: boolean;
   codex_launch_on_switch: boolean;
+  antigravity_launch_on_switch: boolean;
   codex_restart_specified_app_on_switch: boolean;
   codex_local_access_entry_visible: boolean;
   antigravity_dual_switch_no_restart_enabled: boolean;
@@ -270,6 +271,9 @@ const CONTEXT_WINDOW_516K = 516000;
 const AUTO_COMPACT_TOKEN_LIMIT_516K = 460000;
 const CONTEXT_WINDOW_1M = 1000000;
 const AUTO_COMPACT_TOKEN_LIMIT_1M = 900000;
+const CODEX_SHOW_CODE_REVIEW_QUOTA_STORAGE_KEY = 'agtools.codex_show_code_review_quota';
+const CODEX_CODE_REVIEW_QUOTA_VISIBILITY_CHANGED_EVENT =
+  'agtools:codex-code-review-quota-visibility-changed';
 
 type CodexQuickConfigBuiltInPresetId = 'default' | 'preset_516k' | 'preset_1m';
 type CodexQuickConfigPresetId = CodexQuickConfigBuiltInPresetId | 'custom';
@@ -293,6 +297,25 @@ const CODEX_QUICK_CONFIG_PRESETS: Record<CodexQuickConfigBuiltInPresetId, CodexQ
     autoCompactTokenLimit: AUTO_COMPACT_TOKEN_LIMIT_1M,
   },
 };
+
+function isCodexCodeReviewQuotaVisibleByDefault(): boolean {
+  try {
+    return localStorage.getItem(CODEX_SHOW_CODE_REVIEW_QUOTA_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistCodexCodeReviewQuotaVisible(visible: boolean): void {
+  try {
+    localStorage.setItem(CODEX_SHOW_CODE_REVIEW_QUOTA_STORAGE_KEY, visible ? '1' : '0');
+    window.dispatchEvent(
+      new CustomEvent(CODEX_CODE_REVIEW_QUOTA_VISIBILITY_CHANGED_EVENT, { detail: visible }),
+    );
+  } catch {
+    // ignore localStorage write failures
+  }
+}
 
 function parsePositiveInteger(value: string): number | null {
   const parsed = Number.parseInt(value.trim(), 10);
@@ -381,7 +404,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
   const [pathDetecting, setPathDetecting] = useState(false);
   const [appLaunchCandidates, setAppLaunchCandidates] = useState<AppLaunchCandidate[]>([]);
   const [openingCodexConfig, setOpeningCodexConfig] = useState(false);
-  const [codexQuickConfig, setCodexQuickConfig] = useState<CodexQuickConfig | null>(null);
+  const [codexQuickConfig, setCodexQuickConfig] = useState<CodexHostQuickConfig | null>(null);
   const [codexQuickConfigPresetId, setCodexQuickConfigPresetId] =
     useState<CodexQuickConfigPresetId>('default');
   const [codexQuickContextWindowInput, setCodexQuickContextWindowInput] = useState(
@@ -412,8 +435,8 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
   const [autoSwitchDisplayGroups, setAutoSwitchDisplayGroups] = useState<DisplayGroup[]>([]);
   const [antigravityAccounts, setAntigravityAccounts] = useState<Account[]>([]);
   const [antigravityAccountGroups, setAntigravityAccountGroups] = useState<AccountGroup[]>([]);
-  const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
-  const [codexAccountGroups, setCodexAccountGroups] = useState<CodexAccountGroup[]>([]);
+  const [codexAccounts, setCodexAccounts] = useState<CodexHostAccount[]>([]);
+  const [codexAccountGroups, setCodexAccountGroups] = useState<CodexHostAccountGroup[]>([]);
   const [codexShowCodeReviewQuota, setCodexShowCodeReviewQuota] = useState(
     isCodexCodeReviewQuotaVisibleByDefault,
   );
@@ -478,7 +501,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
       })),
     [codexAccountGroups],
   );
-  const applyCodexQuickConfig = useCallback((nextConfig: CodexQuickConfig) => {
+  const applyCodexQuickConfig = useCallback((nextConfig: CodexHostQuickConfig) => {
     const detectedModelContextWindow = nextConfig.detected_model_context_window ?? null;
     const detectedAutoCompactTokenLimit = nextConfig.detected_auto_compact_token_limit ?? null;
     const presetId = resolveCodexQuickConfigPresetId(
@@ -512,7 +535,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     setCodexQuickConfigError(null);
     setCodexQuickConfigNotice(null);
     try {
-      const quickConfig = await codexService.getCodexQuickConfig();
+      const quickConfig = await getCodexHostQuickConfig();
       applyCodexQuickConfig(quickConfig);
     } catch (err) {
       setCodexQuickConfigError(
@@ -702,7 +725,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     }
     setCodexQuickConfigSaving(true);
     try {
-      const saved = await codexService.saveCodexQuickConfig(
+      const saved = await saveCodexHostQuickConfig(
         codexQuickTargetConfig.modelContextWindow ?? undefined,
         codexQuickTargetConfig.autoCompactTokenLimit ?? undefined,
       );
@@ -807,10 +830,10 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
       const codexScopeDataPromise =
         type === 'codex'
           ? Promise.all([
-              codexService.listCodexAccounts(),
-              getCodexAccountGroups(),
-            ]).catch(() => [[] as CodexAccount[], [] as CodexAccountGroup[]] as const)
-          : Promise.resolve([[] as CodexAccount[], [] as CodexAccountGroup[]] as const);
+              listCodexHostAccounts(),
+              listCodexHostAccountGroups(),
+            ]).catch(() => [[] as CodexHostAccount[], [] as CodexHostAccountGroup[]] as const)
+          : Promise.resolve([[] as CodexHostAccount[], [] as CodexHostAccountGroup[]] as const);
 
       const [cfg, groups, antigravityScopeData, codexScopeData] = await Promise.all([
         invoke<GeneralConfig>('get_general_config'),
@@ -940,6 +963,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
           ghcpLaunchOnSwitch: merged.ghcp_launch_on_switch,
           openclawAuthOverwriteOnSwitch: merged.openclaw_auth_overwrite_on_switch,
           codexLaunchOnSwitch: merged.codex_launch_on_switch,
+          antigravityLaunchOnSwitch: merged.antigravity_launch_on_switch,
           codexRestartSpecifiedAppOnSwitch: merged.codex_restart_specified_app_on_switch,
           codexLocalAccessEntryVisible: merged.codex_local_access_entry_visible,
           antigravityDualSwitchNoRestartEnabled: merged.antigravity_dual_switch_no_restart_enabled,
@@ -1124,7 +1148,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     if (openingCodexConfig) return;
     setOpeningCodexConfig(true);
     try {
-      await codexService.openCodexConfigToml();
+      await openCodexHostConfigToml();
     } catch (err) {
       setError(t('quickSettings.error.openCodexConfigFailed', {
         error: String(err),
@@ -1269,7 +1293,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     }
   };
 
-  const showAppPathSection = true;
+  const antigravityLaunchOnSwitch = config?.antigravity_launch_on_switch ?? true;
 
   const getAppPath = (): string => {
     if (!config) return '';
@@ -2108,13 +2132,47 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
             </div>
 
             {/* ─── App Path ─── */}
-            {showAppPathSection && (
+            {(
               <div className="qs-section">
                 <div className="qs-section-header">
                   <FolderOpen size={15} />
                   <span>{getAppPathLabel()}</span>
                 </div>
-                {config && (
+                {type === 'antigravity' && config && (
+                  <>
+                    <div className="qs-row">
+                      <div className="qs-row-label">
+                        <span>
+                          {t(
+                            'settings.general.antigravityLaunchOnSwitch',
+                            '切换时启动 Antigravity IDE',
+                          )}
+                        </span>
+                      </div>
+                      <div className="qs-row-control">
+                        <label className="qs-switch">
+                          <input
+                            type="checkbox"
+                            checked={antigravityLaunchOnSwitch}
+                            onChange={(event) =>
+                              saveConfig({
+                                antigravity_launch_on_switch: event.target.checked,
+                              })
+                            }
+                          />
+                          <span className="qs-switch-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="qs-hint">
+                      {t(
+                        'settings.general.antigravityLaunchOnSwitchDesc',
+                        '关闭后切号只写入 Antigravity IDE 默认账号数据，不会关闭、启动或重启应用，适合只使用 CLI 的场景。',
+                      )}
+                    </div>
+                  </>
+                )}
+                {config && (type !== 'antigravity' || antigravityLaunchOnSwitch) && (
                   <div className="qs-claude-scan-roots">
                     <label>{t('appPath.missing.scanRoots', '扫描范围')}</label>
                     <div className="qs-claude-scan-root-row">
@@ -2148,51 +2206,53 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                     </div>
                   </div>
                 )}
-                <div className="qs-path-control">
-                  <input
-                    type="text"
-                    className="qs-path-input"
-                    value={getAppPath()}
-                    placeholder={
-                      type === 'claude'
-                        ? t(
-                            'quickSettings.claude.appTargetPlaceholder',
-                            'Claude.exe 路径或 shell:AppsFolder\\...',
-                          )
-                        : t('settings.general.codexAppPathPlaceholder', '默认路径')
-                    }
-                    onChange={(e) => {
-                      saveConfig({ [APP_PATH_CONFIG_KEYS[getAppTarget()]]: e.target.value });
-                    }}
-                  />
-                  <div className="qs-path-actions">
-                    <button
-                      className="qs-btn"
-                      onClick={() => handlePickAppPath(getAppTarget())}
-                      disabled={pathDetecting}
-                      title={t('settings.general.codexPathSelect', '选择')}
-                    >
-                      {t('settings.general.codexPathSelect', '选择')}
-                    </button>
-                    <button
-                      className="qs-btn"
-                      onClick={() => handleResetAppPath(getAppTarget())}
-                      disabled={pathDetecting}
-                      title={
-                        pathDetecting
-                          ? t('common.loading', '加载中...')
-                          : t('appPath.missing.scanApps', '扫描应用')
+                {(type !== 'antigravity' || antigravityLaunchOnSwitch) && (
+                  <div className="qs-path-control">
+                    <input
+                      type="text"
+                      className="qs-path-input"
+                      value={getAppPath()}
+                      placeholder={
+                        type === 'claude'
+                          ? t(
+                              'quickSettings.claude.appTargetPlaceholder',
+                              'Claude.exe 路径或 shell:AppsFolder\\...',
+                            )
+                          : t('settings.general.codexAppPathPlaceholder', '默认路径')
                       }
-                    >
-                      <RefreshCw size={12} className={pathDetecting ? 'spin' : undefined} />
-                      {pathDetecting
-                        ? t('common.loading', '加载中...')
-                        : t('appPath.missing.scanApps', '扫描应用')}
-                    </button>
+                      onChange={(e) => {
+                        saveConfig({ [APP_PATH_CONFIG_KEYS[getAppTarget()]]: e.target.value });
+                      }}
+                    />
+                    <div className="qs-path-actions">
+                      <button
+                        className="qs-btn"
+                        onClick={() => handlePickAppPath(getAppTarget())}
+                        disabled={pathDetecting}
+                        title={t('settings.general.codexPathSelect', '选择')}
+                      >
+                        {t('settings.general.codexPathSelect', '选择')}
+                      </button>
+                      <button
+                        className="qs-btn"
+                        onClick={() => handleResetAppPath(getAppTarget())}
+                        disabled={pathDetecting}
+                        title={
+                          pathDetecting
+                            ? t('common.loading', '加载中...')
+                            : t('appPath.missing.scanApps', '扫描应用')
+                        }
+                      >
+                        <RefreshCw size={12} className={pathDetecting ? 'spin' : undefined} />
+                        {pathDetecting
+                          ? t('common.loading', '加载中...')
+                          : t('appPath.missing.scanApps', '扫描应用')}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {config && (
+                {config && (type !== 'antigravity' || antigravityLaunchOnSwitch) && (
                   <>
                     {appLaunchCandidates.length > 0 && (
                       <div className="qs-claude-candidate-list">

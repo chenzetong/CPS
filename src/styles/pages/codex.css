@@ -1747,6 +1747,13 @@
   border: 1px solid var(--plan-free-border);
 }
 
+.codex-account-card .tier-badge.pending,
+.codex-accounts-page .account-table .tier-badge.pending {
+  background: color-mix(in srgb, #64748b 10%, var(--bg-secondary));
+  color: #475569;
+  border: 1px solid color-mix(in srgb, #64748b 28%, var(--border));
+}
+
 .codex-account-card .tier-badge.plus,
 .codex-accounts-page .account-table .tier-badge.plus,
 .codex-oauth-binding-row .tier-badge.plus {
@@ -3465,6 +3472,28 @@
   margin-top: 8px;
 }
 
+.codex-accounts-page .quota-error-inline.codex-pending-auth-action {
+  width: 100%;
+  background: color-mix(in srgb, var(--primary) 5%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--primary) 16%, var(--border));
+  color: var(--text-secondary);
+}
+
+.codex-accounts-page .quota-error-inline.codex-pending-auth-action svg {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--primary) 70%, var(--text-secondary));
+}
+
+.codex-accounts-page .quota-error-inline.codex-pending-auth-action span {
+  flex: 1;
+  min-width: 0;
+}
+
+.codex-accounts-page .quota-error-inline.codex-pending-auth-action .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .codex-accounts-page .quota-error-inline .quota-error-action {
   min-height: 24px;
   padding: 3px 8px;
@@ -4324,6 +4353,76 @@
   color: var(--primary);
   border-color: rgba(37, 99, 235, 0.28);
   background: rgba(37, 99, 235, 0.08);
+}
+
+.codex-accounts-page .pending-oauth-account {
+  min-height: 220px;
+  border-color: color-mix(in srgb, #2563eb 26%, var(--border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #2563eb 6%, transparent) 0%,
+      color-mix(in srgb, #64748b 5%, transparent) 100%
+    ),
+    var(--bg-card);
+}
+
+.codex-accounts-page .pending-oauth-account .account-email,
+.codex-accounts-page .pending-oauth-account .account-email-text {
+  color: var(--text-primary);
+}
+
+.codex-accounts-page .pending-oauth-account .card-top {
+  align-items: center;
+}
+
+.codex-pending-auth-note-line {
+  margin-top: -2px;
+}
+
+.codex-pending-auth-card-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, #64748b 20%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #64748b 7%, var(--bg-secondary));
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.codex-pending-auth-card-hint.table {
+  margin-top: 6px;
+  padding: 6px 8px;
+  max-width: 360px;
+}
+
+.codex-pending-auth-card-hint svg {
+  flex: 0 0 auto;
+  color: #64748b;
+}
+
+.codex-pending-auth-card-hint span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-reauth-note-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -4px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 14%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--primary) 5%, var(--bg-secondary));
 }
 
 .codex-accounts-page .codex-api-key-reveal-line {
@@ -5347,6 +5446,59 @@
   line-height: 1.35;
 }
 
+.codex-account-note-mfa-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 168px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
+.codex-account-note-mfa-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.codex-account-note-mfa-option:hover {
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, var(--bg-secondary));
+}
+
+.codex-account-note-mfa-option span,
+.codex-account-note-mfa-option em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-account-note-mfa-option span {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.codex-account-note-mfa-option em {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+}
+
 .codex-account-note-otp-preview {
   display: flex;
   align-items: center;
@@ -5409,6 +5561,36 @@
 .codex-account-note-textarea:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+
+.codex-pending-oauth-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, #64748b 22%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, #64748b 5%, var(--bg-secondary));
+}
+
+.codex-pending-oauth-draft .oauth-link {
+  margin: 0;
+}
+
+.codex-pending-oauth-draft .codex-account-note-chip {
+  align-self: flex-start;
+  max-width: 160px;
+  background: var(--bg-card);
+}
+
+.codex-pending-oauth-note-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.codex-pending-oauth-note-fields .codex-account-note-field:last-child {
+  grid-column: 1 / -1;
 }
 
 .codex-add-modal .modal-tabs {
@@ -7505,6 +7687,10 @@
 }
 
 @media (max-width: 560px) {
+  .codex-pending-oauth-note-fields {
+    grid-template-columns: 1fr;
+  }
+
   .codex-add-modal .oauth-manual-input button {
     width: 100%;
     min-width: 0;

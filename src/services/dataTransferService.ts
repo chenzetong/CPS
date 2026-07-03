@@ -17,28 +17,6 @@ import {
   invalidateCache as invalidateAccountGroupCache,
 } from './accountGroupService';
 import {
-  CodexAccountGroup,
-  getCodexAccountGroups,
-  invalidateCodexGroupCache,
-} from './codexAccountGroupService';
-import {
-  CodexModelProvider,
-  invalidateCodexModelProviderCache,
-  listCodexModelProviders,
-} from './codexModelProviderService';
-import {
-  getCodexWakeupCliStatus,
-  getCodexWakeupState,
-  saveCodexWakeupState,
-  updateCodexWakeupRuntimeConfig,
-} from './codexWakeupService';
-import {
-  CodexCliStatus,
-  CodexWakeupModelPreset,
-  CodexWakeupState,
-  CodexWakeupTask,
-} from '../types/codexWakeup';
-import {
   CURRENT_ACCOUNT_REFRESH_STORAGE_KEY,
   CurrentAccountRefreshMinutesMap,
   loadCurrentAccountRefreshMinutesMap,
@@ -52,7 +30,6 @@ import {
   saveWakeupOfficialLsVersionMode,
 } from '../utils/wakeupOfficialLsVersion';
 import * as accountService from './accountService';
-import * as codexService from './codexService';
 import * as zedService from './zedService';
 import * as githubCopilotService from './githubCopilotService';
 import * as windsurfService from './windsurfService';
@@ -64,6 +41,7 @@ import * as codebuddyCnService from './codebuddyCnService';
 import * as qoderService from './qoderService';
 import * as traeService from './traeService';
 import * as workbuddyService from './workbuddyService';
+import { callPlatformAdapter } from './platformAdapterService';
 import type { InstanceLaunchMode } from '../types/instance';
 import type { ClaudeAccount } from '../types/claude';
 
@@ -91,15 +69,16 @@ const INSTANCE_PLATFORMS = [
 type InstancePlatform = (typeof INSTANCE_PLATFORMS)[number];
 
 async function listAvailableInstancePlatforms(): Promise<InstancePlatform[]> {
-  const entries = await Promise.all(
-    INSTANCE_PLATFORMS.map(async (platform) => {
-      if (platform === 'antigravity') {
-        return (await canUseAntigravitySeriesTransfer()) ? platform : null;
-      }
-      return (await canUseAccountTransferPlatform(platform)) ? platform : null;
-    }),
-  );
-  return entries.filter((platform): platform is InstancePlatform => platform != null);
+  const entries: InstancePlatform[] = [];
+  for (const platform of INSTANCE_PLATFORMS) {
+    const available = platform === 'antigravity'
+      ? await canUseAntigravitySeriesTransfer()
+      : await canUseAccountTransferPlatform(platform);
+    if (available) {
+      entries.push(platform);
+    }
+  }
+  return entries;
 }
 
 async function canUseAntigravitySeriesTransfer(): Promise<boolean> {
@@ -206,15 +185,139 @@ interface ExportedInstanceStore {
 type GenericRecord = Record<string, unknown>;
 type WakeupTaskRecord = GenericRecord & { enabled?: boolean; schedule?: GenericRecord };
 
+interface CodexAccountGroup {
+  id: string;
+  name: string;
+  sortOrder: number;
+  accountIds: string[];
+  createdAt: number;
+}
+
+type CodexModelProvider = GenericRecord;
+type CodexWakeupReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+
+interface CodexCliStatus {
+  available: boolean;
+  configured_codex_cli_path?: string;
+  configured_node_path?: string;
+  required_runtime_paths: string[];
+  checked_at: number;
+  install_hints: unknown[];
+}
+
+interface CodexWakeupSchedule {
+  kind: string;
+  daily_time?: string;
+  weekly_days: number[];
+  weekly_time?: string;
+  interval_hours?: number;
+  quota_reset_window?: string;
+  startup_delay_minutes?: number;
+}
+
+interface CodexWakeupTask {
+  id: string;
+  name: string;
+  enabled: boolean;
+  account_ids: string[];
+  prompt?: string;
+  model?: string;
+  model_display_name?: string;
+  model_reasoning_effort?: CodexWakeupReasoningEffort;
+  schedule: CodexWakeupSchedule;
+  execution_mode?: 'auto' | 'confirm';
+  confirm_timeout_minutes?: number;
+  created_at: number;
+  updated_at: number;
+  last_run_at?: number;
+  last_status?: string;
+  last_message?: string;
+  last_success_count?: number;
+  last_failure_count?: number;
+  last_duration_ms?: number;
+  next_run_at?: number;
+}
+
+interface CodexWakeupModelPreset {
+  id: string;
+  name: string;
+  model: string;
+  allowed_reasoning_efforts: CodexWakeupReasoningEffort[];
+  default_reasoning_effort: CodexWakeupReasoningEffort;
+}
+
+interface CodexWakeupState {
+  enabled: boolean;
+  tasks: CodexWakeupTask[];
+  model_presets: CodexWakeupModelPreset[];
+  model_preset_migrations: string[];
+}
+
+interface RawCodexCliStatus {
+  available: boolean;
+  configuredCodexCliPath?: string;
+  configuredNodePath?: string;
+  requiredRuntimePaths?: string[];
+  checkedAt: number;
+}
+
+interface RawCodexWakeupSchedule {
+  kind: string;
+  dailyTime?: string;
+  weeklyDays?: number[];
+  weeklyTime?: string;
+  intervalHours?: number;
+  quotaResetWindow?: string;
+  startupDelayMinutes?: number;
+}
+
+interface RawCodexWakeupTask {
+  id: string;
+  name: string;
+  enabled: boolean;
+  accountIds?: string[];
+  prompt?: string;
+  model?: string;
+  modelDisplayName?: string;
+  modelReasoningEffort?: CodexWakeupReasoningEffort;
+  schedule: RawCodexWakeupSchedule;
+  executionMode?: string;
+  confirmTimeoutMinutes?: number;
+  createdAt: number;
+  updatedAt: number;
+  lastRunAt?: number;
+  lastStatus?: string;
+  lastMessage?: string;
+  lastSuccessCount?: number;
+  lastFailureCount?: number;
+  lastDurationMs?: number;
+  nextRunAt?: number;
+}
+
+interface RawCodexWakeupModelPreset {
+  id: string;
+  name: string;
+  model: string;
+  allowedReasoningEfforts?: CodexWakeupReasoningEffort[];
+  defaultReasoningEffort: CodexWakeupReasoningEffort;
+}
+
+interface RawCodexWakeupState {
+  enabled: boolean;
+  tasks?: RawCodexWakeupTask[];
+  modelPresets?: RawCodexWakeupModelPreset[];
+  modelPresetMigrations?: string[];
+}
+
 interface ExportedAntigravityWakeupState {
   enabled: boolean;
   official_ls_version_mode: WakeupOfficialLsVersionMode;
   tasks: WakeupTaskRecord[];
 }
 
-interface ExportedCodexWakeupTask extends Omit<CodexWakeupTask, 'account_ids'> {
+type ExportedCodexWakeupTask = Omit<CodexWakeupTask, 'account_ids'> & {
   account_refs: DataTransferAccountRef[];
-}
+};
 
 interface ExportedCodexWakeupState {
   enabled: boolean;
@@ -341,7 +444,7 @@ const ACCOUNT_LOADERS: Record<PlatformId, AccountLoader> = {
   antigravity: async () => (await accountService.listAccounts()) as unknown as TransferAccountRecord[],
   antigravity_ide: async () =>
     (await accountService.listAccounts()) as unknown as TransferAccountRecord[],
-  codex: async () => (await codexService.listCodexAccounts()) as unknown as TransferAccountRecord[],
+  codex: listCodexTransferAccounts,
   claude_manager: listClaudeManagerTransferAccounts,
   zed: async () => (await zedService.listZedAccounts()) as unknown as TransferAccountRecord[],
   'github-copilot': async () =>
@@ -361,7 +464,7 @@ const ACCOUNT_LOADERS: Record<PlatformId, AccountLoader> = {
 const LEGACY_IMPORTERS: Record<PlatformId, ((jsonContent: string) => Promise<unknown[]>) | undefined> = {
   antigravity: accountService.importFromJson,
   antigravity_ide: accountService.importFromJson,
-  codex: codexService.importCodexFromJson,
+  codex: importCodexTransferAccountsFromJson,
   claude_manager: claudeService.importClaudeFromJson,
   zed: zedService.importZedFromJson,
   'github-copilot': githubCopilotService.importGitHubCopilotFromJson,
@@ -400,6 +503,195 @@ function normalizeNumber(value: unknown): number | null {
 function normalizeBoolean(value: unknown): boolean | null {
   if (typeof value === 'boolean') return value;
   return null;
+}
+
+function parseJsonArray<T>(raw: string, fallback: T[] = []): T[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as T[]) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function listCodexTransferAccounts(): Promise<TransferAccountRecord[]> {
+  return await callPlatformAdapter<TransferAccountRecord[]>('codex', 'accounts.list');
+}
+
+async function importCodexTransferAccountsFromJson(jsonContent: string): Promise<unknown[]> {
+  return await callPlatformAdapter<unknown[]>('codex', 'accounts.importFromJson', { jsonContent });
+}
+
+async function loadCodexAccountGroupsForTransfer(): Promise<CodexAccountGroup[]> {
+  const raw = await callPlatformAdapter<string>('codex', 'accounts.loadGroups');
+  return parseJsonArray<CodexAccountGroup>(raw);
+}
+
+async function saveCodexAccountGroupsForTransfer(groups: CodexAccountGroup[]): Promise<void> {
+  await callPlatformAdapter('codex', 'accounts.saveGroups', {
+    data: JSON.stringify(groups, null, 2),
+  });
+}
+
+async function loadCodexModelProvidersForTransfer(): Promise<CodexModelProvider[]> {
+  const raw = await callPlatformAdapter<string>('codex', 'modelProviders.load');
+  return parseJsonArray<CodexModelProvider>(raw);
+}
+
+async function saveCodexModelProvidersForTransfer(providers: CodexModelProvider[]): Promise<void> {
+  await callPlatformAdapter('codex', 'modelProviders.save', {
+    data: JSON.stringify(providers, null, 2),
+  });
+}
+
+function fromRawCodexCliStatus(raw: RawCodexCliStatus): CodexCliStatus {
+  return {
+    available: raw.available,
+    configured_codex_cli_path: raw.configuredCodexCliPath,
+    configured_node_path: raw.configuredNodePath,
+    required_runtime_paths: raw.requiredRuntimePaths ?? [],
+    checked_at: raw.checkedAt,
+    install_hints: [],
+  };
+}
+
+function fromRawCodexWakeupTask(raw: RawCodexWakeupTask): CodexWakeupTask {
+  return {
+    ...raw,
+    id: raw.id,
+    name: raw.name,
+    enabled: raw.enabled,
+    account_ids: raw.accountIds ?? [],
+    prompt: raw.prompt,
+    model: raw.model,
+    model_display_name: raw.modelDisplayName,
+    model_reasoning_effort: raw.modelReasoningEffort,
+    schedule: {
+      kind: raw.schedule.kind,
+      daily_time: raw.schedule.dailyTime,
+      weekly_days: raw.schedule.weeklyDays ?? [],
+      weekly_time: raw.schedule.weeklyTime,
+      interval_hours: raw.schedule.intervalHours,
+      quota_reset_window: raw.schedule.quotaResetWindow,
+      startup_delay_minutes: raw.schedule.startupDelayMinutes,
+    },
+    execution_mode: raw.executionMode === 'auto' || raw.executionMode === 'confirm'
+      ? raw.executionMode
+      : undefined,
+    confirm_timeout_minutes: raw.confirmTimeoutMinutes,
+    created_at: raw.createdAt,
+    updated_at: raw.updatedAt,
+    last_run_at: raw.lastRunAt,
+    last_status: raw.lastStatus,
+    last_message: raw.lastMessage,
+    last_success_count: raw.lastSuccessCount,
+    last_failure_count: raw.lastFailureCount,
+    last_duration_ms: raw.lastDurationMs,
+    next_run_at: raw.nextRunAt,
+  };
+}
+
+function toRawCodexWakeupTask(task: CodexWakeupTask): RawCodexWakeupTask {
+  return {
+    id: task.id,
+    name: task.name,
+    enabled: task.enabled,
+    accountIds: task.account_ids,
+    prompt: task.prompt,
+    model: task.model,
+    modelDisplayName: task.model_display_name,
+    modelReasoningEffort: task.model_reasoning_effort,
+    schedule: {
+      kind: task.schedule.kind,
+      dailyTime: task.schedule.daily_time,
+      weeklyDays: task.schedule.weekly_days,
+      weeklyTime: task.schedule.weekly_time,
+      intervalHours: task.schedule.interval_hours,
+      quotaResetWindow: task.schedule.quota_reset_window,
+      startupDelayMinutes: task.schedule.startup_delay_minutes,
+    },
+    executionMode: task.execution_mode,
+    confirmTimeoutMinutes: task.confirm_timeout_minutes,
+    createdAt: task.created_at,
+    updatedAt: task.updated_at,
+    lastRunAt: task.last_run_at,
+    lastStatus: task.last_status,
+    lastMessage: task.last_message,
+    lastSuccessCount: task.last_success_count,
+    lastFailureCount: task.last_failure_count,
+    lastDurationMs: task.last_duration_ms,
+    nextRunAt: task.next_run_at,
+  };
+}
+
+function fromRawCodexWakeupModelPreset(
+  raw: RawCodexWakeupModelPreset,
+): CodexWakeupModelPreset {
+  return {
+    ...raw,
+    id: raw.id,
+    name: raw.name,
+    model: raw.model,
+    allowed_reasoning_efforts: raw.allowedReasoningEfforts ?? [],
+    default_reasoning_effort: raw.defaultReasoningEffort,
+  };
+}
+
+function toRawCodexWakeupModelPreset(
+  preset: CodexWakeupModelPreset,
+): RawCodexWakeupModelPreset {
+  return {
+    id: preset.id,
+    name: preset.name,
+    model: preset.model,
+    allowedReasoningEfforts: preset.allowed_reasoning_efforts,
+    defaultReasoningEffort: preset.default_reasoning_effort,
+  };
+}
+
+function fromRawCodexWakeupState(raw: RawCodexWakeupState): CodexWakeupState {
+  return {
+    enabled: raw.enabled,
+    tasks: (raw.tasks ?? []).map(fromRawCodexWakeupTask),
+    model_presets: (raw.modelPresets ?? []).map(fromRawCodexWakeupModelPreset),
+    model_preset_migrations: raw.modelPresetMigrations ?? [],
+  };
+}
+
+async function getCodexWakeupStateForTransfer(): Promise<CodexWakeupState> {
+  return fromRawCodexWakeupState(
+    await callPlatformAdapter<RawCodexWakeupState>('codex', 'wakeup.getState'),
+  );
+}
+
+async function getCodexWakeupCliStatusForTransfer(): Promise<CodexCliStatus> {
+  return fromRawCodexCliStatus(
+    await callPlatformAdapter<RawCodexCliStatus>('codex', 'wakeup.getCliStatus'),
+  );
+}
+
+async function saveCodexWakeupStateForTransfer(
+  enabled: boolean,
+  tasks: CodexWakeupTask[],
+  modelPresets: CodexWakeupModelPreset[],
+  modelPresetMigrations: string[] = [],
+): Promise<void> {
+  await callPlatformAdapter('codex', 'wakeup.saveState', {
+    enabled,
+    tasks: tasks.map(toRawCodexWakeupTask),
+    modelPresets: modelPresets.map(toRawCodexWakeupModelPreset),
+    modelPresetMigrations,
+  });
+}
+
+async function updateCodexWakeupRuntimeConfigForTransfer(
+  codexCliPath?: string,
+  nodePath?: string,
+): Promise<void> {
+  await callPlatformAdapter('codex', 'wakeup.updateRuntimeConfig', {
+    codexCliPath: codexCliPath ?? null,
+    nodePath: nodePath ?? null,
+  });
 }
 
 function stringEquals(left: unknown, right: unknown): boolean {
@@ -485,15 +777,15 @@ function buildAccountRegistry(
 }
 
 async function loadAccountRegistry(): Promise<AccountRegistry> {
-  const entries = await Promise.all(
-    ALL_PLATFORM_IDS.map(async (platform) => {
-      if (!(await canUseAccountTransferPlatform(platform))) {
-        return [platform, [] as TransferAccountRecord[]] as const;
-      }
-      const accounts = await ACCOUNT_LOADERS[platform]();
-      return [platform, accounts] as const;
-    }),
-  );
+  const entries: Array<readonly [PlatformId, TransferAccountRecord[]]> = [];
+  for (const platform of ALL_PLATFORM_IDS) {
+    if (!(await canUseAccountTransferPlatform(platform))) {
+      entries.push([platform, [] as TransferAccountRecord[]] as const);
+      continue;
+    }
+    const accounts = await ACCOUNT_LOADERS[platform]();
+    entries.push([platform, accounts] as const);
+  }
 
   return buildAccountRegistry(entries);
 }
@@ -991,7 +1283,7 @@ function importAntigravityWakeupState(
 }
 
 function exportCodexWakeupState(
-  state: Awaited<ReturnType<typeof getCodexWakeupState>>,
+  state: CodexWakeupState,
   registry: AccountRegistry,
   runtime: { codex_cli_path?: string; node_path?: string },
 ): ExportedCodexWakeupState {
@@ -1053,6 +1345,11 @@ async function exportConfigBundle(registry: AccountRegistry): Promise<DataTransf
   const codexRuntimeReady = await canUseAccountTransferPlatform('codex');
   const antigravityRuntimeReady = await canUseAntigravitySeriesTransfer();
   const instancePlatforms = await listAvailableInstancePlatforms();
+  const instanceStoreEntries: Array<readonly [InstancePlatform, ExportedInstanceStore]> = [];
+  for (const platform of instancePlatforms) {
+    const store = await invoke<RawInstanceStore>('data_transfer_get_instance_store', { platform });
+    instanceStoreEntries.push([platform, exportInstanceStore(platform, store, registry)] as const);
+  }
   const [
     rawUserConfig,
     groupSettings,
@@ -1062,24 +1359,21 @@ async function exportConfigBundle(registry: AccountRegistry): Promise<DataTransf
     codexWakeupState,
     codexWakeupCliStatus,
     codexSessions,
-    instanceStoreEntries,
   ] = await Promise.all([
     invoke<RawUserConfig>('data_transfer_get_user_config'),
     getGroupSettings(),
     getAccountGroups(),
-    codexRuntimeReady ? getCodexAccountGroups() : Promise.resolve([]),
-    codexRuntimeReady ? listCodexModelProviders() : Promise.resolve([]),
-    codexRuntimeReady ? getCodexWakeupState() : Promise.resolve(EMPTY_CODEX_WAKEUP_STATE),
-    codexRuntimeReady ? getCodexWakeupCliStatus() : Promise.resolve(EMPTY_CODEX_WAKEUP_CLI_STATUS),
+    codexRuntimeReady ? loadCodexAccountGroupsForTransfer() : Promise.resolve([]),
+    codexRuntimeReady ? loadCodexModelProvidersForTransfer() : Promise.resolve([]),
+    codexRuntimeReady ? getCodexWakeupStateForTransfer() : Promise.resolve(EMPTY_CODEX_WAKEUP_STATE),
+    codexRuntimeReady ? getCodexWakeupCliStatusForTransfer() : Promise.resolve(EMPTY_CODEX_WAKEUP_CLI_STATUS),
     codexRuntimeReady
-      ? invoke<unknown>('data_transfer_export_codex_sessions').catch(() => undefined)
+      ? callPlatformAdapter<unknown>(
+          'codex',
+          'sessions.transfer.export',
+          {},
+        ).catch(() => undefined)
       : Promise.resolve(undefined),
-    Promise.all(
-      instancePlatforms.map(async (platform) => {
-        const store = await invoke<RawInstanceStore>('data_transfer_get_instance_store', { platform });
-        return [platform, exportInstanceStore(platform, store, registry)] as const;
-      }),
-    ),
   ]);
 
   return {
@@ -1160,15 +1454,9 @@ async function importConfigBundle(bundle: DataTransferConfigBundle): Promise<Dat
   if (codexRuntimeReady) {
     const codexAccountGroupsImport = importCodexAccountGroups(bundle.codex_account_groups, registry);
     unresolvedAccountRefs += codexAccountGroupsImport.unresolved;
-    await invoke('save_codex_account_groups', {
-      data: JSON.stringify(codexAccountGroupsImport.groups, null, 2),
-    });
-    invalidateCodexGroupCache();
+    await saveCodexAccountGroupsForTransfer(codexAccountGroupsImport.groups);
 
-    await invoke('save_codex_model_providers', {
-      data: JSON.stringify(bundle.codex_model_providers, null, 2),
-    });
-    invalidateCodexModelProviderCache();
+    await saveCodexModelProvidersForTransfer(bundle.codex_model_providers);
   }
 
   for (const platform of INSTANCE_PLATFORMS) {
@@ -1184,8 +1472,9 @@ async function importConfigBundle(bundle: DataTransferConfigBundle): Promise<Dat
   }
 
   if (codexRuntimeReady && bundle.codex_sessions !== undefined) {
-    codexSessionImportResult = await invoke<CodexSessionTransferImportSummary>(
-      'data_transfer_import_codex_sessions',
+    codexSessionImportResult = await callPlatformAdapter<CodexSessionTransferImportSummary>(
+      'codex',
+      'sessions.transfer.import',
       { bundle: bundle.codex_sessions },
     );
   }
@@ -1213,12 +1502,12 @@ async function importConfigBundle(bundle: DataTransferConfigBundle): Promise<Dat
     const codexWakeupImport = importCodexWakeupState(bundle.codex_wakeup, registry);
     unresolvedAccountRefs += codexWakeupImport.unresolved;
     disabledTaskCount += codexWakeupImport.disabledTasks;
-    await saveCodexWakeupState(
+    await saveCodexWakeupStateForTransfer(
       codexWakeupImport.state.enabled,
       codexWakeupImport.state.tasks,
       codexWakeupImport.state.model_presets,
     );
-    await updateCodexWakeupRuntimeConfig(
+    await updateCodexWakeupRuntimeConfigForTransfer(
       normalizeString(codexWakeupImport.state.runtime.codex_cli_path) ?? undefined,
       normalizeString(codexWakeupImport.state.runtime.node_path) ?? undefined,
     );

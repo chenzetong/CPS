@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "Cài gói {{platform}}",
     "packageInstallConfirmDesc": "{{platform}} cần tải gói nền tảng trước khi mở. Phiên bản {{version}}, dung lượng {{size}}.",
     "packageInstallNotReady": "Gói đã được xử lý nhưng runtime chưa sẵn sàng.",
-    "packageInstallCardTitle": "Gói {{platform}} chưa được cài",
+    "packageInstallCardTitle": "Thành phần quản lý tài khoản {{platform}} chưa được cài đặt",
     "packageInstallCardDesc": "Tải phiên bản {{version}}, dung lượng {{size}}. Nền tảng sẽ mở sau khi cài.",
     "packageUpdateAvailableShort": "Cập nhật",
     "packageRepairRequired": "Sửa lỗi",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "Xử lý gói nền tảng thất bại. Vui lòng thử lại sau.",
     "packageOperationCanceled": "Đã hủy thao tác gói nền tảng.",
     "packageOperationRetryHint": "Bạn có thể bấm nút bên dưới để thử lại.",
-    "packagePageRepairTitle": "Gói {{platform}} cần sửa lỗi",
-    "packagePageInstallTitle": "Gói {{platform}} chưa được cài đặt",
+    "packagePageRepairTitle": "Thành phần quản lý tài khoản {{platform}} cần được sửa chữa",
+    "packagePageInstallTitle": "Thành phần quản lý tài khoản {{platform}} chưa được cài đặt",
     "packagePageInstallDesc": "Bạn có thể cài đặt trực tiếp từ trang này, hoặc dùng thao tác gói ở góc trên bên phải để cài đặt hoặc sửa trước khi quản lý tài khoản. Trước khi cài đặt, tài khoản, OAuth, chuyển đổi và làm mới nền sẽ không được tải.",
     "packageDashboardStateDesc": "Mở trang {{platform}} để cài đặt trực tiếp, hoặc dùng thao tác góc trên bên phải để cập nhật, sửa hoặc xem nhật ký thay đổi.",
     "packageOpenPlatformPage": "Mở trang nền tảng",
@@ -827,6 +827,8 @@
       "appAutoLaunchDesc": "Tự động khởi chạy ứng dụng sau khi đăng nhập hệ thống",
       "tokenKeeper": "Duy trì ủy quyền tài khoản",
       "tokenKeeperDesc": "Khi bật, ứng dụng làm mới ủy quyền tài khoản sắp hết hạn trong nền sau một khoảng trễ và theo từng nhóm nhỏ; khi tắt, tự động duy trì sẽ dừng, còn làm mới thủ công, chuyển tài khoản và nhập vẫn hoạt động.",
+      "errorReporting": "Chẩn đoán telemetry",
+      "errorReportingDesc": "Bật mặc định và chỉ dùng để điều tra sự cố khởi động, UI và gói nền tảng. Khi tắt, ứng dụng không gửi sự kiện telemetry. Sự kiện được loại bỏ dữ liệu nhạy cảm và không chứa mật khẩu, token, bí mật 2FA, số điện thoại hay dữ liệu nhạy cảm khác.",
       "platformQuickSettingsTitle": "Cài đặt nền tảng",
       "platformQuickSettingsDesc": "Cài đặt của từng nền tảng đã chuyển sang trang riêng. Mở nhanh tại đây.",
       "platformQuickSettingsItemDesc": "Trang nền tảng",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "Tự động làm mới bộ nhớ đệm hạn mức cho tài khoản Claude trong nền.",
       "claudeAppPath": "Mục tiêu khởi chạy Claude Desktop",
       "claudeAppPathDesc": "Hồ sơ mặc định có thể dùng mục tiêu Microsoft Store; hồ sơ đa phiên bản cần Claude.exe thật.",
-      "platformQuickSettingsEntryTitle": "{{platform}} lối vào cài đặt"
+      "platformQuickSettingsEntryTitle": "{{platform}} lối vào cài đặt",
+      "antigravityLaunchOnSwitch": "Mo Antigravity IDE khi chuyen",
+      "antigravityLaunchOnSwitchLabel": "Mo hoac khoi dong lai ung dung sau khi chuyen",
+      "antigravityLaunchOnSwitchDesc": "Khi tat, viec chuyen chi ghi du lieu tai khoan mac dinh cua Antigravity IDE. Ung dung se khong bi dong, mo hay khoi dong lai, phu hop voi quy trinh chi dung CLI."
     },
     "network": {
       "apiTitle": "API Antigravity Cockpit",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "Đang dừng dịch vụ API...",
     "stopApiServiceFailed": "Không thể dừng dịch vụ API. Hãy tắt dịch vụ trước rồi thử lại.",
     "skipThisVersion": "Bỏ qua phiên bản này",
-    "skipFailed": "Không thể bỏ qua bản cập nhật này: {{error}}"
+    "skipFailed": "Không thể bỏ qua bản cập nhật này: {{error}}",
+    "stopApiServiceFailedContinue": "Dịch vụ API chưa dừng đúng cách. Vẫn tiếp tục khởi động lại..."
   },
   "closeDialog": {
     "title": "Đóng cửa sổ",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "Proxy tài khoản Free có thể không ổn định. Hãy dùng thận trọng.",
         "restrictFreeDisableConfirmTitle": "Cho phép tài khoản Free",
         "restrictFreeDisableConfirmMessage": "Proxy tài khoản Free có thể không ổn định. Bạn có chắc muốn dùng không?",
-        "manageMembers": "Quản lý thành viên"
+        "manageMembers": "Quản lý thành viên",
+        "pendingOAuthUnsupported": "Hãy hoàn tất OAuth trước khi thêm tài khoản chờ xác thực này vào dịch vụ API"
       },
       "entryAction": "Thêm vào dịch vụ API",
       "testAction": "Kiểm tra",
@@ -3347,6 +3354,18 @@
       "completed": "Xóa xong",
       "preparing": "Đang chuẩn bị tác vụ xóa...",
       "retryFailed": "Thử lại lỗi"
+    },
+    "pendingAuth": {
+      "badge": "Chờ xác thực",
+      "emailRequired": "Nhập email tài khoản",
+      "saving": "Đang lưu tài khoản chờ xác thực...",
+      "saved": "Đã lưu tài khoản chờ xác thực",
+      "saveFailed": "Không thể lưu tài khoản chờ xác thực: {{error}}",
+      "emailLabel": "Tài khoản chờ xác thực",
+      "emailPlaceholder": "Nhập email tài khoản OpenAI",
+      "saveDraft": "Lưu thẻ chờ xác thực",
+      "authorizeAction": "Xác thực",
+      "cardHint": "Đã lưu ghi chú. Hoàn tất OAuth để sử dụng tài khoản."
     }
   },
   "githubCopilot": {

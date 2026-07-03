@@ -966,9 +966,13 @@ async fn refresh_account_tokens(account: &mut CodexAccount, reason: &str) -> Res
         account.email, reason
     ));
 
-    let refreshed = codex_account::force_refresh_managed_account(&account.id, reason)
-        .await
-        .map_err(|e| format!("{}，刷新 Token 失败: {}", reason, e))?;
+    let refreshed = codex_account::force_refresh_managed_account_after_observed(
+        &account.id,
+        account.token_generation,
+        reason,
+    )
+    .await
+    .map_err(|e| format!("{}，刷新 Token 失败: {}", reason, e))?;
     *account = refreshed;
     Ok(())
 }
@@ -2029,7 +2033,10 @@ pub async fn refresh_all_quotas() -> Result<Vec<(String, Result<CodexQuota, Stri
     const MAX_CONCURRENT: usize = 5;
     let accounts: Vec<_> = codex_account::list_accounts()
         .into_iter()
-        .filter(|account| !account.is_api_key_auth() || is_new_api_account(account))
+        .filter(|account| {
+            !codex_account::is_pending_oauth_account(account)
+                && (!account.is_api_key_auth() || is_new_api_account(account))
+        })
         .collect();
 
     let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));

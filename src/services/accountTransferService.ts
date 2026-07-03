@@ -1,7 +1,6 @@
 import { ALL_PLATFORM_IDS, PlatformId } from '../types/platform';
 import * as accountService from './accountService';
 import * as claudeService from './claudeService';
-import * as codexService from './codexService';
 import * as githubCopilotService from './githubCopilotService';
 import * as windsurfService from './windsurfService';
 import * as kiroService from './kiroService';
@@ -18,6 +17,7 @@ import {
   isRuntimeManagedPlatform,
   usePlatformPackageStore,
 } from '../stores/usePlatformPackageStore';
+import { callPlatformAdapter } from './platformAdapterService';
 
 type AccountWithId = { id: string };
 
@@ -51,9 +51,11 @@ const PLATFORM_ADAPTERS: Record<PlatformId, TransferAdapter> = {
     importFromJson: accountService.importFromJson,
   },
   codex: {
-    listAccounts: codexService.listCodexAccounts,
-    exportAccounts: codexService.exportCodexAccounts,
-    importFromJson: codexService.importCodexFromJson,
+    listAccounts: () => callPlatformAdapter<AccountWithId[]>('codex', 'accounts.list'),
+    exportAccounts: (accountIds) =>
+      callPlatformAdapter<string>('codex', 'accounts.export', { accountIds }),
+    importFromJson: (jsonContent) =>
+      callPlatformAdapter<unknown[]>('codex', 'accounts.importFromJson', { jsonContent }),
   },
   claude_manager: {
     listAccounts: listClaudeManagerTransferAccounts,
@@ -306,12 +308,11 @@ async function exportPlatformPayload(platform: PlatformId): Promise<AccountTrans
 }
 
 export async function buildAccountTransferBundle(): Promise<AccountTransferBundle> {
-  const entries = await Promise.all(
-    ALL_PLATFORM_IDS.map(async (platform) => {
-      const payload = await exportPlatformPayload(platform);
-      return [platform, payload] as const;
-    }),
-  );
+  const entries: Array<readonly [PlatformId, AccountTransferPlatformPayload]> = [];
+  for (const platform of ALL_PLATFORM_IDS) {
+    const payload = await exportPlatformPayload(platform);
+    entries.push([platform, payload] as const);
+  }
 
   const platforms = entries.reduce<Record<PlatformId, AccountTransferPlatformPayload>>(
     (acc, [platform, payload]) => {

@@ -5,6 +5,19 @@ const path = require('node:path');
 
 const repoRoot = path.resolve(__dirname, '..');
 
+function normalizeCurrentOs() {
+  if (process.platform === 'darwin') return 'macos';
+  if (process.platform === 'win32') return 'windows';
+  if (process.platform === 'linux') return 'linux';
+  throw new Error(`Unsupported OS: ${process.platform}`);
+}
+
+function normalizeCurrentArch() {
+  if (process.arch === 'arm64') return 'aarch64';
+  if (process.arch === 'x64') return 'x86_64';
+  throw new Error(`Unsupported arch: ${process.arch}`);
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -37,14 +50,41 @@ function runFinal(command, args, options = {}) {
   process.exit(typeof result.status === 'number' ? result.status : 1);
 }
 
-function runTauriDirect() {
-  run('npm.cmd', ['run', 'sync-version'], { shell: process.platform === 'win32' });
-  runFinal('npx.cmd', ['tauri', ...process.argv.slice(2)], { shell: process.platform === 'win32' });
+function shouldPreparePlatformBootstrap(tauriArgs) {
+  if (!tauriArgs.includes('build')) return false;
+  const value = String(process.env.COCKPIT_PREPARE_PLATFORM_BOOTSTRAP || '1').trim().toLowerCase();
+  return value !== '0' && value !== 'false' && value !== 'no';
 }
+
+function prepareBundledPlatformBootstrap(tauriArgs) {
+  if (!shouldPreparePlatformBootstrap(tauriArgs)) return;
+
+  const args = [
+    'scripts/prepare-platform-bootstrap.cjs',
+    '--from-source',
+    '--targets',
+    `${normalizeCurrentOs()}/${normalizeCurrentArch()}`,
+  ];
+  const platforms = String(process.env.COCKPIT_BUNDLED_PLATFORM_PACKAGES || '').trim();
+  if (platforms) {
+    args.push('--platforms', platforms);
+  }
+  run(process.execPath, args);
+}
+
+function runTauriDirect() {
+  const tauriArgs = process.argv.slice(2);
+  run('npm.cmd', ['run', 'sync-version'], { shell: process.platform === 'win32' });
+  prepareBundledPlatformBootstrap(tauriArgs);
+  runFinal('npx.cmd', ['tauri', ...tauriArgs], { shell: process.platform === 'win32' });
+}
+
+const tauriArgs = process.argv.slice(2);
 
 if (process.platform !== 'win32') {
   run('npm', ['run', 'sync-version']);
-  runFinal('npx', ['tauri', ...process.argv.slice(2)]);
+  prepareBundledPlatformBootstrap(tauriArgs);
+  runFinal('npx', ['tauri', ...tauriArgs]);
 }
 
 const vcvars64Path = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat';
@@ -57,7 +97,6 @@ if (!fs.existsSync(vcvars64Path)) {
 
 const tempScriptPath = path.join(os.tmpdir(), `cockpit-tools-tauri-${process.pid}.cmd`);
 const tauriCliPath = path.join(repoRoot, 'node_modules', '.bin', 'tauri.cmd');
-const tauriArgs = process.argv.slice(2);
 
 if (!fs.existsSync(tauriCliPath)) {
   console.warn('Local tauri CLI not found, falling back to the existing shell environment.');
@@ -83,6 +122,7 @@ const scriptBody = [
 fs.writeFileSync(tempScriptPath, scriptBody);
 
 try {
+  prepareBundledPlatformBootstrap(tauriArgs);
   runFinal('cmd.exe', ['/d', '/c', tempScriptPath]);
 } finally {
   fs.rmSync(tempScriptPath, { force: true });

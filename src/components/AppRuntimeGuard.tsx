@@ -1,5 +1,6 @@
 import React, { ErrorInfo, ReactNode, useEffect, useMemo, useState } from 'react';
 import i18n from '../i18n';
+import { captureError } from '../utils/errorReporter';
 
 type GuardFailureCode = 'render-crash' | 'chunk-load';
 
@@ -150,6 +151,12 @@ class RenderCrashBoundary extends React.Component<RenderCrashBoundaryProps, Rend
     };
     this.setState({ failure: nextFailure });
     console.error('[AppRuntimeGuard] Render crash captured:', error, errorInfo);
+    captureError(error, {
+      source: 'react_error_boundary',
+      phase: 'render_crash',
+      failureCode: nextFailure.code,
+      componentStack: errorInfo.componentStack,
+    });
   }
 
   render() {
@@ -174,6 +181,13 @@ export function AppRuntimeGuard({ children }: AppRuntimeGuardProps) {
         message: normalizeErrorMessage(event.error || event.message),
         detail: [event.filename, event.error?.stack].filter(Boolean).join('\n'),
       });
+      captureError(event.error || event.message, {
+        source: 'app_runtime_guard',
+        phase: 'chunk_load',
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      });
     };
 
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
@@ -185,6 +199,10 @@ export function AppRuntimeGuard({ children }: AppRuntimeGuardProps) {
         code: 'chunk-load',
         message: text,
         detail: text,
+      });
+      captureError(event.reason, {
+        source: 'app_runtime_guard',
+        phase: 'chunk_load_rejection',
       });
     };
 
@@ -202,4 +220,3 @@ export function AppRuntimeGuard({ children }: AppRuntimeGuardProps) {
 
   return <RenderCrashBoundary>{children}</RenderCrashBoundary>;
 }
-

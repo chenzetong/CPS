@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "Instalar paquete de {{platform}}",
     "packageInstallConfirmDesc": "{{platform}} necesita descargar su paquete antes de abrirse. Versión {{version}}, tamaño {{size}}.",
     "packageInstallNotReady": "El paquete se procesó, pero el runtime aún no está listo.",
-    "packageInstallCardTitle": "El paquete de {{platform}} no está instalado",
+    "packageInstallCardTitle": "El componente de gestión de cuentas de {{platform}} no está instalado",
     "packageInstallCardDesc": "Descarga la versión {{version}}, tamaño {{size}}. La plataforma se abrirá al terminar.",
     "packageUpdateAvailableShort": "Actualizar",
     "packageRepairRequired": "Reparar",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "La operación del paquete de plataforma falló. Inténtalo de nuevo más tarde.",
     "packageOperationCanceled": "Se canceló la operación del paquete de plataforma.",
     "packageOperationRetryHint": "Puedes hacer clic en el botón de abajo para reintentarlo.",
-    "packagePageRepairTitle": "El paquete de {{platform}} necesita reparación",
-    "packagePageInstallTitle": "El paquete de {{platform}} no está instalado",
+    "packagePageRepairTitle": "El componente de gestión de cuentas de {{platform}} necesita reparación",
+    "packagePageInstallTitle": "El componente de gestión de cuentas de {{platform}} no está instalado",
     "packagePageInstallDesc": "Puedes instalar directamente desde esta página, o usar las acciones del paquete en la esquina superior derecha para instalar o reparar antes de gestionar cuentas. Antes de instalar no se cargarán cuentas, OAuth, cambios de cuenta ni actualización en segundo plano.",
     "packageDashboardStateDesc": "Abre la página de {{platform}} para instalar directamente, o usa las acciones superiores derechas para actualizar, reparar o ver el registro de cambios.",
     "packageOpenPlatformPage": "Abrir página de plataforma",
@@ -824,6 +824,8 @@
       "appAutoLaunchDesc": "Iniciar la aplicación automáticamente después de iniciar sesión en el sistema",
       "tokenKeeper": "Mantener autorización de cuentas",
       "tokenKeeperDesc": "Al activarlo, la app renueva en segundo plano, con retraso y por lotes pequeños, las autorizaciones próximas a caducar; al desactivarlo se detiene el mantenimiento automático y siguen disponibles la actualización manual, el cambio y la importación.",
+      "errorReporting": "Diagnóstico de telemetría",
+      "errorReportingDesc": "Está activado por defecto y solo se usa para investigar problemas de inicio, interfaz y paquetes de plataforma. Al desactivarlo se dejan de enviar eventos de telemetría. Los eventos se redactan y no incluyen contraseñas, tokens, secretos 2FA, teléfonos ni otros datos sensibles.",
       "platformQuickSettingsTitle": "Ajustes de plataformas",
       "platformQuickSettingsDesc": "Los ajustes de cada plataforma están ahora en su página. Ábrelos rápido aquí.",
       "platformQuickSettingsItemDesc": "Página de plataforma",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "Actualiza automáticamente en segundo plano la caché de cuota de las cuentas de Claude.",
       "claudeAppPath": "Destino de inicio de Claude Desktop",
       "claudeAppPathDesc": "El perfil predeterminado puede usar un destino de Microsoft Store; las instancias múltiples necesitan el Claude.exe real.",
-      "platformQuickSettingsEntryTitle": "{{platform}} acceso a ajustes"
+      "platformQuickSettingsEntryTitle": "{{platform}} acceso a ajustes",
+      "antigravityLaunchOnSwitch": "Iniciar Antigravity IDE al cambiar",
+      "antigravityLaunchOnSwitchLabel": "Iniciar o reiniciar app tras cambiar",
+      "antigravityLaunchOnSwitchDesc": "Si se desactiva, el cambio solo escribe los datos de la cuenta predeterminada de Antigravity IDE. No cerrara, iniciara ni reiniciara la app, adecuado para flujos solo CLI."
     },
     "network": {
       "apiTitle": "API de cabina antigravedad",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "Deteniendo servicio API...",
     "stopApiServiceFailed": "No se pudo detener el servicio API. Desactívalo primero e inténtalo de nuevo.",
     "skipThisVersion": "Omitir esta versión",
-    "skipFailed": "No se pudo omitir esta actualización: {{error}}"
+    "skipFailed": "No se pudo omitir esta actualización: {{error}}",
+    "stopApiServiceFailedContinue": "El servicio API no se cerró correctamente. Reiniciando de todos modos..."
   },
   "closeDialog": {
     "title": "Cerrar ventana",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "El proxy de cuentas Free puede ser inestable. Úsalo con cuidado.",
         "restrictFreeDisableConfirmTitle": "Permitir cuentas Free",
         "restrictFreeDisableConfirmMessage": "El proxy de cuentas Free puede ser inestable. ¿Seguro que quieres usarlas?",
-        "manageMembers": "Gestionar miembros"
+        "manageMembers": "Gestionar miembros",
+        "pendingOAuthUnsupported": "Completa la autorización OAuth antes de añadir esta cuenta pendiente al servicio API"
       },
       "entryAction": "Agregar al servicio API",
       "testAction": "Probar",
@@ -3347,6 +3354,18 @@
       "completed": "Eliminación completa",
       "preparing": "Preparando tarea de eliminación...",
       "retryFailed": "Reintentar fallidos"
+    },
+    "pendingAuth": {
+      "badge": "Auth pendiente",
+      "emailRequired": "Introduce el correo de la cuenta",
+      "saving": "Guardando cuenta pendiente...",
+      "saved": "Cuenta pendiente guardada",
+      "saveFailed": "No se pudo guardar la cuenta pendiente: {{error}}",
+      "emailLabel": "Cuenta pendiente",
+      "emailPlaceholder": "Introduce el correo de la cuenta OpenAI",
+      "saveDraft": "Guardar tarjeta pendiente",
+      "authorizeAction": "Autorizar",
+      "cardHint": "Notas guardadas. Completa OAuth para usar esta cuenta."
     }
   },
   "githubCopilot": {

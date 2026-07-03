@@ -384,6 +384,58 @@ pub struct PlatformPackageState {
     pub changelog: Vec<PlatformPackageChangelogEntry>,
 }
 
+pub const PLATFORM_PACKAGE_BOOTSTRAP_COMPLETED_EVENT: &str =
+    "platform-package://bootstrap-completed";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformPackageBootstrapState {
+    pub running: bool,
+    pub completed: bool,
+    pub installed_platforms: Vec<String>,
+    pub error_message: Option<String>,
+}
+
+static PLATFORM_PACKAGE_BOOTSTRAP_STATE: LazyLock<Mutex<PlatformPackageBootstrapState>> =
+    LazyLock::new(|| {
+        Mutex::new(PlatformPackageBootstrapState {
+            running: true,
+            completed: false,
+            installed_platforms: Vec::new(),
+            error_message: None,
+        })
+    });
+
+pub fn mark_platform_package_bootstrap_started() {
+    if let Ok(mut state) = PLATFORM_PACKAGE_BOOTSTRAP_STATE.lock() {
+        state.running = true;
+        state.completed = false;
+        state.installed_platforms.clear();
+        state.error_message = None;
+    }
+}
+
+pub fn mark_platform_package_bootstrap_finished(
+    installed_platforms: Vec<String>,
+    error_message: Option<String>,
+) -> PlatformPackageBootstrapState {
+    let mut state = PLATFORM_PACKAGE_BOOTSTRAP_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.running = false;
+    state.completed = true;
+    state.installed_platforms = installed_platforms;
+    state.error_message = error_message;
+    state.clone()
+}
+
+pub fn get_platform_package_bootstrap_state() -> PlatformPackageBootstrapState {
+    PLATFORM_PACKAGE_BOOTSTRAP_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PlatformPackageRemoteIndex {
@@ -1217,6 +1269,13 @@ fn read_manifest(path: &Path) -> Result<PlatformPackageManifest, String> {
         .map_err(|err| format!("解析平台包清单失败: {}", err))
 }
 
+fn write_manifest(path: &Path, manifest: &PlatformPackageManifest) -> Result<(), String> {
+    let content = serde_json::to_string_pretty(manifest)
+        .map_err(|err| format!("序列化平台包清单失败: {}", err))?;
+    atomic_write::write_string_atomic(path, &(content + "\n"))
+        .map_err(|err| format!("写入平台包清单失败: path={}, error={}", path.display(), err))
+}
+
 fn read_runtime_entry(path: &Path) -> Result<PlatformPackageRuntimeEntry, String> {
     let content = fs::read_to_string(path).map_err(|err| {
         format!(
@@ -1244,6 +1303,18 @@ fn compare_versions(left: &str, right: &str) -> Ordering {
     left_parts.resize(3, 0);
     right_parts.resize(3, 0);
     left_parts.cmp(&right_parts)
+}
+
+fn package_manifest_source_hash_matches(
+    installed: &PlatformPackageManifest,
+    source: &PlatformPackageManifest,
+) -> bool {
+    match (installed.sha256.as_deref(), source.sha256.as_deref()) {
+        (Some(installed_hash), Some(source_hash)) => {
+            installed_hash.eq_ignore_ascii_case(source_hash)
+        }
+        _ => false,
+    }
 }
 
 fn validate_platform_contributions(
@@ -1792,13 +1863,16 @@ fn bootstrap_one_platform_package(
     }
 
     match read_installed_manifest(platform_id) {
-        Ok(Some(installed_manifest))
-            if compare_versions(&installed_manifest.version, &source_manifest.version)
-                != Ordering::Less =>
-        {
-            return Ok(false);
+        Ok(Some(installed_manifest)) => {
+            if package_manifest_source_hash_matches(&installed_manifest, &source_manifest) {
+                return Ok(false);
+            }
+            logger::log_info(&format!(
+                "[PlatformPackage] 内置平台包优先，将覆盖已安装包: platform={}, installed={}, bundled={}",
+                platform_id, installed_manifest.version, source_manifest.version
+            ));
         }
-        Ok(_) => {}
+        Ok(None) => {}
         Err(error) => logger::log_warn(&format!(
             "[PlatformPackage] 已安装平台包不可用，将尝试用内置包修复: platform={}, error={}",
             platform_id, error
@@ -1837,12 +1911,19 @@ fn bootstrap_one_platform_package(
         PlatformPackageOperation::Install,
         None,
     )?;
-    let installed_manifest = replace_current_with_prepared(
+    let mut installed_manifest = replace_current_with_prepared(
         app,
         platform_id,
         &extracted_root,
         PlatformPackageOperation::Install,
         None,
+    )?;
+    installed_manifest.download_size_bytes = source_manifest.download_size_bytes;
+    installed_manifest.sha256 = source_manifest.sha256.clone();
+    installed_manifest.signature = source_manifest.signature.clone();
+    write_manifest(
+        &package_current_dir(platform_id)?.join(MANIFEST_FILE),
+        &installed_manifest,
     )?;
     let mut registry = read_registry()?;
     upsert_record(
@@ -4927,6 +5008,29 @@ pub fn ensure_platform_package_installed(platform_id: &str) -> Result<(), String
     Err(format!(
         "平台包未安装或未就绪，请先在平台管理中安装/修复: {}",
         platform_id
+    ))
+}
+
+pub fn ensure_platform_adapter_method_declared(
+    platform_id: &str,
+    method: &str,
+) -> Result<(), String> {
+    let method = method.trim();
+    if method.is_empty() {
+        return Err("平台 adapter method 不能为空".to_string());
+    }
+    ensure_platform_package_installed(platform_id)?;
+    let manifest = read_installed_manifest(platform_id)?
+        .ok_or_else(|| format!("平台包未安装: {}", platform_id))?;
+    let adapter = manifest
+        .adapter
+        .ok_or_else(|| format!("平台包缺少 adapter 声明: {}", platform_id))?;
+    if adapter.methods.iter().any(|allowed| allowed == method) {
+        return Ok(());
+    }
+    Err(format!(
+        "平台 adapter method 未在 manifest 中声明: platform={}, method={}",
+        platform_id, method
     ))
 }
 

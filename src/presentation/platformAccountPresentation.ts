@@ -41,6 +41,7 @@ import {
   isCodexApiKeyAccount,
   isCodexChatCompletionsApiKeyAccount,
   isCodexNewApiAccount,
+  isCodexPendingOAuthAccount,
 } from "../types/codex";
 import {
   formatClaudeResetTime,
@@ -694,13 +695,16 @@ export function buildCodexAccountPresentation(
   account: CodexAccount,
   t: Translate,
 ): UnifiedAccountPresentation {
+  const isPendingOAuthAccount = isCodexPendingOAuthAccount(account);
   const apiKeyDisplayName = account.account_name?.trim();
   const displayName =
-    isCodexApiKeyAccount(account) && apiKeyDisplayName
+    isPendingOAuthAccount && account.email?.trim()
+      ? account.email
+      : isCodexApiKeyAccount(account) && apiKeyDisplayName
       ? apiKeyDisplayName
       : isCodexNewApiAccount(account)
         ? "Codex API"
-      : account.email;
+        : account.email;
   const effectiveQuota = getCodexEffectiveQuotaPercentages(account.quota);
   const weeklyBlocksHourlyHint = effectiveQuota.weeklyBlocksHourly
     ? t("codex.quota.weeklyBlocksHourly", "周额度为 0，5小时额度已不可用")
@@ -709,7 +713,7 @@ export function buildCodexAccountPresentation(
     ? buildCodexNewApiQuotaItems(account, t)
     : [];
   const quotaItems: UnifiedQuotaMetric[] =
-    isCodexChatCompletionsApiKeyAccount(account)
+    isPendingOAuthAccount || isCodexChatCompletionsApiKeyAccount(account)
       ? []
       : newApiQuotaItems.length > 0
       ? newApiQuotaItems
@@ -747,7 +751,9 @@ export function buildCodexAccountPresentation(
   return {
     id: account.id,
     displayName,
-    planLabel: planBadge.label,
+    planLabel: isPendingOAuthAccount
+      ? t("codex.pendingAuth.badge", "待授权")
+      : planBadge.label,
     planClass: planBadge.className,
     quotaItems,
   };

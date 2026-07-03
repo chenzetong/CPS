@@ -7,6 +7,7 @@ use std::time::Duration;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde_json::Value;
 use tauri::AppHandle;
+use tokio::sync::Notify;
 
 use crate::modules::{config, logger, platform_adapter, platform_package};
 
@@ -21,6 +22,7 @@ const REFRESH_FAILURE_BACKOFF_SECONDS: i64 = 15 * 60;
 const TRAE_STRICT_CHECK_INTERVAL_SECONDS: i64 = 10 * 60;
 
 static TOKEN_KEEPER_STARTED: AtomicBool = AtomicBool::new(false);
+static TOKEN_KEEPER_CONFIG_CHANGED: LazyLock<Notify> = LazyLock::new(Notify::new);
 static NEXT_ALLOWED_ATTEMPT_AT: LazyLock<Mutex<HashMap<String, i64>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static NEXT_PLATFORM_SCAN_AT: LazyLock<Mutex<HashMap<&'static str, i64>>> =
@@ -43,12 +45,29 @@ pub fn ensure_started(app_handle: AppHandle) {
 
     logger::log_info("[TokenKeeper] 后端 OAuth token 保活已启动");
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(TOKEN_KEEPER_STARTUP_DELAY_SECONDS)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(TOKEN_KEEPER_STARTUP_DELAY_SECONDS)) => {}
+            _ = TOKEN_KEEPER_CONFIG_CHANGED.notified() => {}
+        }
+
         loop {
             run_refresh_cycle(&app_handle).await;
-            tokio::time::sleep(Duration::from_secs(TOKEN_KEEPER_TICK_SECONDS)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(TOKEN_KEEPER_TICK_SECONDS)) => {}
+                _ = TOKEN_KEEPER_CONFIG_CHANGED.notified() => {}
+            }
         }
     });
+}
+
+pub fn notify_config_changed(app_handle: AppHandle, enabled: bool) {
+    ensure_started(app_handle);
+    reset_platform_scan_schedule();
+    logger::log_info(&format!(
+        "[TokenKeeper] 后台 OAuth token 保活设置已{}，已同步运行时状态",
+        if enabled { "启用" } else { "停用" }
+    ));
+    TOKEN_KEEPER_CONFIG_CHANGED.notify_one();
 }
 
 async fn run_refresh_cycle(app_handle: &AppHandle) {
@@ -100,6 +119,12 @@ fn mark_platform_scan(platform: &'static str, refreshed_any: bool) {
     };
     if let Ok(mut state) = NEXT_PLATFORM_SCAN_AT.lock() {
         state.insert(platform, now_ts() + next_delay);
+    }
+}
+
+fn reset_platform_scan_schedule() {
+    if let Ok(mut state) = NEXT_PLATFORM_SCAN_AT.lock() {
+        state.clear();
     }
 }
 

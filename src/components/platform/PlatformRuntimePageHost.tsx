@@ -6,6 +6,7 @@ import {
   getPlatformPackageUiEntry,
   getPlatformUiDevConfig,
 } from '../../services/platformPackageService';
+import { usePlatformPackageStore } from '../../stores/usePlatformPackageStore';
 import './PlatformRuntimePageHost.css';
 
 interface PlatformRuntimePageHostProps {
@@ -260,6 +261,7 @@ export function PlatformRuntimePageHost({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [devRevision, setDevRevision] = useState(0);
+  const bootstrapRunning = usePlatformPackageStore((store) => store.bootstrapRunning);
   const locale = i18n.language || 'zh-cn';
   const runtimeCacheKey = buildRemoteRuntimeCacheKey(platformId, state, devRevision);
   const runtimeParamsKey = stableStringify(runtimeParams);
@@ -313,6 +315,20 @@ export function PlatformRuntimePageHost({
   }, [platformId]);
 
   useEffect(() => {
+    const handlePlatformPackageChanged = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<PlatformPackageState> | undefined>).detail;
+      const changedPlatformId = typeof detail?.platformId === 'string' ? detail.platformId : null;
+      if (changedPlatformId && changedPlatformId !== platformId) return;
+      evictPlatformRemoteRuntimeCache(platformId);
+      setDevRevision((value) => value + 1);
+    };
+    window.addEventListener('agtools:platform-package-changed', handlePlatformPackageChanged);
+    return () => {
+      window.removeEventListener('agtools:platform-package-changed', handlePlatformPackageChanged);
+    };
+  }, [platformId]);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -349,6 +365,14 @@ export function PlatformRuntimePageHost({
     setError(null);
     cleanupMounted();
     container.replaceChildren();
+    if (bootstrapRunning) {
+      return () => {
+        cancelled = true;
+        cleanupMounted();
+        cleanupInjectedAssets();
+        cleanupTabsSlot();
+      };
+    }
     tabsSlotElement = tabsSlotId ? document.getElementById(tabsSlotId) : null;
     if (tabsSlotElement) {
       tabsSlotElement.replaceChildren();
@@ -440,6 +464,7 @@ export function PlatformRuntimePageHost({
     tabsSlotId,
     runtimeParamsKey,
     devRevision,
+    bootstrapRunning,
   ]);
 
   return (

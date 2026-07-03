@@ -1003,6 +1003,16 @@ pub fn call_antigravity_series_value_with_timeout(
     )
 }
 
+pub fn call_declared_platform_value_with_timeout(
+    platform_id: &str,
+    method: &str,
+    payload: Value,
+    timeout: Duration,
+) -> Result<Value, String> {
+    platform_package::ensure_platform_adapter_method_declared(platform_id, method)?;
+    call_platform_adapter_value_with_timeout(platform_id, method, payload, timeout)
+}
+
 pub fn call_zed_with_timeout<T: DeserializeOwned>(
     method: &str,
     payload: Value,

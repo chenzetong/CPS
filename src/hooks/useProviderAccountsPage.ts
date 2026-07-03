@@ -57,6 +57,7 @@ import {
   measureHangDiagnostic,
   trackNextPaint,
 } from '../utils/hangDiagnostics';
+import * as codexService from '../services/codexService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -300,6 +301,63 @@ const isCodexDirectImportItem = (value: unknown): boolean => {
   return Boolean(hasFullTokens || hasRefreshTokenOnly);
 };
 
+const normalizeCodexImportMode = (value: unknown): string => {
+  if (typeof value !== 'string') return '';
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+};
+
+const isCodexPendingOAuthImportItem = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const payload = value as Record<string, unknown>;
+  const mode = normalizeCodexImportMode(
+    payload.mode ?? payload.action ?? payload.auth_mode ?? payload.authMode,
+  );
+  if (mode !== 'pending_oauth' && mode !== 'oauth_pending') return false;
+  return Boolean(readRecordString(payload, ['email', 'account_email', 'accountEmail']));
+};
+
+const readCodexPendingOAuthNoteValue = (
+  payload: Record<string, unknown>,
+  keys: string[],
+): string | undefined => readRecordString(payload, keys) ?? undefined;
+
+const createCodexPendingOAuthAccountFromImportItem = async (
+  item: unknown,
+  emailRequiredMessage: string,
+) => {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    throw new Error(emailRequiredMessage);
+  }
+  const payload = item as Record<string, unknown>;
+  const email = readRecordString(payload, ['email', 'account_email', 'accountEmail']);
+  if (!email) {
+    throw new Error(emailRequiredMessage);
+  }
+  return await codexService.createPendingCodexOAuthAccount(email, {
+    note: readCodexPendingOAuthNoteValue(payload, ['note', 'account_note', 'accountNote']),
+    twoFactorSecret: readCodexPendingOAuthNoteValue(payload, [
+      'two_factor_secret',
+      'twoFactorSecret',
+      'totp_secret',
+      'totpSecret',
+    ]),
+    accountPassword: readCodexPendingOAuthNoteValue(payload, [
+      'account_password',
+      'accountPassword',
+      'password',
+    ]),
+    phoneNumber: readCodexPendingOAuthNoteValue(payload, [
+      'phone_number',
+      'phoneNumber',
+      'phone',
+    ]),
+  });
+};
+
 const parseCodexRawRefreshTokenItems = (
   rawContent: string,
   messages: ExternalImportBundleParseMessages,
@@ -409,7 +467,10 @@ const resolveExternalImportBundleItems = (
     return items;
   }
 
-  if (platformId === 'codex' && isCodexDirectImportItem(root)) {
+  if (
+    platformId === 'codex' &&
+    (isCodexDirectImportItem(root) || isCodexPendingOAuthImportItem(root))
+  ) {
     return [root];
   }
 
@@ -1520,7 +1581,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
 
           let success = 0;
           const failures: ExternalImportProgressFailure[] = [];
-          const importedAccountIds: string[] = [];
+          const activatableImportedAccountIds: string[] = [];
           const total = items.length;
           updateProgress({
             status: 'importing',
@@ -1566,9 +1627,18 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
             });
 
             try {
-              const imported = await dataService.importFromJson(JSON.stringify(items[index]));
-              importedAccountIds.push(...collectImportedAccountIds(imported));
-              success += Array.isArray(imported) ? imported.length : 1;
+              if (platformId === 'codex' && isCodexPendingOAuthImportItem(items[index])) {
+                await createCodexPendingOAuthAccountFromImportItem(
+                  items[index],
+                  t('codex.pendingAuth.emailRequired', '请输入账号邮箱'),
+                );
+                success += 1;
+              } else {
+                const imported = await dataService.importFromJson(JSON.stringify(items[index]));
+                const accountIds = collectImportedAccountIds(imported);
+                activatableImportedAccountIds.push(...accountIds);
+                success += Array.isArray(imported) ? imported.length : 1;
+              }
             } catch (error) {
               failures.push({
                 index: current,
@@ -1581,7 +1651,7 @@ export function useProviderAccountsPage<TAccount extends ProviderAccountBase>(
           const activateImportedAccount = request.activate ? switchAccount : undefined;
           const activatedAccountId =
             activateImportedAccount
-              ? importedAccountIds[importedAccountIds.length - 1]
+              ? activatableImportedAccountIds[activatableImportedAccountIds.length - 1]
               : '';
           if (activatedAccountId && activateImportedAccount) {
             updateProgress({

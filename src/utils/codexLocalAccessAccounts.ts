@@ -1,6 +1,7 @@
 import {
   isCodexApiKeyAccount,
   isCodexExplicitFreePlanType,
+  isCodexPendingOAuthAccount,
   type CodexAccount,
 } from '../types/codex';
 
@@ -39,6 +40,7 @@ const CHAT_COMPLETIONS_PROVIDER_HOSTS = [
 ];
 
 export type CodexLocalAccessAccountIneligibleReason =
+  | "pending_oauth"
   | "chat_completions_api_key"
   | "free_restricted";
 
@@ -74,6 +76,9 @@ export function getCodexLocalAccessAccountIneligibleReason(
   account: CodexAccount,
   restrictFreeAccounts: boolean,
 ): CodexLocalAccessAccountIneligibleReason | null {
+  if (isCodexPendingOAuthAccount(account)) {
+    return "pending_oauth";
+  }
   if (isCodexChatCompletionsApiKeyAccount(account)) {
     return "chat_completions_api_key";
   }

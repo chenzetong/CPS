@@ -24,26 +24,32 @@ jobs:
             platform: "macos-latest"
             args: "--target aarch64-apple-darwin"
             release_dir: "target/aarch64-apple-darwin/release"
+            bootstrap_targets: "macos/aarch64"
           - label: "macos-x86_64"
             platform: "macos-latest"
             args: "--target x86_64-apple-darwin"
             release_dir: "target/x86_64-apple-darwin/release"
+            bootstrap_targets: "macos/x86_64"
           - label: "macos-universal"
             platform: "macos-latest"
             args: "--target universal-apple-darwin"
             release_dir: "target/universal-apple-darwin/release"
+            bootstrap_targets: "macos/aarch64,macos/x86_64"
           - label: "linux-x86_64"
             platform: "ubuntu-22.04"
             args: ""
             release_dir: "target/release"
+            bootstrap_targets: "linux/x86_64"
           - label: "linux-aarch64"
             platform: "ubuntu-24.04-arm"
             args: ""
             release_dir: "target/release"
+            bootstrap_targets: "linux/aarch64"
           - label: "windows-x86_64"
             platform: "windows-latest"
             args: ""
             release_dir: "target/release"
+            bootstrap_targets: "windows/x86_64"
 
     steps:
       - name: Checkout repository
@@ -97,11 +103,20 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare bundled platform packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/prepare-platform-bootstrap.cjs \
+            --from-source \
+            --targets "${{ matrix.bootstrap_targets }}"
+
       - name: Build the app
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          COCKPIT_SENTRY_DSN: ${{ secrets.COCKPIT_SENTRY_DSN }}
         run: |
           set -euo pipefail
           npx tauri build --ci ${{ matrix.args }} 2>&1 | tee "build-${{ matrix.label }}.log"

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -197,6 +198,8 @@ pub struct GeneralConfig {
     pub openclaw_auth_overwrite_on_switch: bool,
     /// 切换 Codex 时是否自动启动/重启 Codex App
     pub codex_launch_on_switch: bool,
+    /// 切换 Antigravity IDE 时是否自动启动/重启应用
+    pub antigravity_launch_on_switch: bool,
     /// 切换 Codex 时是否自动重启指定应用
     pub codex_restart_specified_app_on_switch: bool,
     /// 是否在 Codex 总览中显示 API 服务入口
@@ -1963,6 +1966,8 @@ pub fn save_network_config(
         global_proxy_enabled: next_global_proxy_enabled,
         global_proxy_url: next_global_proxy_url,
         global_proxy_no_proxy: next_global_proxy_no_proxy,
+        diagnostics_error_reporting_enabled: current.diagnostics_error_reporting_enabled,
+        diagnostics_error_reporting_debug: current.diagnostics_error_reporting_debug,
         // 保留其他设置不变
         language: current.language,
         default_terminal: current.default_terminal,
@@ -2044,6 +2049,7 @@ pub fn save_network_config(
         ghcp_launch_on_switch: current.ghcp_launch_on_switch,
         openclaw_auth_overwrite_on_switch: current.openclaw_auth_overwrite_on_switch,
         codex_launch_on_switch: current.codex_launch_on_switch,
+        antigravity_launch_on_switch: current.antigravity_launch_on_switch,
         codex_restart_specified_app_on_switch: current.codex_restart_specified_app_on_switch,
         codex_local_access_entry_visible: current.codex_local_access_entry_visible,
         top_right_ad_visible: current.top_right_ad_visible,
@@ -2202,6 +2208,130 @@ pub async fn get_available_terminals() -> Result<Vec<String>, String> {
     Ok(available)
 }
 
+fn escape_terminal_applescript(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
+
+#[tauri::command]
+pub async fn system_execute_terminal_command(
+    command: String,
+    terminal: Option<String>,
+) -> Result<String, String> {
+    let command = command.trim().to_string();
+    if command.is_empty() {
+        return Err("终端命令为空".to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let config = crate::modules::config::get_user_config();
+        let terminal = terminal
+            .unwrap_or(config.default_terminal)
+            .trim()
+            .to_string();
+        let is_iterm = terminal.to_lowercase().contains("iterm");
+        let is_terminal_app = terminal == "system" || terminal.is_empty() || terminal == "Terminal";
+        let app_name = if is_terminal_app {
+            "Terminal"
+        } else {
+            &terminal
+        };
+
+        let script = if is_iterm {
+            format!(
+                "tell application \"iTerm\"
+                    activate
+                    if not (exists window 1) then
+                        create window with default profile
+                        tell current session of current window
+                            write text \"{}\"
+                        end tell
+                    else
+                        tell current window
+                            create tab with default profile
+                            tell current session
+                                write text \"{}\"
+                            end tell
+                        end tell
+                    end if
+                end tell",
+                escape_terminal_applescript(&command),
+                escape_terminal_applescript(&command)
+            )
+        } else if is_terminal_app {
+            format!(
+                "tell application \"Terminal\"
+                    activate
+                    do script \"{}\"
+                end tell",
+                escape_terminal_applescript(&command)
+            )
+        } else {
+            return Err(format!(
+                "当前终端暂不支持直接执行：{}。请改用 Terminal 或 iTerm2。",
+                terminal
+            ));
+        };
+
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output()
+            .map_err(|error| format!("打开终端失败 ({}): {}", app_name, error))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("终端执行失败: {}", stderr.trim()));
+        }
+        return Ok(format!("已在 {} 执行命令", app_name));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let config = crate::modules::config::get_user_config();
+        let terminal = terminal
+            .unwrap_or(config.default_terminal)
+            .trim()
+            .to_string();
+
+        let mut cmd = if terminal == "pwsh" {
+            let mut command_process = Command::new("pwsh");
+            command_process.args(["-NoExit", "-Command", &command]);
+            command_process
+        } else if terminal == "wt" {
+            let mut command_process = Command::new("wt");
+            command_process.args(["powershell", "-NoExit", "-Command", &command]);
+            command_process
+        } else if terminal == "cmd" {
+            let mut command_process = Command::new("cmd");
+            command_process.args([
+                "/C",
+                "start",
+                "",
+                "powershell",
+                "-NoExit",
+                "-Command",
+                &command,
+            ]);
+            command_process
+        } else {
+            let mut command_process = Command::new("powershell");
+            command_process.args(["-NoExit", "-Command", &command]);
+            command_process
+        };
+
+        cmd.spawn()
+            .map_err(|error| format!("打开终端失败: {}", error))?;
+        return Ok("已在终端执行命令".to_string());
+    }
+
+    #[allow(unreachable_code)]
+    Err("终端执行仅支持 macOS 和 Windows".to_string())
+}
+
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn is_command_available(cmd: &str) -> bool {
     #[cfg(target_os = "windows")]
@@ -2224,6 +2354,39 @@ fn is_command_available(cmd: &str) -> bool {
     }
 
     command.status().map(|s| s.success()).unwrap_or(false)
+}
+
+/// 获取诊断上报配置
+#[tauri::command]
+pub fn get_diagnostics_config() -> modules::diagnostics::DiagnosticsConfig {
+    modules::diagnostics::get_diagnostics_config()
+}
+
+/// 保存诊断上报配置
+#[tauri::command]
+pub fn save_diagnostics_config(
+    error_reporting_enabled: bool,
+    error_reporting_debug: Option<bool>,
+) -> Result<(), String> {
+    modules::diagnostics::save_diagnostics_config(error_reporting_enabled, error_reporting_debug)
+}
+
+/// 记录前端启动阶段，只写本地日志，不触发远端上报
+#[tauri::command]
+pub fn diagnostics_frontend_stage(stage: String, detail: Option<serde_json::Value>) {
+    modules::diagnostics::record_frontend_stage(stage, detail);
+}
+
+/// 标记前端已完成启动
+#[tauri::command]
+pub fn diagnostics_frontend_ready(stage: Option<String>) {
+    modules::diagnostics::mark_frontend_ready(stage);
+}
+
+/// 捕获前端诊断事件并异步上报
+#[tauri::command]
+pub fn diagnostics_capture_event(event: modules::diagnostics::DiagnosticsClientEvent) {
+    modules::diagnostics::capture_client_event(event);
 }
 
 /// 获取通用设置配置
@@ -2320,6 +2483,7 @@ pub fn get_general_config(app: tauri::AppHandle) -> Result<GeneralConfig, String
         ghcp_launch_on_switch: user_config.ghcp_launch_on_switch,
         openclaw_auth_overwrite_on_switch: user_config.openclaw_auth_overwrite_on_switch,
         codex_launch_on_switch: user_config.codex_launch_on_switch,
+        antigravity_launch_on_switch: user_config.antigravity_launch_on_switch,
         codex_restart_specified_app_on_switch: user_config.codex_restart_specified_app_on_switch,
         codex_local_access_entry_visible: user_config.codex_local_access_entry_visible,
         top_right_ad_visible: user_config.top_right_ad_visible,
@@ -2458,6 +2622,7 @@ pub fn save_general_config(
     ghcp_launch_on_switch: Option<bool>,
     openclaw_auth_overwrite_on_switch: Option<bool>,
     codex_launch_on_switch: bool,
+    antigravity_launch_on_switch: Option<bool>,
     codex_restart_specified_app_on_switch: Option<bool>,
     codex_local_access_entry_visible: Option<bool>,
     top_right_ad_visible: Option<bool>,
@@ -2607,6 +2772,7 @@ pub fn save_general_config(
     let app_auto_launch_enabled_value =
         app_auto_launch_enabled.unwrap_or(current.app_auto_launch_enabled);
     let token_keeper_enabled_value = token_keeper_enabled.unwrap_or(current.token_keeper_enabled);
+    let token_keeper_enabled_changed = current.token_keeper_enabled != token_keeper_enabled_value;
     let antigravity_startup_wakeup_enabled_value =
         antigravity_startup_wakeup_enabled.unwrap_or(current.antigravity_startup_wakeup_enabled);
     let antigravity_startup_wakeup_delay_seconds_value = sanitize_startup_wakeup_delay_seconds(
@@ -2652,6 +2818,8 @@ pub fn save_general_config(
         global_proxy_enabled: current.global_proxy_enabled,
         global_proxy_url: current.global_proxy_url,
         global_proxy_no_proxy: current.global_proxy_no_proxy,
+        diagnostics_error_reporting_enabled: current.diagnostics_error_reporting_enabled,
+        diagnostics_error_reporting_debug: current.diagnostics_error_reporting_debug,
         // 更新通用设置
         language: normalized_language.clone(),
         default_terminal: default_terminal.unwrap_or(current.default_terminal),
@@ -2730,6 +2898,8 @@ pub fn save_general_config(
         openclaw_auth_overwrite_on_switch: openclaw_auth_overwrite_on_switch
             .unwrap_or(current.openclaw_auth_overwrite_on_switch),
         codex_launch_on_switch,
+        antigravity_launch_on_switch: antigravity_launch_on_switch
+            .unwrap_or(current.antigravity_launch_on_switch),
         codex_restart_specified_app_on_switch: codex_restart_specified_app_on_switch
             .unwrap_or(current.codex_restart_specified_app_on_switch),
         codex_local_access_entry_visible: codex_local_access_entry_visible
@@ -2850,6 +3020,13 @@ pub fn save_general_config(
     };
 
     config::save_user_config(&new_config)?;
+
+    if token_keeper_enabled_changed {
+        modules::provider_token_keeper::notify_config_changed(
+            app.clone(),
+            token_keeper_enabled_value,
+        );
+    }
 
     if current_app_auto_launch_enabled != app_auto_launch_enabled_value {
         apply_app_auto_launch_enabled(&app, app_auto_launch_enabled_value)?;

@@ -16,6 +16,7 @@ const DEFAULT_INSTANCE_NAME: &str = "默认实例";
 const SESSION_INDEX_FILE: &str = "session_index.jsonl";
 const SESSION_DIRS: [&str; 2] = ["sessions", "archived_sessions"];
 const SESSION_TRASH_ROOT_DIR: &str = "cockpit-tools-codex-session-trash";
+const SESSION_INDEX_ACTIVITY_DRIFT_SECONDS: i64 = 3_600;
 const TOKEN_STATS_READ_CHUNK_BYTES: usize = 64 * 1024;
 const CONTENT_SEARCH_READ_CHUNK_BYTES: usize = 64 * 1024;
 const CONTENT_SEARCH_CACHE_MAX_ENTRIES: usize = 512;
@@ -340,9 +341,7 @@ pub fn list_sessions_across_instances(
                         locations: Vec::new(),
                     });
 
-            if entry.updated_at.is_none() {
-                entry.updated_at = snapshot.updated_at;
-            }
+            entry.updated_at = max_optional_timestamp(entry.updated_at, snapshot.updated_at);
             if entry.title.trim().is_empty() {
                 entry.title = snapshot.title.clone();
             }
@@ -827,11 +826,10 @@ fn load_thread_snapshots(instance: &CodexSyncInstance) -> Result<Vec<ThreadSnaps
                 .and_then(session_index_title)
                 .unwrap_or_else(|| id.clone());
             let cwd = session_meta_cwd(&session_meta).unwrap_or_else(|| "未知工作目录".to_string());
-            let updated_at = session_index_map
-                .get(&id)
-                .and_then(parse_session_index_updated_at_seconds)
-                .or_else(|| rollout_file_activity_seconds(&rollout_path))
-                .or_else(|| rollout_file_modified_seconds(&rollout_path));
+            let updated_at = resolve_thread_snapshot_updated_at_seconds(
+                session_index_map.get(&id),
+                &rollout_path,
+            );
             let session_index_entry = session_index_map
                 .get(&id)
                 .cloned()
@@ -1184,6 +1182,25 @@ fn parse_session_index_updated_at_seconds(entry: &JsonValue) -> Option<i64> {
     .find_map(parse_json_timestamp_seconds)
 }
 
+fn resolve_thread_snapshot_updated_at_seconds(
+    session_index_entry: Option<&JsonValue>,
+    rollout_path: &Path,
+) -> Option<i64> {
+    let indexed = session_index_entry.and_then(parse_session_index_updated_at_seconds);
+    let activity = rollout_file_activity_seconds(rollout_path);
+    let resolved = match (indexed, activity) {
+        (Some(indexed), Some(activity))
+            if indexed.abs_diff(activity) > SESSION_INDEX_ACTIVITY_DRIFT_SECONDS as u64 =>
+        {
+            Some(activity)
+        }
+        (Some(indexed), _) => Some(indexed),
+        (None, Some(activity)) => Some(activity),
+        (None, None) => None,
+    };
+    resolved.or_else(|| rollout_file_modified_seconds(rollout_path))
+}
+
 fn rollout_file_activity_seconds(path: &Path) -> Option<i64> {
     let content = fs::read_to_string(path).ok()?;
     content
@@ -1236,6 +1253,15 @@ fn normalize_codex_timestamp_seconds(timestamp: i64) -> i64 {
         timestamp / 1_000
     } else {
         timestamp
+    }
+}
+
+fn max_optional_timestamp(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
     }
 }
 
@@ -1702,6 +1728,53 @@ mod tests {
             ),
         )
         .expect("write rollout");
+    }
+
+    #[test]
+    fn max_optional_timestamp_uses_latest_available_value() {
+        assert_eq!(max_optional_timestamp(Some(10), Some(30)), Some(30));
+        assert_eq!(max_optional_timestamp(Some(30), Some(10)), Some(30));
+        assert_eq!(max_optional_timestamp(None, Some(20)), Some(20));
+        assert_eq!(max_optional_timestamp(Some(20), None), Some(20));
+        assert_eq!(max_optional_timestamp(None, None), None);
+    }
+
+    #[test]
+    fn resolve_thread_snapshot_updated_at_prefers_rollout_activity_when_index_is_stale() {
+        let base_dir = make_temp_dir("codex-session-updated-at-drift-test");
+        let rollout_path = base_dir.join("rollout-session-1.jsonl");
+        write_rollout(&rollout_path, "session-1", "activity");
+        let stale_index = json!({
+            "id": "session-1",
+            "thread_name": "Old index",
+            "updated_at": "2024-01-01T00:00:00.000000Z",
+        });
+
+        assert_eq!(
+            resolve_thread_snapshot_updated_at_seconds(Some(&stale_index), &rollout_path),
+            Some(1_780_362_123)
+        );
+
+        fs::remove_dir_all(&base_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn resolve_thread_snapshot_updated_at_keeps_index_when_close_to_rollout_activity() {
+        let base_dir = make_temp_dir("codex-session-updated-at-index-test");
+        let rollout_path = base_dir.join("rollout-session-1.jsonl");
+        write_rollout(&rollout_path, "session-1", "activity");
+        let current_index = json!({
+            "id": "session-1",
+            "thread_name": "Current index",
+            "updated_at": "2026-06-02T01:30:00.000000Z",
+        });
+
+        assert_eq!(
+            resolve_thread_snapshot_updated_at_seconds(Some(&current_index), &rollout_path),
+            Some(1_780_363_800)
+        );
+
+        fs::remove_dir_all(&base_dir).expect("cleanup temp dir");
     }
 
     #[test]

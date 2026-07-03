@@ -286,13 +286,6 @@ struct CodexLaunchCredentialSnapshot {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LocalAccessActivateResult {
-    state: CodexLocalAccessState,
-    launch_on_switch: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct CodexSwitchPostActions {
     codex_launch_on_switch: bool,
     opencode_restart_app_path: Option<String>,
@@ -304,6 +297,72 @@ struct CodexSwitchPostActions {
 struct SwitchCodexAccountResult {
     account: CodexAccount,
     post_actions: CodexSwitchPostActions,
+}
+
+fn restart_codex_specified_app_by_path(path: &str) {
+    let path = path.trim();
+    if path.is_empty() {
+        logger::log_warn("已开启切换 Codex 时自动重启指定应用，但未配置应用路径，已跳过");
+        return;
+    }
+
+    match process::restart_specified_app_by_path(path, 20) {
+        Ok(()) => {
+            logger::log_info(&format!("已重启指定应用: {}", path));
+        }
+        Err(error) => {
+            logger::log_warn(&format!("重启指定应用失败（path={}）：{}", path, error));
+        }
+    }
+}
+
+async fn run_codex_switch_post_actions(context: &str, post_actions: CodexSwitchPostActions) {
+    if let Some(opencode_app_path) = post_actions.opencode_restart_app_path.as_deref() {
+        let opencode_started = Instant::now();
+        if process::is_opencode_running() {
+            if let Err(error) = process::close_opencode(20) {
+                logger::log_warn(&format!("OpenCode 关闭失败: {}", error));
+            }
+        } else {
+            logger::log_info("OpenCode 未在运行，准备启动");
+        }
+        if let Err(error) = process::start_opencode_with_path(Some(opencode_app_path)) {
+            logger::log_warn(&format!("OpenCode 启动失败: {}", error));
+        }
+        logger::log_info(&format!(
+            "[Codex Switch][Adapter] {} OpenCode restart post action finished: elapsed_ms={}",
+            context,
+            opencode_started.elapsed().as_millis(),
+        ));
+    }
+
+    if post_actions.codex_launch_on_switch {
+        let launch_started = Instant::now();
+        #[cfg(target_os = "macos")]
+        if process::is_codex_running() {
+            logger::log_info("检测到 Codex 正在运行，将按默认实例 PID 逻辑重启");
+        }
+        if let Err(error) = start_codex_instance(DEFAULT_INSTANCE_ID.to_string(), true).await {
+            logger::log_warn(&format!("Codex 启动失败: {}", error));
+        }
+        logger::log_info(&format!(
+            "[Codex Switch][Adapter] {} default instance launch post action finished: elapsed_ms={}",
+            context,
+            launch_started.elapsed().as_millis(),
+        ));
+    } else {
+        logger::log_info("已关闭切换 Codex 时自动启动 Codex App");
+    }
+
+    if let Some(app_path) = post_actions.restart_specified_app_path.as_deref() {
+        let restart_specified_started = Instant::now();
+        restart_codex_specified_app_by_path(app_path);
+        logger::log_info(&format!(
+            "[Codex Switch][Adapter] {} restart specified app post action finished: elapsed_ms={}",
+            context,
+            restart_specified_started.elapsed().as_millis(),
+        ));
+    }
 }
 
 struct CodexLaunchContext {
@@ -892,6 +951,16 @@ struct TagsPayload {
 #[serde(rename_all = "camelCase")]
 struct NotePayload {
     account_id: String,
+    note: Option<String>,
+    two_factor_secret: Option<String>,
+    account_password: Option<String>,
+    phone_number: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PendingOAuthAccountPayload {
+    email: String,
     note: Option<String>,
     two_factor_secret: Option<String>,
     account_password: Option<String>,
@@ -2082,7 +2151,7 @@ fn log_session_visibility_repair_after_credential_kind_change(
 
 async fn activate_local_access(
     auto_repair_mode: Option<codex_session_visibility::CodexSessionVisibilityAutoRepairMode>,
-) -> Result<LocalAccessActivateResult, String> {
+) -> Result<CodexLocalAccessState, String> {
     let flow_started = Instant::now();
     logger::log_info("[Codex API Service Switch][Adapter] localAccess.activate started");
     let codex_home = codex_account::get_codex_home();
@@ -2157,14 +2226,20 @@ async fn activate_local_access(
 
     let user_config = config::get_user_config();
     logger::log_info("API 服务启动模式下跳过 OpenCode / OpenClaw OAuth 同步");
+    run_codex_switch_post_actions(
+        "after-api-service-activate",
+        CodexSwitchPostActions {
+            codex_launch_on_switch: user_config.codex_launch_on_switch,
+            opencode_restart_app_path: None,
+            restart_specified_app_path: None,
+        },
+    )
+    .await;
     logger::log_info(&format!(
         "[Codex API Service Switch][Adapter] localAccess.activate finished: total_ms={}",
         flow_started.elapsed().as_millis()
     ));
-    Ok(LocalAccessActivateResult {
-        state,
-        launch_on_switch: user_config.codex_launch_on_switch,
-    })
+    Ok(state)
 }
 
 async fn switch_codex_account(
@@ -3259,10 +3334,15 @@ fn handle_rpc(runtime: &Runtime, request: RpcRequest) -> Result<Value, String> {
         }
         "switch.account" => {
             let payload: SwitchCodexAccountPayload = parse_payload(request.payload)?;
-            to_value(runtime.block_on(switch_codex_account(
+            let result = runtime.block_on(switch_codex_account(
                 payload.account_id,
                 payload.auto_repair_mode,
-            ))?)
+            ))?;
+            runtime.block_on(run_codex_switch_post_actions(
+                "after-account-switch",
+                result.post_actions,
+            ));
+            to_value(result.account)
         }
         "accounts.delete" => {
             let payload: AccountIdPayload = parse_payload(request.payload)?;
@@ -3303,6 +3383,18 @@ fn handle_rpc(runtime: &Runtime, request: RpcRequest) -> Result<Value, String> {
         "accounts.addApiKey" => {
             let payload: ApiKeyAccountPayload = parse_payload(request.payload)?;
             add_api_key_account(payload)
+        }
+        "accounts.createPendingOAuth" => {
+            let payload: PendingOAuthAccountPayload = parse_payload(request.payload)?;
+            to_value(codex_account::create_pending_oauth_account(
+                payload.email,
+                codex_account::CodexAccountNoteUpdate {
+                    note: payload.note,
+                    two_factor_secret: payload.two_factor_secret,
+                    account_password: payload.account_password,
+                    phone_number: payload.phone_number,
+                },
+            )?)
         }
         "accounts.updateName" => {
             let payload: AccountNamePayload = parse_payload(request.payload)?;

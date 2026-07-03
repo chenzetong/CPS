@@ -210,6 +210,49 @@ export function loadSavedMfaRecords(): MfaRecord[] {
   return dedupeMfaRecordsBySecret(merged);
 }
 
+export function upsertSavedMfaRecord(input: {
+  secret: string;
+  accountName?: string | null;
+  remark?: string | null;
+}): MfaRecord[] {
+  const parsed = parseMfaCredentialInput(input.secret);
+  if (!parsed) {
+    return loadSavedMfaRecords();
+  }
+
+  const accountName = (input.accountName || parsed.accountName || '').trim();
+  const remark = (input.remark || '').trim();
+  const identity = toMfaSecretIdentity(parsed.secret);
+  const records = loadSavedMfaRecords();
+  const existingIndex = records.findIndex((record) => toMfaSecretIdentity(record.secret) === identity);
+  const now = Date.now();
+  const nextRecord: MfaRecord = existingIndex >= 0
+    ? {
+        ...records[existingIndex],
+        accountName: accountName || records[existingIndex].accountName,
+        remark: remark || records[existingIndex].remark,
+        secret: parsed.secret,
+        time: now,
+      }
+    : {
+        id: createMfaRecordId(),
+        accountName,
+        secret: parsed.secret,
+        remark,
+        time: now,
+      };
+  const nextRecords = existingIndex >= 0
+    ? records.map((record, index) => (index === existingIndex ? nextRecord : record))
+    : [nextRecord, ...records];
+  const deduped = dedupeMfaRecordsBySecret(nextRecords);
+  try {
+    localStorage.setItem(MFA_STORAGE_KEY_SAVED, JSON.stringify(deduped));
+  } catch {
+    // Local 2FA vault sync is best effort.
+  }
+  return deduped;
+}
+
 export function loadMfaHistoryRecords(): MfaRecord[] {
   const merged = [
     ...readStorageArray(MFA_STORAGE_KEY_HISTORY),

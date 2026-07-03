@@ -47,6 +47,7 @@ import { useSponsorStore } from './stores/useSponsorStore';
 import { useRemoteConfigStore } from './stores/useRemoteConfigStore';
 import type { UpdateCheckResult, UpdateInfo } from './components/UpdateNotification';
 import type { Update as UpdaterUpdate } from '@tauri-apps/plugin-updater';
+import type { PlatformPackageBootstrapState } from './types/platformPackage';
 import { parseUpdaterReleaseNotes, resolveUpdaterDownloadUrl } from './utils/updaterReleaseNotes';
 import { FloatingCardWindow } from './pages/FloatingCardWindow';
 import { initWakeupNotificationListener } from './utils/wakeupNotificationListener';
@@ -578,6 +579,8 @@ function MainApp() {
   const sponsorModuleInitialized = useSponsorStore((state) => state.initialized);
   const fetchRemoteConfigState = useRemoteConfigStore((state) => state.fetchState);
   const refreshPlatformPackages = usePlatformPackageStore((state) => state.refresh);
+  const refreshPlatformPackageBootstrapState = usePlatformPackageStore((state) => state.refreshBootstrapState);
+  const setPlatformPackageBootstrapState = usePlatformPackageStore((state) => state.setBootstrapState);
   const codexRuntimeReady = usePlatformPackageStore((state) => state.canOpenPlatform('codex'));
   const sponsorEntryVisible = Boolean(sponsorModuleState.sponsorModule);
   const trayRefreshInFlightRef = useRef(false);
@@ -745,6 +748,57 @@ function MainApp() {
       console.error('Failed to refresh platform packages:', error);
     });
   }, [refreshPlatformPackages]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: UnlistenFn | null = null;
+
+    const refreshAfterBootstrap = (source: string) => {
+      window.dispatchEvent(
+        new CustomEvent('agtools:platform-package-changed', {
+          detail: { source },
+        }),
+      );
+      void refreshPlatformPackages().catch((error) => {
+        console.error('Failed to refresh platform packages after bootstrap:', error);
+      });
+    };
+
+    const applyBootstrapState = (state: PlatformPackageBootstrapState, source: string) => {
+      if (disposed) return;
+      setPlatformPackageBootstrapState(state);
+      if (state.completed && !state.running) {
+        refreshAfterBootstrap(source);
+      }
+    };
+
+    void refreshPlatformPackageBootstrapState()
+      .then((state) => applyBootstrapState(state, 'platform-package-bootstrap-state'))
+      .catch((error) => {
+        console.error('Failed to read platform package bootstrap state:', error);
+      });
+
+    void listen<PlatformPackageBootstrapState>('platform-package://bootstrap-completed', (event) => {
+      applyBootstrapState(event.payload, 'platform-package-bootstrap-completed');
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten();
+      } else {
+        unlisten = nextUnlisten;
+      }
+    }).catch((error) => {
+      console.error('Failed to listen platform package bootstrap event:', error);
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [
+    refreshPlatformPackageBootstrapState,
+    refreshPlatformPackages,
+    setPlatformPackageBootstrapState,
+  ]);
 
   useEffect(() => {
     const handlePackageChanged = () => {
@@ -925,11 +979,17 @@ function MainApp() {
         `应用重启前已关闭 Codex API 服务监听: enabled=${Boolean(state.collection?.enabled)}, running=${state.running}`,
       );
     } catch (error) {
+      const compactError = sanitizeUpdaterErrorMessage(error);
       writeUpdateLog(
         'warn',
-        `应用重启前关闭 Codex API 服务监听失败，已中止本次重启: error=${sanitizeUpdaterErrorMessage(error)}`,
+        `应用重启前关闭 Codex API 服务监听失败，将继续重启: error=${compactError}`,
       );
-      throw error;
+      setUpdateRetryStatus(
+        t(
+          'update_notification.stopApiServiceFailedContinue',
+          'API 服务未正常关闭，将继续重启...',
+        ),
+      );
     }
   }, [t, writeUpdateLog]);
 

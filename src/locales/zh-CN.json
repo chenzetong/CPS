@@ -536,7 +536,7 @@
     "packageInstallConfirmTitle": "安装 {{platform}} 平台包",
     "packageInstallConfirmDesc": "{{platform}} 需要先下载平台包后才能打开。版本 {{version}}，大小 {{size}}。",
     "packageInstallNotReady": "平台包已处理，但运行组件尚未就绪",
-    "packageInstallCardTitle": "{{platform}} 平台包未安装",
+    "packageInstallCardTitle": "{{platform}} 账号管理组件未安装",
     "packageInstallCardDesc": "下载版本 {{version}}，大小 {{size}}。安装完成后会自动打开此平台。",
     "packageUpdateAvailableShort": "可更新",
     "packageRepairRequired": "需修复",
@@ -587,8 +587,8 @@
     "packageOperationFailedFriendly": "平台包处理失败，请稍后重试。",
     "packageOperationCanceled": "已取消平台包操作。",
     "packageOperationRetryHint": "可以点击下方按钮重试。",
-    "packagePageRepairTitle": "{{platform}} 平台包需要修复",
-    "packagePageInstallTitle": "{{platform}} 平台包未安装",
+    "packagePageRepairTitle": "{{platform}} 账号管理组件需要修复",
+    "packagePageInstallTitle": "{{platform}} 账号管理组件未安装",
     "packagePageInstallDesc": "可直接在此页面安装，也可使用右上角的平台包操作安装或修复后再管理账号。安装前不会加载账号、OAuth、切号或后台刷新逻辑。",
     "packageDashboardStateDesc": "打开 {{platform}} 页面后，可直接安装，也可在右上角更新、修复或查看更新日志。",
     "packageOpenPlatformPage": "打开平台页面",
@@ -1083,6 +1083,8 @@
       "appAutoLaunchDesc": "系统登录后自动启动应用",
       "tokenKeeper": "账号授权保活",
       "tokenKeeperDesc": "开启后后台会延迟并分批刷新快过期的账号授权；关闭后不再自动保活，只保留手动刷新、切号和导入。",
+      "errorReporting": "遥测诊断",
+      "errorReportingDesc": "默认开启，仅用于排查启动、界面和平台包问题；关闭后不会提交遥测事件。上报前会脱敏，不上传账号密码、Token、2FA 秘钥、手机号等敏感信息。",
       "platformQuickSettingsTitle": "平台设置入口",
       "platformQuickSettingsDesc": "各平台设置已迁移到对应平台页，可从这里快速打开。",
       "platformQuickSettingsItemDesc": "平台页设置",
@@ -1251,7 +1253,10 @@
       "claudeAutoRefreshDesc": "后台自动更新 Claude 账号配额缓存",
       "claudeAppPath": "Claude Desktop 启动目标",
       "claudeAppPathDesc": "默认实例可使用 Microsoft Store 应用目标；多开实例请选择真实 Claude.exe。",
-      "platformQuickSettingsEntryTitle": "{{platform}}设置入口"
+      "platformQuickSettingsEntryTitle": "{{platform}}设置入口",
+      "antigravityLaunchOnSwitch": "切换时启动 Antigravity IDE",
+      "antigravityLaunchOnSwitchLabel": "切号后启动或重启应用",
+      "antigravityLaunchOnSwitchDesc": "关闭后切号只写入 Antigravity IDE 默认账号数据，不会关闭、启动或重启应用，适合只使用 CLI 的场景。"
     },
     "network": {
       "apiTitle": "反重力驾驶舱 API",
@@ -1924,7 +1929,8 @@
     "installFailed": "系统安装失败，请稍后重试或手动下载安装。",
     "restartRequiredAfterInstall": "更新已安装，请手动重启应用完成切换。",
     "stoppingApiService": "正在关闭 API 服务...",
-    "stopApiServiceFailed": "无法关闭 API 服务，请先停用后重试。"
+    "stopApiServiceFailed": "无法关闭 API 服务，请先停用后重试。",
+    "stopApiServiceFailedContinue": "API 服务未正常关闭，将继续重启..."
   },
   "closeDialog": {
     "title": "关闭窗口",
@@ -2327,7 +2333,8 @@
         "selected": "已加入 API 服务",
         "available": "普通面板",
         "manageMembers": "管理成员",
-        "save": "保存集合"
+        "save": "保存集合",
+        "pendingOAuthUnsupported": "待授权账号需先完成 OAuth 授权，暂不能加入 API 服务"
       },
       "oauthBinding": {
         "desc": "可选绑定。只要 OAuth 账号带 refresh_token 即可选择；未绑定时 API 服务按原 API Key 逻辑运行；绑定后登录态使用 OAuth 账号，Provider 使用当前 API 服务配置。",
@@ -3545,6 +3552,18 @@
       "completed": "删除完成",
       "preparing": "正在准备删除任务...",
       "retryFailed": "重试失败项"
+    },
+    "pendingAuth": {
+      "badge": "待授权",
+      "emailRequired": "请输入账号邮箱",
+      "saving": "正在保存待授权账号...",
+      "saved": "待授权账号已保存",
+      "saveFailed": "保存待授权账号失败：{{error}}",
+      "emailLabel": "待授权账号",
+      "emailPlaceholder": "输入 OpenAI 账号邮箱",
+      "saveDraft": "保存待授权卡片",
+      "authorizeAction": "授权添加",
+      "cardHint": "备注已保存，完成 OAuth 后即可使用"
     }
   },
   "codebuddy": {

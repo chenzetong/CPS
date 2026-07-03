@@ -887,7 +887,10 @@ export function CodexLocalAccessModal({
           account,
           restrictFreeAccounts,
         );
-        if (ineligibleReason === "chat_completions_api_key") {
+        if (
+          ineligibleReason === "chat_completions_api_key" ||
+          ineligibleReason === "pending_oauth"
+        ) {
           return true;
         }
         if (isCodexLocalAccessEligibleAccount(account, restrictFreeAccounts)) {
@@ -2774,8 +2777,13 @@ export function CodexLocalAccessModal({
                         );
                       const isChatCompletionsApiKeyUnsupported =
                         ineligibleReason === "chat_completions_api_key";
+                      const isPendingOAuthUnsupported =
+                        ineligibleReason === "pending_oauth";
+                      const isAccountUnsupported =
+                        isChatCompletionsApiKeyUnsupported ||
+                        isPendingOAuthUnsupported;
                       const isChecked =
-                        !isChatCompletionsApiKeyUnsupported &&
+                        !isAccountUnsupported &&
                         selected.has(account.id);
                       const accountStats = allStatsByAccountId.get(
                         account.id,
@@ -2784,13 +2792,13 @@ export function CodexLocalAccessModal({
                       return (
                         <label
                           key={account.id}
-                          className={`group-account-item${isChecked ? " is-current" : ""}${isChatCompletionsApiKeyUnsupported ? " is-disabled" : ""}`}
+                          className={`group-account-item${isChecked ? " is-current" : ""}${isAccountUnsupported ? " is-disabled" : ""}`}
                         >
                           <input
                             type="checkbox"
                             checked={isChecked}
                             disabled={
-                              actionBusy || isChatCompletionsApiKeyUnsupported
+                              actionBusy || isAccountUnsupported
                             }
                             onChange={() => toggleSelect(account.id)}
                           />
@@ -2820,6 +2828,14 @@ export function CodexLocalAccessModal({
                                   {t(
                                     "codex.localAccess.modal.chatApiKeyUnsupported",
                                     "Chat Completions 协议不支持加入 API 服务",
+                                  )}
+                                </span>
+                              )}
+                              {isPendingOAuthUnsupported && (
+                                <span className="codex-local-access-member-unsupported">
+                                  {t(
+                                    "codex.localAccess.modal.pendingOAuthUnsupported",
+                                    "待授权账号需完成 OAuth 后才能加入 API 服务",
                                   )}
                                 </span>
                               )}

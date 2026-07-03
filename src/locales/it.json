@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "Installa il pacchetto {{platform}}",
     "packageInstallConfirmDesc": "{{platform}} richiede il pacchetto piattaforma prima dell’apertura. Versione {{version}}, dimensione {{size}}.",
     "packageInstallNotReady": "Il pacchetto è stato elaborato, ma il runtime non è ancora pronto.",
-    "packageInstallCardTitle": "Il pacchetto {{platform}} non è installato",
+    "packageInstallCardTitle": "Il componente di gestione account di {{platform}} non è installato",
     "packageInstallCardDesc": "Scarica la versione {{version}}, dimensione {{size}}. La piattaforma si aprirà dopo l’installazione.",
     "packageUpdateAvailableShort": "Aggiorna",
     "packageRepairRequired": "Ripara",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "Operazione sul pacchetto piattaforma non riuscita. Riprova più tardi.",
     "packageOperationCanceled": "Operazione sul pacchetto piattaforma annullata.",
     "packageOperationRetryHint": "Puoi fare clic sul pulsante qui sotto per riprovare.",
-    "packagePageRepairTitle": "Il pacchetto {{platform}} richiede riparazione",
-    "packagePageInstallTitle": "Il pacchetto {{platform}} non è installato",
+    "packagePageRepairTitle": "Il componente di gestione account di {{platform}} deve essere riparato",
+    "packagePageInstallTitle": "Il componente di gestione account di {{platform}} non è installato",
     "packagePageInstallDesc": "Puoi installare direttamente da questa pagina oppure usare le azioni del pacchetto in alto a destra per installare o riparare prima di gestire gli account. Account, OAuth, cambio account e aggiornamento in background non verranno caricati prima dell’installazione.",
     "packageDashboardStateDesc": "Apri la pagina {{platform}} per installare direttamente oppure usa le azioni in alto a destra per aggiornare, riparare o vedere il registro modifiche.",
     "packageOpenPlatformPage": "Apri pagina piattaforma",
@@ -824,6 +824,8 @@
       "appAutoLaunchDesc": "Avvia automaticamente l'app dopo l'accesso al sistema",
       "tokenKeeper": "Mantieni autorizzazione account",
       "tokenKeeperDesc": "Se attivo, l’app rinnova in background, dopo un ritardo e a piccoli lotti, le autorizzazioni degli account quasi scadute; se disattivato, la manutenzione automatica si ferma e restano disponibili aggiornamento manuale, cambio e importazione.",
+      "errorReporting": "Diagnostica telemetria",
+      "errorReportingDesc": "Attiva per impostazione predefinita e usata solo per analizzare problemi di avvio, UI e pacchetti piattaforma. Disattivandola non vengono inviati eventi di telemetria. Gli eventi sono redatti e non includono password, token, segreti 2FA, telefoni o altri dati sensibili.",
       "platformQuickSettingsTitle": "Impostazioni piattaforme",
       "platformQuickSettingsDesc": "Le impostazioni di ogni piattaforma sono ora nella sua pagina. Aprile rapidamente qui.",
       "platformQuickSettingsItemDesc": "Pagina piattaforma",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "Aggiorna automaticamente in background la cache delle quote degli account Claude.",
       "claudeAppPath": "Destinazione di avvio Claude Desktop",
       "claudeAppPathDesc": "Il profilo predefinito può usare una destinazione Microsoft Store; le istanze multiple richiedono il vero Claude.exe.",
-      "platformQuickSettingsEntryTitle": "{{platform}} accesso impostazioni"
+      "platformQuickSettingsEntryTitle": "{{platform}} accesso impostazioni",
+      "antigravityLaunchOnSwitch": "Avvia Antigravity IDE al cambio",
+      "antigravityLaunchOnSwitchLabel": "Avvia o riavvia app dopo il cambio",
+      "antigravityLaunchOnSwitchDesc": "Se disattivato, il cambio scrive solo i dati dell account predefinito di Antigravity IDE. L app non verra chiusa, avviata o riavviata, adatto ai flussi solo CLI."
     },
     "network": {
       "apiTitle": "API della cabina di pilotaggio antigravità",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "Arresto del servizio API...",
     "stopApiServiceFailed": "Impossibile arrestare il servizio API. Disattivalo prima e riprova.",
     "skipThisVersion": "Salta questa versione",
-    "skipFailed": "Impossibile saltare questo aggiornamento: {{error}}"
+    "skipFailed": "Impossibile saltare questo aggiornamento: {{error}}",
+    "stopApiServiceFailedContinue": "Il servizio API non si è chiuso correttamente. Riavvio comunque..."
   },
   "closeDialog": {
     "title": "Chiudi finestra",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "Il proxy degli account Free può essere instabile. Usalo con cautela.",
         "restrictFreeDisableConfirmTitle": "Consenti account Free",
         "restrictFreeDisableConfirmMessage": "Il proxy degli account Free può essere instabile. Vuoi usarli davvero?",
-        "manageMembers": "Gestisci membri"
+        "manageMembers": "Gestisci membri",
+        "pendingOAuthUnsupported": "Completa prima l’autorizzazione OAuth per aggiungere questo account in attesa al servizio API"
       },
       "entryAction": "Aggiungi al servizio API",
       "testAction": "Prova",
@@ -3347,6 +3354,18 @@
       "completed": "Eliminazione completata",
       "preparing": "Preparazione eliminazione...",
       "retryFailed": "Riprova falliti"
+    },
+    "pendingAuth": {
+      "badge": "Auth in attesa",
+      "emailRequired": "Inserisci l’email dell’account",
+      "saving": "Salvataggio account in attesa...",
+      "saved": "Account in attesa salvato",
+      "saveFailed": "Impossibile salvare l’account in attesa: {{error}}",
+      "emailLabel": "Account in attesa",
+      "emailPlaceholder": "Inserisci l’email dell’account OpenAI",
+      "saveDraft": "Salva scheda in attesa",
+      "authorizeAction": "Autorizza",
+      "cardHint": "Note salvate. Completa OAuth per usare questo account."
     }
   },
   "githubCopilot": {

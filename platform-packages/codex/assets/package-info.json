@@ -2,5 +2,5 @@
   "platformId": "codex",
   "name": "Codex platform package",
   "description": "Remote React UI and sidecar adapter runtime for the Cockpit Tools Codex integration.",
-  "version": "1.0.2"
+  "version": "1.0.5"
 }

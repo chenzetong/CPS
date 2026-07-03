@@ -233,6 +233,8 @@ fn apply_macos_activation_policy(app: &tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logger::init_logger();
+    modules::diagnostics::install_panic_hook();
+    modules::diagnostics::start_frontend_ready_watchdog();
     raise_process_file_descriptor_limit();
     // 启动时先加载一次配置，确保进程级代理环境与用户设置同步。
     let _ = modules::config::get_user_config();
@@ -344,10 +346,11 @@ pub fn run() {
 
             {
                 let app_handle = app.handle().clone();
+                modules::platform_package::mark_platform_package_bootstrap_started();
                 std::thread::spawn(move || {
                     let startup_package_started_at = Instant::now();
                     let bootstrap_started_at = Instant::now();
-                    match modules::platform_package::bootstrap_platform_packages_from_resources(
+                    let bootstrap_state = match modules::platform_package::bootstrap_platform_packages_from_resources(
                         &app_handle,
                     ) {
                         Ok(installed) if !installed.is_empty() => {
@@ -357,19 +360,37 @@ pub fn run() {
                                 bootstrap_started_at.elapsed().as_millis()
                             ));
                             let _ = modules::tray::update_tray_menu(&app_handle);
+                            modules::platform_package::mark_platform_package_bootstrap_finished(
+                                installed,
+                                None,
+                            )
                         }
                         Ok(_) => {
                             logger::log_info(&format!(
                                 "[PlatformPackage][Perf] 启动 bootstrap 无需导入: elapsed={}ms",
                                 bootstrap_started_at.elapsed().as_millis()
                             ));
+                            modules::platform_package::mark_platform_package_bootstrap_finished(
+                                Vec::new(),
+                                None,
+                            )
                         }
-                        Err(error) => logger::log_warn(&format!(
-                            "[PlatformPackage] 启动 bootstrap 导入失败: elapsed={}ms, error={}",
-                            bootstrap_started_at.elapsed().as_millis(),
-                            error
-                        )),
-                    }
+                        Err(error) => {
+                            logger::log_warn(&format!(
+                                "[PlatformPackage] 启动 bootstrap 导入失败: elapsed={}ms, error={}",
+                                bootstrap_started_at.elapsed().as_millis(),
+                                error
+                            ));
+                            modules::platform_package::mark_platform_package_bootstrap_finished(
+                                Vec::new(),
+                                Some(error),
+                            )
+                        }
+                    };
+                    let _ = app_handle.emit(
+                        modules::platform_package::PLATFORM_PACKAGE_BOOTSTRAP_COMPLETED_EVENT,
+                        bootstrap_state,
+                    );
                     restore_platform_adapters_on_startup();
                     logger::log_info(&format!(
                         "[Startup][Perf] 平台包启动后台任务完成: elapsed={}ms",
@@ -620,8 +641,14 @@ pub fn run() {
             commands::system::delete_webdav_backup_file,
             commands::system::get_network_config,
             commands::system::save_network_config,
+            commands::system::get_diagnostics_config,
+            commands::system::save_diagnostics_config,
+            commands::system::diagnostics_frontend_stage,
+            commands::system::diagnostics_frontend_ready,
+            commands::system::diagnostics_capture_event,
             commands::system::get_general_config,
             commands::system::get_available_terminals,
+            commands::system::system_execute_terminal_command,
             commands::system::save_general_config,
             commands::system::save_tray_platform_layout,
             commands::system::set_app_path,
@@ -746,6 +773,7 @@ pub fn run() {
             commands::codex::codex_oauth_login_cancel,
             commands::codex::add_codex_account_with_token,
             commands::codex::add_codex_account_with_api_key,
+            commands::codex::create_pending_codex_oauth_account,
             commands::codex::update_codex_account_name,
             commands::codex::update_codex_api_key_credentials,
             commands::codex::update_codex_api_key_bound_oauth_account,
@@ -991,6 +1019,7 @@ pub fn run() {
             commands::zed::zed_focus_default_session,
             // Platform Package Commands
             commands::platform_package::list_platform_packages,
+            commands::platform_package::get_platform_package_bootstrap_state,
             commands::platform_package::check_platform_package_update,
             commands::platform_package::prepare_platform_package_updates,
             commands::platform_package::install_platform_package,
@@ -1003,6 +1032,7 @@ pub fn run() {
             commands::platform_package::cancel_platform_package_operation,
             commands::platform_package::get_platform_package_ui_entry,
             commands::platform_package::get_platform_ui_dev_config,
+            commands::platform_adapter::platform_adapter_call,
             // Qoder Instance Commands
             commands::qoder_instance::qoder_get_instance_defaults,
             commands::qoder_instance::qoder_list_instances,

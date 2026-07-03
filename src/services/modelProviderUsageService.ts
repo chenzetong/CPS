@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { callPlatformAdapter } from './platformAdapterService';
 
 export type ModelProviderUsageIntegrationType = 'sub2api' | 'new_api';
 export type ModelProviderUsageMode = ModelProviderUsageIntegrationType;
@@ -40,7 +40,7 @@ export interface ModelProviderUsageSummary {
   }>;
 }
 
-function buildUsageBaseUrlCandidates(baseUrl: string): string[] {
+export function buildUsageBaseUrlCandidates(baseUrl: string): string[] {
   const trimmed = baseUrl.trim();
   if (!trimmed) return [];
   const candidates = [trimmed];
@@ -70,7 +70,7 @@ export async function queryModelProviderUsage(input: {
   let lastError: unknown = null;
   for (const baseUrl of candidates) {
     try {
-      return await invoke('codex_query_model_provider_usage', {
+      return await callPlatformAdapter<ModelProviderUsageSummary>('codex', 'modelProviders.queryUsage', {
         baseUrl,
         apiKey: input.apiKey,
         integrationType: input.integrationType ?? null,
@@ -89,7 +89,7 @@ export async function listModelProviderModels(input: {
   baseUrl: string;
   apiKey: string;
 }): Promise<ModelProviderModelsResult> {
-  return await invoke('codex_list_model_provider_models', {
+  return await callPlatformAdapter<ModelProviderModelsResult>('codex', 'modelProviders.listModels', {
     baseUrl: input.baseUrl,
     apiKey: input.apiKey,
   });

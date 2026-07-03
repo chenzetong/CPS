@@ -197,11 +197,11 @@ export function PlatformPackageUnavailablePage({
           {needsRepair
             ? t('platformLayout.packagePageRepairTitle', {
                 platform: platformName,
-                defaultValue: '{{platform}} 平台包需要修复',
+                defaultValue: '{{platform}} 账号管理组件需要修复',
               })
             : t('platformLayout.packagePageInstallTitle', {
                 platform: platformName,
-                defaultValue: '{{platform}} 平台包未安装',
+                defaultValue: '{{platform}} 账号管理组件未安装',
               })}
         </h2>
         <p>

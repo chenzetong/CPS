@@ -13,6 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 use toml_edit::{value, Document};
 
 static CODEX_QUOTA_ALERT_LAST_SENT: std::sync::LazyLock<Mutex<HashMap<String, i64>>> =
@@ -52,6 +53,7 @@ const CODEX_RUNTIME_MODEL_PROVIDER_ID: &str = "codex_local_access";
 const CODEX_LEGACY_API_KEY_OPENAI_PROVIDER_ID: &str = "openai_api_key";
 const CODEX_DEFAULT_RUNTIME_PROVIDER_NAME: &str = "OpenAI Official";
 const CODEX_PROVIDER_WIRE_API: &str = "responses";
+const CODEX_AUTHORIZATION_STATUS_PENDING: &str = "pending";
 const APIKEY_FUN_PROVIDER_BASE_URL: &str = "https://api.apikey.fun/v1";
 const CODEX_CONTEXT_WINDOW_1M_VALUE: i64 = 1_000_000;
 const CODEX_AUTO_COMPACT_DEFAULT_LIMIT: i64 = 900_000;
@@ -65,10 +67,12 @@ const CODEX_TOKEN_SOURCE_MANAGED: &str = "managed";
 const ACCOUNT_STORE_PLATFORM: &str = "codex";
 const CODEX_MISSING_REFRESH_TOKEN_REAUTH_REASON: &str =
     "Codex 登录授权缺少 refresh_token，无法自动续期；当前 access_token 已不可用，请重新登录。";
-const CODEX_PROACTIVE_REFRESH_INTERVAL_SECONDS: i64 = 8 * 24 * 60 * 60;
 const CODEX_AUTH_PROJECTION_FILE_NAME: &str = ".cockpit_codex_auth.json";
 const CODEX_AUTH_PROJECTION_WRITER: &str = "cockpit";
 const CODEX_BATCH_IMPORT_SESSIONS_DIR: &str = "codex_batch_import_sessions";
+const CODEX_TOKEN_REFRESH_FILE_LOCK_TIMEOUT_SECONDS: u64 = 120;
+const CODEX_TOKEN_REFRESH_FILE_LOCK_STALE_SECONDS: u64 = 10 * 60;
+const CODEX_TOKEN_REFRESH_FILE_LOCK_POLL_MS: u64 = 100;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1327,6 +1331,116 @@ fn codex_token_lock_for(account_id: &str) -> Arc<tokio::sync::Mutex<()>> {
         .clone()
 }
 
+struct CodexTokenRefreshFileLock {
+    path: PathBuf,
+}
+
+impl Drop for CodexTokenRefreshFileLock {
+    fn drop(&mut self) {
+        if let Err(err) = fs::remove_dir_all(&self.path) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                logger::log_warn(&format!(
+                    "释放 Codex Token 跨进程刷新锁失败: lock_path={}, error={}",
+                    self.path.display(),
+                    err
+                ));
+            }
+        }
+    }
+}
+
+fn codex_token_refresh_file_lock_path(account_id: &str) -> PathBuf {
+    let lock_name = URL_SAFE_NO_PAD.encode(account_id.as_bytes());
+    get_accounts_dir()
+        .join(".locks")
+        .join(format!("token-refresh-{}.lock", lock_name))
+}
+
+fn codex_token_refresh_file_lock_is_stale(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    let Ok(modified) = metadata.modified() else {
+        return false;
+    };
+    SystemTime::now()
+        .duration_since(modified)
+        .map(|age| age >= Duration::from_secs(CODEX_TOKEN_REFRESH_FILE_LOCK_STALE_SECONDS))
+        .unwrap_or(false)
+}
+
+async fn acquire_codex_token_refresh_file_lock(
+    account_id: &str,
+    reason: &str,
+) -> Result<CodexTokenRefreshFileLock, String> {
+    let path = codex_token_refresh_file_lock_path(account_id);
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Codex Token 刷新锁路径无效: {}", path.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|err| format_io_error("创建 Codex Token 刷新锁目录", parent, &err))?;
+
+    let started = Instant::now();
+    loop {
+        match fs::create_dir(&path) {
+            Ok(()) => {
+                let owner_path = path.join("owner");
+                let owner = format!(
+                    "pid={}\naccount_id={}\nreason={}\ncreated_at={}\n",
+                    std::process::id(),
+                    account_id,
+                    reason,
+                    now_timestamp()
+                );
+                if let Err(err) = fs::write(&owner_path, owner) {
+                    logger::log_warn(&format!(
+                        "写入 Codex Token 跨进程刷新锁元数据失败: account_id={}, lock_path={}, error={}",
+                        account_id,
+                        owner_path.display(),
+                        err
+                    ));
+                }
+                return Ok(CodexTokenRefreshFileLock { path });
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                if codex_token_refresh_file_lock_is_stale(&path) {
+                    logger::log_warn(&format!(
+                        "清理过期 Codex Token 跨进程刷新锁: account_id={}, lock_path={}",
+                        account_id,
+                        path.display()
+                    ));
+                    if let Err(remove_err) = fs::remove_dir_all(&path) {
+                        logger::log_warn(&format!(
+                            "清理过期 Codex Token 跨进程刷新锁失败: account_id={}, lock_path={}, error={}",
+                            account_id,
+                            path.display(),
+                            remove_err
+                        ));
+                    }
+                    continue;
+                }
+
+                if started.elapsed()
+                    >= Duration::from_secs(CODEX_TOKEN_REFRESH_FILE_LOCK_TIMEOUT_SECONDS)
+                {
+                    return Err(format!(
+                        "等待 Codex Token 刷新锁超时: account_id={}, lock_path={}, reason={}",
+                        account_id,
+                        path.display(),
+                        reason
+                    ));
+                }
+
+                tokio::time::sleep(Duration::from_millis(CODEX_TOKEN_REFRESH_FILE_LOCK_POLL_MS))
+                    .await;
+            }
+            Err(err) => {
+                return Err(format_io_error("创建 Codex Token 刷新锁", &path, &err));
+            }
+        }
+    }
+}
+
 fn mark_token_chain_updated(account: &mut CodexAccount) {
     account.token_generation = account.token_generation.saturating_add(1);
     account.token_updated_at = Some(now_timestamp());
@@ -1451,6 +1565,16 @@ pub(crate) fn account_has_refresh_token(account: &CodexAccount) -> bool {
         .map(str::trim)
         .filter(|token| !token.is_empty())
         .is_some()
+}
+
+pub fn is_pending_oauth_account(account: &CodexAccount) -> bool {
+    !account.is_api_key_auth()
+        && account
+            .authorization_status
+            .as_deref()
+            .map(str::trim)
+            .map(|value| value.eq_ignore_ascii_case(CODEX_AUTHORIZATION_STATUS_PENDING))
+            .unwrap_or(false)
 }
 
 fn clear_stale_missing_refresh_token_reauth(account: &mut CodexAccount) -> Result<(), String> {
@@ -2686,14 +2810,14 @@ fn resolve_reauth_target_account_id(
     let Some(target_id) = normalize_optional_ref(target_account_id) else {
         return Ok(None);
     };
-    let target =
-        load_account(&target_id).ok_or_else(|| format!("重新授权目标账号不存在: {}", target_id))?;
+    let target = load_account(&target_id)
+        .ok_or_else(|| format!("OAuth 授权目标账号不存在: {}", target_id))?;
     if target.is_api_key_auth() {
-        return Err("API Key 账号不能通过 OAuth 重新授权".to_string());
+        return Err("API Key 账号不能通过 OAuth 授权".to_string());
     }
     if !target.email.trim().is_empty() && !target.email.eq_ignore_ascii_case(email) {
         return Err(format!(
-            "重新授权账号邮箱不匹配: 目标账号为 {}，本次授权为 {}",
+            "OAuth 授权账号邮箱不匹配: 目标账号为 {}，本次授权为 {}",
             target.email, email
         ));
     }
@@ -2756,6 +2880,7 @@ fn upsert_account_with_hints_and_reauth_target(
         acc.tokens = tokens;
         mark_token_chain_updated(&mut acc);
         acc.auth_mode = CodexAuthMode::OAuth;
+        acc.authorization_status = None;
         acc.openai_api_key = None;
         acc.api_base_url = None;
         acc.api_provider_mode = CodexApiProviderMode::OpenaiBuiltin;
@@ -2776,6 +2901,7 @@ fn upsert_account_with_hints_and_reauth_target(
         let mut acc = CodexAccount::new(existing_id.clone(), email.clone(), tokens);
         mark_token_chain_updated(&mut acc);
         acc.auth_mode = CodexAuthMode::OAuth;
+        acc.authorization_status = None;
         acc.openai_api_key = None;
         acc.api_base_url = None;
         acc.api_provider_mode = CodexApiProviderMode::OpenaiBuiltin;
@@ -4250,14 +4376,7 @@ pub fn is_managed_auth_refresh_due(account: &CodexAccount) -> bool {
         return false;
     }
 
-    if codex_oauth::is_token_expired(&account.tokens.access_token) {
-        return true;
-    }
-
-    account
-        .token_updated_at
-        .map(|updated_at| updated_at <= now_timestamp() - CODEX_PROACTIVE_REFRESH_INTERVAL_SECONDS)
-        .unwrap_or(true)
+    codex_oauth::is_token_expired(&account.tokens.access_token)
 }
 
 async fn perform_managed_token_refresh(
@@ -4326,6 +4445,7 @@ async fn refresh_managed_account_locked(
     account_id: &str,
     force: bool,
     reason: &str,
+    observed_generation: Option<u64>,
 ) -> Result<CodexAccount, String> {
     let mut account =
         load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
@@ -4350,11 +4470,44 @@ async fn refresh_managed_account_locked(
             .clone()
             .unwrap_or_else(|| "账号需要重新登录".to_string()));
     }
+    if let Some(observed_generation) = observed_generation {
+        if account.token_generation > observed_generation {
+            if !codex_oauth::is_token_expired(&account.tokens.access_token) {
+                logger::log_info(&format!(
+                    "Codex Token Authority 复用已完成的刷新结果: account_id={}, observed_generation={}, current_generation={}, reason={}",
+                    account.id,
+                    observed_generation,
+                    account.token_generation,
+                    reason
+                ));
+                return Ok(account);
+            }
+            logger::log_warn(&format!(
+                "Codex Token Authority 检测到刷新代际已推进但 access_token 仍过期，继续刷新: account_id={}, observed_generation={}, current_generation={}, reason={}",
+                account.id,
+                observed_generation,
+                account.token_generation,
+                reason
+            ));
+        }
+    }
     if !force && !codex_oauth::is_token_expired(&account.tokens.access_token) {
         return Ok(account);
     }
 
     perform_managed_token_refresh(account, reason, force).await
+}
+
+async fn refresh_managed_account_with_authority(
+    account_id: &str,
+    force: bool,
+    reason: &str,
+    observed_generation: Option<u64>,
+) -> Result<CodexAccount, String> {
+    let lock = codex_token_lock_for(account_id);
+    let _guard = lock.lock().await;
+    let _file_guard = acquire_codex_token_refresh_file_lock(account_id, reason).await?;
+    refresh_managed_account_locked(account_id, force, reason, observed_generation).await
 }
 
 async fn refresh_bound_oauth_account_for_api_key(
@@ -4369,58 +4522,35 @@ async fn refresh_bound_oauth_account_for_api_key(
     let _ = validate_api_key_bound_oauth_account(api_key_account, &bound_id)?;
     let lock = codex_token_lock_for(&bound_id);
     let _guard = lock.lock().await;
-    refresh_managed_account_locked(&bound_id, false, reason).await
+    let _file_guard = acquire_codex_token_refresh_file_lock(&bound_id, reason).await?;
+    refresh_managed_account_locked(&bound_id, false, reason, None).await
 }
 
 pub async fn ensure_managed_account_fresh(account_id: &str) -> Result<CodexAccount, String> {
-    let lock = codex_token_lock_for(account_id);
-    let _guard = lock.lock().await;
-    refresh_managed_account_locked(account_id, false, "prepare").await
+    refresh_managed_account_with_authority(account_id, false, "prepare", None).await
 }
 
 pub async fn force_refresh_managed_account(
     account_id: &str,
     reason: &str,
 ) -> Result<CodexAccount, String> {
-    let lock = codex_token_lock_for(account_id);
-    let _guard = lock.lock().await;
-    refresh_managed_account_locked(account_id, true, reason).await
+    refresh_managed_account_with_authority(account_id, true, reason, None).await
+}
+
+pub async fn force_refresh_managed_account_after_observed(
+    account_id: &str,
+    observed_generation: u64,
+    reason: &str,
+) -> Result<CodexAccount, String> {
+    refresh_managed_account_with_authority(account_id, true, reason, Some(observed_generation))
+        .await
 }
 
 pub async fn keepalive_managed_account(
     account_id: &str,
     reason: &str,
 ) -> Result<CodexAccount, String> {
-    let lock = codex_token_lock_for(account_id);
-    let _guard = lock.lock().await;
-    let mut account =
-        load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
-    if account.is_api_key_auth() {
-        return Ok(account);
-    }
-    if let Err(err) = sync_account_from_authority_sources(&mut account) {
-        logger::log_warn(&format!(
-            "Codex 保活同步官方凭证失败，继续使用账号库: account_id={}, error={}",
-            account.id, err
-        ));
-    }
-    if let Err(err) = clear_stale_missing_refresh_token_reauth(&mut account) {
-        logger::log_warn(&format!(
-            "Codex 保活清理缺失 refresh_token 的过期重登标记失败，继续处理: account_id={}, error={}",
-            account.id, err
-        ));
-    }
-    if account.requires_reauth {
-        return Err(account
-            .reauth_reason
-            .clone()
-            .unwrap_or_else(|| "账号需要重新登录".to_string()));
-    }
-    if !is_managed_auth_refresh_due(&account) {
-        return Ok(account);
-    }
-
-    perform_managed_token_refresh(account, reason, false).await
+    refresh_managed_account_with_authority(account_id, false, reason, None).await
 }
 
 pub async fn execute_with_managed_account_projection<R, F>(
@@ -4477,7 +4607,8 @@ where
 
     let lock = codex_token_lock_for(account_id);
     let _guard = lock.lock().await;
-    let account = refresh_managed_account_locked(account_id, false, reason).await?;
+    let _file_guard = acquire_codex_token_refresh_file_lock(account_id, reason).await?;
+    let account = refresh_managed_account_locked(account_id, false, reason, None).await?;
     write_prepared_account_bundle_to_dir(auth_dir, &account)?;
 
     let result = operation(&account);
@@ -4496,6 +4627,9 @@ pub async fn prepare_account_for_injection_from_auth_dir(
     auth_dir: Option<&Path>,
 ) -> Result<CodexAccount, String> {
     let account = load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
+    if is_pending_oauth_account(&account) {
+        return Err("账号待授权，请先完成 OAuth 授权".to_string());
+    }
     if account.is_api_key_auth() {
         if let Some(dir) = auth_dir {
             if normalize_optional_ref(account.bound_oauth_account_id.as_deref()).is_some() {
@@ -4511,7 +4645,8 @@ pub async fn prepare_account_for_injection_from_auth_dir(
 
     let lock = codex_token_lock_for(account_id);
     let _guard = lock.lock().await;
-    let account = refresh_managed_account_locked(account_id, false, "prepare").await?;
+    let _file_guard = acquire_codex_token_refresh_file_lock(account_id, "prepare").await?;
+    let account = refresh_managed_account_locked(account_id, false, "prepare", None).await?;
     if let Some(dir) = auth_dir {
         write_prepared_account_bundle_to_dir(dir, &account)?;
     }
@@ -4649,7 +4784,8 @@ pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, St
 
     let lock = codex_token_lock_for(account_id);
     let _guard = lock.lock().await;
-    let account = refresh_managed_account_locked(account_id, false, "switch").await?;
+    let _file_guard = acquire_codex_token_refresh_file_lock(account_id, "switch").await?;
+    let account = refresh_managed_account_locked(account_id, false, "switch", None).await?;
     switch_account_with_prepared(account_id, account)
 }
 
@@ -6833,13 +6969,15 @@ fn extract_codex_tokens_from_value(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_account_storage_id, build_auth_file_value, decode_jwt_payload_value,
-        detect_auth_file_plan_type_from_path, ensure_managed_account_fresh,
-        extract_codex_import_candidate_from_value, extract_codex_tokens_from_value,
-        extract_user_info, format_refresh_error_for_user, get_accounts_dir,
-        get_accounts_storage_path, get_current_account_from_loaded, is_managed_auth_refresh_due,
-        list_accounts_checked, load_account, load_account_index, looks_like_sub2api_export,
-        parse_auth_file_last_refresh, parse_codex_account_compat, parse_line_delimited_json_values,
+        build_account_storage_id, build_auth_file_value, create_pending_oauth_account,
+        decode_jwt_payload_value, detect_auth_file_plan_type_from_path,
+        ensure_managed_account_fresh, extract_codex_import_candidate_from_value,
+        extract_codex_tokens_from_value, extract_user_info,
+        force_refresh_managed_account_after_observed, format_refresh_error_for_user,
+        get_accounts_dir, get_accounts_storage_path, get_current_account_from_loaded,
+        is_managed_auth_refresh_due, is_pending_oauth_account, list_accounts_checked, load_account,
+        load_account_index, looks_like_sub2api_export, now_timestamp, parse_auth_file_last_refresh,
+        parse_codex_account_compat, parse_line_delimited_json_values,
         read_api_provider_from_config_toml, read_quick_config_from_config_toml,
         resolve_api_provider_config, save_account, save_account_index,
         should_accept_authority_snapshot, sync_account_from_auth_dir,
@@ -7189,6 +7327,91 @@ mod tests {
         save_account_index(&index).expect("save index");
 
         account
+    }
+
+    #[test]
+    fn create_pending_oauth_account_saves_notes_without_tokens() {
+        let _lock = TEST_ENV_LOCK.lock().expect("lock test env");
+        let _env = TestEnvGuard::new("codex-pending-oauth-save-notes");
+
+        let account = create_pending_oauth_account(
+            "pending@example.com".to_string(),
+            CodexAccountNoteUpdate {
+                note: Some("handoff note".to_string()),
+                two_factor_secret: Some("JBSWY3DPEHPK3PXP".to_string()),
+                account_password: Some("login-password".to_string()),
+                phone_number: Some("+15550001111".to_string()),
+            },
+        )
+        .expect("create pending oauth account");
+
+        assert!(is_pending_oauth_account(&account));
+        assert_eq!(account.email, "pending@example.com");
+        assert_eq!(account.tokens.id_token, "");
+        assert_eq!(account.tokens.access_token, "");
+        assert!(account.tokens.refresh_token.is_none());
+        assert_eq!(account.account_note.as_deref(), Some("handoff note"));
+        assert_eq!(
+            account.two_factor_secret.as_deref(),
+            Some("JBSWY3DPEHPK3PXP")
+        );
+        assert_eq!(account.account_password.as_deref(), Some("login-password"));
+        assert_eq!(account.phone_number.as_deref(), Some("+15550001111"));
+
+        let persisted = load_account(&account.id).expect("load pending account");
+        assert!(is_pending_oauth_account(&persisted));
+        let index = load_account_index();
+        assert!(index.accounts.iter().any(|item| item.id == account.id));
+    }
+
+    #[test]
+    fn oauth_reauth_target_promotes_pending_account_and_preserves_notes() {
+        let _lock = TEST_ENV_LOCK.lock().expect("lock test env");
+        let _env = TestEnvGuard::new("codex-pending-oauth-promote");
+
+        let pending = create_pending_oauth_account(
+            "promote@example.com".to_string(),
+            CodexAccountNoteUpdate {
+                note: Some("keep this note".to_string()),
+                two_factor_secret: Some("JBSWY3DPEHPK3PXP".to_string()),
+                account_password: Some("secret-password".to_string()),
+                phone_number: Some("+15552223333".to_string()),
+            },
+        )
+        .expect("create pending oauth account");
+        let tokens = make_codex_tokens(
+            "promote@example.com",
+            "acc-promote",
+            "org-promote",
+            "promote",
+            "refresh-promote",
+        );
+
+        let promoted =
+            upsert_account_for_reauth(tokens, &pending.id).expect("promote pending account");
+
+        assert_eq!(promoted.id, pending.id);
+        assert!(!is_pending_oauth_account(&promoted));
+        assert_eq!(promoted.authorization_status, None);
+        assert_eq!(
+            promoted.tokens.refresh_token.as_deref(),
+            Some("refresh-promote")
+        );
+        assert_eq!(promoted.account_note.as_deref(), Some("keep this note"));
+        assert_eq!(
+            promoted.two_factor_secret.as_deref(),
+            Some("JBSWY3DPEHPK3PXP")
+        );
+        assert_eq!(
+            promoted.account_password.as_deref(),
+            Some("secret-password")
+        );
+        assert_eq!(promoted.phone_number.as_deref(), Some("+15552223333"));
+
+        let persisted = load_account(&pending.id).expect("load promoted account");
+        assert!(!is_pending_oauth_account(&persisted));
+        assert_eq!(persisted.account_id.as_deref(), Some("acc-promote"));
+        assert_eq!(persisted.organization_id.as_deref(), Some("org-promote"));
     }
 
     fn build_test_account_index(account: &CodexAccount) -> CodexAccountIndex {
@@ -8134,6 +8357,56 @@ mod tests {
         account.token_updated_at = Some(0);
 
         assert!(!is_managed_auth_refresh_due(&account));
+    }
+
+    #[test]
+    fn managed_keepalive_does_not_refresh_only_for_old_token_timestamp() {
+        let mut account = CodexAccount::new(
+            "codex_old_timestamp".to_string(),
+            "old-timestamp@example.com".to_string(),
+            make_codex_tokens(
+                "old-timestamp@example.com",
+                "acc-old-timestamp",
+                "org-old-timestamp",
+                "old-timestamp",
+                "rt-old-timestamp",
+            ),
+        );
+        account.token_updated_at = Some(0);
+
+        assert!(!is_managed_auth_refresh_due(&account));
+    }
+
+    #[test]
+    fn force_refresh_reuses_newer_generation_without_network_refresh() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _env = TestEnvGuard::new("codex-force-refresh-generation-test");
+        let mut account = seed_oauth_account(make_codex_tokens(
+            "demo@example.com",
+            "acc-current",
+            "org-current",
+            "newer-generation",
+            "rt-newer-generation",
+        ));
+        account.token_generation = 2;
+        account.token_updated_at = Some(now_timestamp());
+        save_account(&account).expect("save newer generation account");
+
+        let runtime = tokio::runtime::Runtime::new().expect("create runtime");
+        let refreshed = runtime
+            .block_on(force_refresh_managed_account_after_observed(
+                &account.id,
+                1,
+                "test observed generation",
+            ))
+            .expect("newer generation should be reused");
+
+        assert_eq!(refreshed.token_generation, 2);
+        assert_eq!(refreshed.tokens.access_token, account.tokens.access_token);
+        assert_eq!(
+            refreshed.tokens.refresh_token.as_deref(),
+            account.tokens.refresh_token.as_deref()
+        );
     }
 
     #[test]
@@ -9266,13 +9539,7 @@ pub struct CodexAccountNoteUpdate {
     pub phone_number: Option<String>,
 }
 
-pub fn update_account_note(
-    account_id: &str,
-    update: CodexAccountNoteUpdate,
-) -> Result<CodexAccount, String> {
-    let mut account =
-        load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
-
+fn apply_account_note_update(account: &mut CodexAccount, update: CodexAccountNoteUpdate) {
     if let Some(note) = update.note {
         account.account_note = normalize_optional_value(Some(note));
     }
@@ -9285,7 +9552,93 @@ pub fn update_account_note(
     if let Some(phone_number) = update.phone_number {
         account.phone_number = normalize_optional_value(Some(phone_number));
     }
+}
+
+pub fn update_account_note(
+    account_id: &str,
+    update: CodexAccountNoteUpdate,
+) -> Result<CodexAccount, String> {
+    let mut account =
+        load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
+
+    apply_account_note_update(&mut account, update);
     save_account(&account)?;
+
+    Ok(account)
+}
+
+pub fn create_pending_oauth_account(
+    email: String,
+    update: CodexAccountNoteUpdate,
+) -> Result<CodexAccount, String> {
+    let email =
+        normalize_optional_value(Some(email)).ok_or_else(|| "账号邮箱不能为空".to_string())?;
+    let mut index = load_account_index();
+
+    if let Some(summary) = index
+        .accounts
+        .iter()
+        .find(|item| item.email.eq_ignore_ascii_case(&email))
+        .cloned()
+    {
+        if let Some(mut account) = load_account(&summary.id) {
+            if !is_pending_oauth_account(&account) {
+                return Err(format!("Codex 账号已存在: {}", email));
+            }
+            apply_account_note_update(&mut account, update);
+            account.email = email.clone();
+            account.last_used = chrono::Utc::now().timestamp();
+            save_account(&account)?;
+            if let Some(item) = index.accounts.iter_mut().find(|item| item.id == account.id) {
+                item.email = account.email.clone();
+                item.plan_type = account.plan_type.clone();
+                item.subscription_active_until = account.subscription_active_until.clone();
+                item.last_used = account.last_used;
+            }
+            save_account_index(&index)?;
+            return Ok(account);
+        }
+    }
+
+    let account_id = build_account_storage_id(&email, Some("pending_oauth"), None);
+    let now = chrono::Utc::now().timestamp();
+    let mut account = CodexAccount::new(
+        account_id.clone(),
+        email.clone(),
+        CodexTokens {
+            id_token: String::new(),
+            access_token: String::new(),
+            refresh_token: None,
+        },
+    );
+    account.auth_mode = CodexAuthMode::OAuth;
+    account.authorization_status = Some(CODEX_AUTHORIZATION_STATUS_PENDING.to_string());
+    account.token_updated_at = None;
+    account.token_generation = 0;
+    account.requires_reauth = false;
+    account.reauth_reason = None;
+    account.quota = None;
+    account.quota_error = None;
+    account.created_at = now;
+    account.last_used = now;
+    apply_account_note_update(&mut account, update);
+
+    index.accounts.retain(|item| item.id != account_id);
+    index.accounts.push(CodexAccountSummary {
+        id: account_id,
+        email: account.email.clone(),
+        plan_type: account.plan_type.clone(),
+        subscription_active_until: account.subscription_active_until.clone(),
+        created_at: account.created_at,
+        last_used: account.last_used,
+    });
+
+    save_account(&account)?;
+    save_account_index(&index)?;
+    logger::log_info(&format!(
+        "Codex 待授权 OAuth 账号已保存: account_id={}, email={}",
+        account.id, account.email
+    ));
 
     Ok(account)
 }

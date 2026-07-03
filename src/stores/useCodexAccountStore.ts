@@ -9,6 +9,7 @@ import {
   CodexQuota,
   hasCodexAccountStructure,
   hasCodexAccountName,
+  isCodexPendingOAuthAccount,
   isCodexTeamLikePlan,
 } from '../types/codex';
 import * as codexService from '../services/codexService';
@@ -68,8 +69,9 @@ const persistCodexCurrentAccountCache = (account: CodexAccount | null) => {
 };
 
 const shouldHydrateCodexProfile = (account: CodexAccount): boolean =>
-  !hasCodexAccountStructure(account) ||
-  (isCodexTeamLikePlan(account.plan_type) && !hasCodexAccountName(account));
+  !isCodexPendingOAuthAccount(account) &&
+  (!hasCodexAccountStructure(account) ||
+    (isCodexTeamLikePlan(account.plan_type) && !hasCodexAccountName(account)));
 
 const CODEX_STALE_ACCOUNT_ERROR = 'CODEX_STALE_ACCOUNT';
 

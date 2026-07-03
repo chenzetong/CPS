@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "安裝 {{platform}} 平台包",
     "packageInstallConfirmDesc": "{{platform}} 需要先下載平台包後才能開啟。版本 {{version}}，大小 {{size}}。",
     "packageInstallNotReady": "平台包已處理，但執行元件尚未就緒",
-    "packageInstallCardTitle": "{{platform}} 平台包未安裝",
+    "packageInstallCardTitle": "{{platform}} 帳號管理元件未安裝",
     "packageInstallCardDesc": "下載版本 {{version}}，大小 {{size}}。安裝完成後會自動開啟此平台。",
     "packageUpdateAvailableShort": "可更新",
     "packageRepairRequired": "需修復",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "平台包處理失敗，請稍後重試。",
     "packageOperationCanceled": "已取消平台包操作。",
     "packageOperationRetryHint": "可以點擊下方按鈕重試。",
-    "packagePageRepairTitle": "{{platform}} 平台包需要修復",
-    "packagePageInstallTitle": "{{platform}} 平台包未安裝",
+    "packagePageRepairTitle": "{{platform}} 帳號管理元件需要修復",
+    "packagePageInstallTitle": "{{platform}} 帳號管理元件未安裝",
     "packagePageInstallDesc": "可直接在此頁面安裝，也可使用右上角的平台包操作安裝或修復後再管理帳號。安裝前不會載入帳號、OAuth、切號或背景重新整理邏輯。",
     "packageDashboardStateDesc": "開啟 {{platform}} 頁面後，可直接安裝，也可在右上角更新、修復或查看更新日誌。",
     "packageOpenPlatformPage": "開啟平台頁面",
@@ -824,6 +824,8 @@
       "appAutoLaunchDesc": "系統登入後自動啟動應用程式",
       "tokenKeeper": "帳號授權保活",
       "tokenKeeperDesc": "開啟後會在背景延遲並分批刷新快到期的帳號授權；關閉後不再自動保活，只保留手動刷新、切換帳號和匯入。",
+      "errorReporting": "遙測診斷",
+      "errorReportingDesc": "預設開啟，僅用於排查啟動、介面和平台包問題；關閉後不會提交遙測事件。上報前會去識別化，不上傳帳號密碼、Token、2FA 秘鑰、手機號等敏感資訊。",
       "platformQuickSettingsTitle": "平台設定入口",
       "platformQuickSettingsDesc": "各平台設定已移到對應平台頁，可從這裡快速開啟。",
       "platformQuickSettingsItemDesc": "平台頁設定",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "在背景自動更新 Claude 帳號額度快取",
       "claudeAppPath": "Claude Desktop 啟動目標",
       "claudeAppPathDesc": "預設實例可使用 Microsoft Store 應用目標；多開實例請選擇真實 Claude.exe。",
-      "platformQuickSettingsEntryTitle": "{{platform}}設定入口"
+      "platformQuickSettingsEntryTitle": "{{platform}}設定入口",
+      "antigravityLaunchOnSwitch": "切換時啟動 Antigravity IDE",
+      "antigravityLaunchOnSwitchLabel": "切號後啟動或重啟應用程式",
+      "antigravityLaunchOnSwitchDesc": "關閉後切號只寫入 Antigravity IDE 預設帳號資料，不會關閉、啟動或重啟應用程式，適合只使用 CLI 的場景。"
     },
     "network": {
       "apiTitle": "反重力駕駛艙 API",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "正在關閉 API 服務...",
     "stopApiServiceFailed": "無法關閉 API 服務，請先停用後重試。",
     "skipThisVersion": "跳過此版本",
-    "skipFailed": "跳過此更新失敗：{{error}}"
+    "skipFailed": "跳過此更新失敗：{{error}}",
+    "stopApiServiceFailedContinue": "API 服務未正常關閉，將繼續重新啟動..."
   },
   "closeDialog": {
     "title": "關閉視窗",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "Free 帳號反代可能不穩定，請謹慎使用。",
         "restrictFreeDisableConfirmTitle": "確認允許 Free 帳號",
         "restrictFreeDisableConfirmMessage": "Free 帳號反代可能不穩定，確定要使用嗎？",
-        "manageMembers": "管理成員"
+        "manageMembers": "管理成員",
+        "pendingOAuthUnsupported": "待授權帳號需先完成 OAuth 授權，暫時無法加入 API 服務"
       },
       "entryAction": "加入 API 服務",
       "testAction": "測試",
@@ -3347,6 +3354,18 @@
       "completed": "刪除完成",
       "preparing": "正在準備刪除任務...",
       "retryFailed": "重試失敗項"
+    },
+    "pendingAuth": {
+      "badge": "待授權",
+      "emailRequired": "請輸入帳號信箱",
+      "saving": "正在儲存待授權帳號...",
+      "saved": "待授權帳號已儲存",
+      "saveFailed": "儲存待授權帳號失敗：{{error}}",
+      "emailLabel": "待授權帳號",
+      "emailPlaceholder": "輸入 OpenAI 帳號信箱",
+      "saveDraft": "儲存待授權卡片",
+      "authorizeAction": "授權新增",
+      "cardHint": "備註已儲存，完成 OAuth 後即可使用"
     }
   },
   "githubCopilot": {

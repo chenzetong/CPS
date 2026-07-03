@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { PlatformId } from '../types/platform';
 import {
+  PlatformPackageBootstrapState,
   PlatformPackageState,
   PlatformPackageUiEntry,
   PlatformPackageVersionHistory,
@@ -38,6 +39,12 @@ async function invokePlatformPackage<T>(
 export async function listPlatformPackages(): Promise<PlatformPackageState[]> {
   return await invokePlatformPackage('list_platform_packages', () =>
     invoke('list_platform_packages'),
+  );
+}
+
+export async function getPlatformPackageBootstrapState(): Promise<PlatformPackageBootstrapState> {
+  return await invokePlatformPackage('get_platform_package_bootstrap_state', () =>
+    invoke('get_platform_package_bootstrap_state'),
   );
 }
 

@@ -7,6 +7,31 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.0.3] - 2026-07-04
+
+### Added
+- **Installers can now include bundled platform packages**: host packages can ship target-specific platform zip packages and bootstrap them on first launch, so a fresh app install opens with the bundled platform UI ready.
+- **Codex pending OAuth accounts and richer account notes are now supported**: users can save Codex account notes before OAuth, keep a pending account card, store 2FA secrets, passwords, phone numbers, and general notes, and complete authorization later from that card.
+- **Codex account notes now integrate with the 2FA manager**: notes can reuse saved 2FA secrets or add a new secret that is also saved into the shared 2FA manager.
+- **Codex pending OAuth accounts can be imported from external links**: browser or external import flows can create a pending Codex account with notes before the account is authorized.
+- **Diagnostics settings are now available**: the app can capture startup, frontend crash, and render failure diagnostics, with a Settings toggle for anonymous error reporting.
+
+### Changed
+- **Bundled platform packages now take priority during startup**: when the app includes a different bundled package payload, it replaces the local installed platform package and refreshes the remote UI instead of continuing to render stale cached code.
+- **Release builds now prepare bundled platform packages per OS and architecture**: host release jobs build the matching platform zips before packaging the app, including universal macOS bootstrap targets.
+- **Codex hot-update coverage is broader**: API service, batch deletion, session transfer, model provider usage, request log repricing, account transfer, and settings-side Codex reads now go through the installed Codex platform adapter instead of host-only commands.
+- **Codex pending account cards are clearer**: pending OAuth cards now use a dedicated pending state, keep sensitive note details inside the note dialog, reuse the reauthorization-style action area, avoid quota/subscription placeholders, and stay out of quota, account-injection, and API service flows until authorization is complete.
+- **Settings save behavior is more resilient**: general settings now avoid overwriting newer external config updates during delayed saves, and the background token keeper reacts immediately when its setting changes.
+- **Antigravity IDE launch-on-switch is configurable**: users can switch accounts without launching or restarting Antigravity IDE when the setting is disabled.
+
+### Fixed
+- **Fixed Codex local API service and `image_generation` settings persistence**: saved local access runtime options remain stable across reloads, switches, and API service startup.
+- **Fixed Codex token refresh races across app and gateway processes**: managed token refresh now uses a cross-process file lock and avoids duplicate refreshes after another process has already advanced the token generation.
+- **Fixed Codex local API service retrying with stale credentials after upstream 401 responses**: gateway refreshes now use the observed token generation before retrying HTTP and WebSocket requests.
+- **Fixed Codex session ordering when session index timestamps are stale**: session lists can fall back to rollout activity time when the index is older than the real conversation activity.
+- **Fixed app updates being blocked when Codex API service shutdown fails**: restart continues with an in-app status message instead of aborting the updater flow.
+
+---
 ## [1.0.2] - 2026-07-03
 
 ### Added

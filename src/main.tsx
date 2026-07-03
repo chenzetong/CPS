@@ -5,15 +5,35 @@ import { initI18n } from "./i18n";
 import { AppRuntimeGuard } from "./components/AppRuntimeGuard";
 import { applyCachedStartupAppearance } from "./utils/startupAppearance";
 import { startUiHangDiagnostics } from "./utils/hangDiagnostics";
+import {
+  captureError,
+  initErrorReporter,
+  markFrontendReady,
+  recordFrontendStage,
+} from "./utils/errorReporter";
 
+initErrorReporter();
+recordFrontendStage('script_loaded');
 applyCachedStartupAppearance();
 startUiHangDiagnostics();
 void initI18n();
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  const error = new Error('Root element not found');
+  captureError(error, { source: 'frontend_boot', phase: 'root_lookup' });
+  throw error;
+}
+
+recordFrontendStage('react_mount_start');
+ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <AppRuntimeGuard>
       <App />
     </AppRuntimeGuard>
   </React.StrictMode>,
 );
+
+window.requestAnimationFrame(() => {
+  markFrontendReady('react_mounted');
+});

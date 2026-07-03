@@ -335,7 +335,7 @@
     "packageInstallConfirmTitle": "Zainstaluj pakiet {{platform}}",
     "packageInstallConfirmDesc": "{{platform}} wymaga pakietu platformy przed otwarciem. Wersja {{version}}, rozmiar {{size}}.",
     "packageInstallNotReady": "Pakiet został przetworzony, ale środowisko nie jest jeszcze gotowe.",
-    "packageInstallCardTitle": "Pakiet {{platform}} nie jest zainstalowany",
+    "packageInstallCardTitle": "Komponent zarządzania kontami {{platform}} nie jest zainstalowany",
     "packageInstallCardDesc": "Pobierz wersję {{version}}, rozmiar {{size}}. Platforma otworzy się po instalacji.",
     "packageUpdateAvailableShort": "Aktualizacja",
     "packageRepairRequired": "Napraw",
@@ -386,8 +386,8 @@
     "packageOperationFailedFriendly": "Operacja pakietu platformy nie powiodła się. Spróbuj ponownie później.",
     "packageOperationCanceled": "Operacja pakietu platformy została anulowana.",
     "packageOperationRetryHint": "Możesz kliknąć przycisk poniżej, aby spróbować ponownie.",
-    "packagePageRepairTitle": "Pakiet {{platform}} wymaga naprawy",
-    "packagePageInstallTitle": "Pakiet {{platform}} nie jest zainstalowany",
+    "packagePageRepairTitle": "Komponent zarządzania kontami {{platform}} wymaga naprawy",
+    "packagePageInstallTitle": "Komponent zarządzania kontami {{platform}} nie jest zainstalowany",
     "packagePageInstallDesc": "Możesz zainstalować bezpośrednio z tej strony albo użyć akcji pakietu w prawym górnym rogu, aby zainstalować lub naprawić przed zarządzaniem kontami. Konta, OAuth, przełączanie i odświeżanie w tle nie zostaną załadowane przed instalacją.",
     "packageDashboardStateDesc": "Otwórz stronę {{platform}}, aby zainstalować bezpośrednio, albo użyj akcji w prawym górnym rogu do aktualizacji, naprawy lub podglądu zmian.",
     "packageOpenPlatformPage": "Otwórz stronę platformy",
@@ -827,6 +827,8 @@
       "appAutoLaunchDesc": "Automatycznie uruchamiaj aplikację po zalogowaniu do systemu",
       "tokenKeeper": "Podtrzymywanie autoryzacji kont",
       "tokenKeeperDesc": "Po włączeniu aplikacja po opóźnieniu i małymi partiami odnawia w tle autoryzacje kont bliskie wygaśnięcia; po wyłączeniu automatyczne podtrzymywanie zostaje zatrzymane, a ręczne odświeżanie, przełączanie i import nadal działają.",
+      "errorReporting": "Diagnostyka telemetrii",
+      "errorReportingDesc": "Domyślnie włączona i używana wyłącznie do diagnozowania problemów startu, interfejsu i pakietów platform. Po wyłączeniu telemetria nie jest wysyłana. Zdarzenia są oczyszczone i nie zawierają haseł, tokenów, sekretów 2FA, telefonów ani innych danych wrażliwych.",
       "platformQuickSettingsTitle": "Ustawienia platform",
       "platformQuickSettingsDesc": "Ustawienia każdej platformy są teraz na jej stronie. Otwórz je szybko tutaj.",
       "platformQuickSettingsItemDesc": "Strona platformy",
@@ -893,7 +895,10 @@
       "claudeAutoRefreshDesc": "Automatycznie odświeża w tle pamięć podręczną limitów kont Claude.",
       "claudeAppPath": "Cel uruchamiania Claude Desktop",
       "claudeAppPathDesc": "Profil domyślny może używać celu Microsoft Store; wiele instancji wymaga prawdziwego Claude.exe.",
-      "platformQuickSettingsEntryTitle": "{{platform}} wejście ustawień"
+      "platformQuickSettingsEntryTitle": "{{platform}} wejście ustawień",
+      "antigravityLaunchOnSwitch": "Uruchamiaj Antigravity IDE przy zmianie",
+      "antigravityLaunchOnSwitchLabel": "Uruchom lub zrestartuj aplikacje po zmianie",
+      "antigravityLaunchOnSwitchDesc": "Po wylaczeniu zmiana tylko zapisuje domyslne dane konta Antigravity IDE. Aplikacja nie bedzie zamykana, uruchamiana ani restartowana, co pasuje do pracy tylko z CLI."
     },
     "network": {
       "apiTitle": "API kokpitu antygrawitacyjnego",
@@ -1726,7 +1731,8 @@
     "stoppingApiService": "Zatrzymywanie usługi API...",
     "stopApiServiceFailed": "Nie udało się zatrzymać usługi API. Najpierw ją wyłącz i spróbuj ponownie.",
     "skipThisVersion": "Pomiń tę wersję",
-    "skipFailed": "Nie udało się pominąć tej aktualizacji: {{error}}"
+    "skipFailed": "Nie udało się pominąć tej aktualizacji: {{error}}",
+    "stopApiServiceFailedContinue": "Usługa API nie zatrzymała się poprawnie. Mimo to trwa ponowne uruchamianie..."
   },
   "closeDialog": {
     "title": "Zamknij okno",
@@ -1910,7 +1916,8 @@
         "freeNoticeUnstable": "Proxy kont Free może być niestabilne. Używaj ostrożnie.",
         "restrictFreeDisableConfirmTitle": "Zezwól na konta Free",
         "restrictFreeDisableConfirmMessage": "Proxy kont Free może być niestabilne. Na pewno ich użyć?",
-        "manageMembers": "Zarządzaj członkami"
+        "manageMembers": "Zarządzaj członkami",
+        "pendingOAuthUnsupported": "Ukończ autoryzację OAuth przed dodaniem tego konta oczekującego do usługi API"
       },
       "entryAction": "Dodaj do usługi API",
       "testAction": "Testuj",
@@ -3347,6 +3354,18 @@
       "completed": "Usuwanie zakończone",
       "preparing": "Przygotowywanie usuwania...",
       "retryFailed": "Ponów błędne"
+    },
+    "pendingAuth": {
+      "badge": "Czeka na auth",
+      "emailRequired": "Wpisz e-mail konta",
+      "saving": "Zapisywanie konta oczekującego...",
+      "saved": "Konto oczekujące zapisane",
+      "saveFailed": "Nie udało się zapisać konta oczekującego: {{error}}",
+      "emailLabel": "Konto oczekujące",
+      "emailPlaceholder": "Wpisz e-mail konta OpenAI",
+      "saveDraft": "Zapisz kartę oczekującą",
+      "authorizeAction": "Autoryzuj",
+      "cardHint": "Notatki zapisane. Ukończ OAuth, aby użyć konta."
     }
   },
   "githubCopilot": {

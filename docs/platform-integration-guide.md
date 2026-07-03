@@ -210,17 +210,17 @@ Core Shell + Platform Package + Remote React UI + Sidecar Adapter + runtimeReady
 
 平台包按需安装是默认分发模型，主应用不得重新变成“全平台大包”：
 
-1. Tauri 主配置只能把 `../platform-packages/index.seed.json` 内置为 `platform-packages/index.seed.json`；dev 覆盖配置也不得重新映射完整 `../platform-packages`。
-2. 禁止把完整 `platform-packages`、`platform-packages/dist`、任意平台展开目录、remote UI、adapter、helper/二级 sidecar 或全系统 zip 内置进桌面端安装包。
+1. 默认 Tauri 主配置只能把 `../platform-packages/index.seed.json` 内置为 `platform-packages/index.seed.json`；dev 覆盖配置也不得重新映射完整 `../platform-packages`。只有明确构建 Full/Bootstrap 主应用包时，才允许额外内置由 `scripts/prepare-platform-bootstrap.cjs` 生成的 `platform-packages/bootstrap`。
+2. 禁止把完整 `platform-packages`、`platform-packages/dist`、任意平台展开目录、remote UI、adapter、helper/二级 sidecar 或全系统 zip 内置进桌面端安装包。Full/Bootstrap 的例外只允许内置当前目标 OS/arch、明确指定平台的已打包 zip 与 bootstrap index。
 3. `index.seed.json` 只保存平台元信息兜底，用于远端 index 和缓存都不可用时展示入口、包大小、更新日志和安装操作；seed 不是平台业务包，不能作为 UI runtime 或 adapter 来源。
-4. 平台业务内容必须来自远端 index 下载后的用户数据目录安装包；已安装平台从 `current` 加载，未安装平台只能展示通用不可用页和平台包操作入口。
-5. 允许内置的内容仅限 Core Shell、Host API、平台生命周期、通用未安装页、平台图标/菜单图标、轻量 seed 和通用 helper 脚本；这些内容不能包含平台业务 UI 或平台业务 adapter。
+4. 平台业务内容必须来自用户数据目录安装包；远端 zip 通过 index 下载后安装，bootstrap zip 在首次启动时经过 size/sha256/manifest/runtime 校验后导入用户数据目录。已安装平台从 `current` 加载，未安装平台只能展示通用不可用页和平台包操作入口，禁止直接从 App resource 运行平台业务 UI 或 adapter。
+5. 默认允许内置的内容仅限 Core Shell、Host API、平台生命周期、通用未安装页、平台图标/菜单图标、轻量 seed 和通用 helper 脚本；只有明确 Full/Bootstrap 主应用包才允许按第 1、2 条内置平台业务 zip。
 6. 使用 `scripts/package-platform-package.cjs --update-index` 时，必须同步写回 `platform-packages/index.json` 与 `platform-packages/index.seed.json`。
 7. `npm run verify:platform-packages` 必须检查 seed、Tauri resources 和打包脚本；任何配置重新内置完整平台包目录都必须失败。
 8. 本地 debug 默认也按远端真实下载路径工作：同版本远端包优先于仓库 source 包；只有显式设置 `COCKPIT_PLATFORM_PACKAGE_PREFER_LOCAL_SOURCE=1` 时才允许同版本选择本地 source 包。
 9. 本地 debug 默认不读取仓库 `platform-packages/index.local.json` / `index.json` 作为远端索引替代；只有显式设置 `COCKPIT_PLATFORM_PACKAGE_WORKSPACE_INDEX=1` 才允许 workspace index 覆盖远端。数据目录里的 `platform-package-index.local.json` 仍作为人工 override，但测试结束必须清理。
 10. 本地 debug 默认不导入 workspace/resource `platform-packages/bootstrap`，防止 Full 包残留污染常规安装链路；只有显式设置 `COCKPIT_PLATFORM_PACKAGE_BOOTSTRAP=1` 才允许测试 Full/Bootstrap 导入。
-11. 为缩小首包体积，只能选择“内置 seed + 按需下载平台包”。禁止内置全平台 starter 包；如未来需要 starter，也只能内置当前系统、极少数平台、且不包含全系统 artifact，并必须经过包体积评审。
+11. 为缩小首包体积，默认选择“内置 seed + 按需下载平台包”。当某次发布明确要求“安装宿主后直接带最新平台包”时，可以走 Full/Bootstrap 主应用包：只内置当前系统、极少数指定平台、当前目标 OS/arch 的 artifact，并必须经过包体积评审；禁止内置全平台 starter 包。
 
 ## 6. 新平台迁移流程
 

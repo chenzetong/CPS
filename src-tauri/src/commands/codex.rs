@@ -706,6 +706,26 @@ pub fn add_codex_account_with_api_key(
 }
 
 #[tauri::command]
+pub fn create_pending_codex_oauth_account(
+    email: String,
+    note: Option<String>,
+    two_factor_secret: Option<String>,
+    account_password: Option<String>,
+    phone_number: Option<String>,
+) -> Result<CodexAccount, String> {
+    platform_adapter::call_codex(
+        "accounts.createPendingOAuth",
+        json!({
+            "email": email,
+            "note": note,
+            "twoFactorSecret": two_factor_secret,
+            "accountPassword": account_password,
+            "phoneNumber": phone_number,
+        }),
+    )
+}
+
+#[tauri::command]
 pub fn update_codex_account_name(account_id: String, name: String) -> Result<CodexAccount, String> {
     platform_adapter::call_codex(
         "accounts.updateName",

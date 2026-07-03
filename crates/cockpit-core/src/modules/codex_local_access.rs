@@ -16394,9 +16394,16 @@ async fn write_upstream_response(
     Ok(response_capture)
 }
 
-async fn force_refresh_gateway_account(account_id: &str) -> Result<CodexAccount, String> {
-    let account =
-        codex_account::force_refresh_managed_account(account_id, "本地网关上游返回 401").await?;
+async fn force_refresh_gateway_account(
+    account_id: &str,
+    observed_generation: u64,
+) -> Result<CodexAccount, String> {
+    let account = codex_account::force_refresh_managed_account_after_observed(
+        account_id,
+        observed_generation,
+        "本地网关上游返回 401",
+    )
+    .await?;
     cache_prepared_account(&account).await;
     Ok(account)
 }
@@ -16935,7 +16942,8 @@ async fn proxy_request_with_account_pool(
                 }
 
                 if response.status() == StatusCode::UNAUTHORIZED {
-                    match force_refresh_gateway_account(&account_id).await {
+                    match force_refresh_gateway_account(&account_id, account.token_generation).await
+                    {
                         Ok(refreshed_account) => {
                             account = refreshed_account;
                             response = match send_upstream_request(
@@ -17901,7 +17909,8 @@ async fn proxy_websocket_with_account_pool(
                 }
 
                 if status == StatusCode::UNAUTHORIZED.as_u16() {
-                    match force_refresh_gateway_account(&account_id).await {
+                    match force_refresh_gateway_account(&account_id, account.token_generation).await
+                    {
                         Ok(refreshed_account) => {
                             account = refreshed_account;
                             match connect_upstream_websocket(

@@ -1,9 +1,9 @@
 {
   "id": "codex",
   "platformId": "codex",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "apiVersion": 1,
-  "minCoreVersion": "1.0.2",
+  "minCoreVersion": "1.0.3",
   "displayName": "Codex",
   "entry": "runtime/index.json",
   "packageMode": "hotUpdate",
@@ -32,6 +32,81 @@
     "cli"
   ],
   "changelog": [
+    {
+      "version": "1.0.5",
+      "date": "2026-07-04",
+      "notes": [
+        "Added pending OAuth account support so Codex account notes can be saved before authorization, imported from external links, and completed later from the same account card.",
+        "Expanded Codex account notes with 2FA secrets, passwords, phone numbers, general notes, current OTP display, and shared 2FA manager integration.",
+        "Improved Codex platform adapter coverage for API service, batch deletion, session transfer, account transfer, model provider usage, and request log repricing flows.",
+        "Fixed Codex local API service and image_generation settings so saved runtime options stay stable across reloads, switches, and API service startup.",
+        "Refined pending OAuth account cards with a dedicated pending state, note-dialog-only sensitive details, and reauthorization-style OAuth actions.",
+        "Improved Codex token refresh coordination and session activity ordering to reduce duplicate refreshes and stale session timestamps."
+      ],
+      "locales": {
+        "zh-CN": {
+          "notes": [
+            "新增 Codex 待授权 OAuth 账号支持：账号备注可先保存，可从外部链接导入，后续从同一张账号卡片继续完成授权。",
+            "扩展 Codex 账号备注：支持 2FA 秘钥、密码、手机号、其他备注、动态验证码展示，并联动通用 2FA 管理。",
+            "补齐 Codex 平台 adapter 对 API 服务、批量删除、会话迁移、账号迁移、模型供应商用量和请求日志重算费用等流程的支持。",
+            "修复 Codex 本地 API 服务和 image_generation 设置，保存后的运行选项在刷新、切号和 API 服务启动后保持稳定。",
+            "优化 Codex 待授权 OAuth 账号卡片：使用专门的待授权状态，敏感备注只在备注弹框中查看，OAuth 授权入口与重新授权操作区保持一致。",
+            "改进 Codex Token 刷新协调和会话活动时间排序，减少重复刷新和会话时间滞后。"
+          ]
+        },
+        "zh-TW": {
+          "notes": [
+            "新增 Codex 待授權 OAuth 帳號支援：帳號備註可先儲存，可從外部連結匯入，後續從同一張帳號卡片繼續完成授權。",
+            "擴充 Codex 帳號備註：支援 2FA 秘鑰、密碼、手機號碼、其他備註、動態驗證碼顯示，並連動通用 2FA 管理。",
+            "補齊 Codex 平台 adapter 對 API 服務、批量刪除、會話遷移、帳號遷移、模型供應商用量與請求日誌重算費用等流程的支援。",
+            "修復 Codex 本機 API 服務與 image_generation 設定，儲存後的執行選項在重新整理、切號與 API 服務啟動後保持穩定。",
+            "最佳化 Codex 待授權 OAuth 帳號卡片：使用專門的待授權狀態，敏感備註只在備註彈框中查看，OAuth 授權入口與重新授權操作區保持一致。",
+            "改進 Codex Token 刷新協調與會話活動時間排序，減少重複刷新與會話時間滯後。"
+          ]
+        }
+      }
+    },
+    {
+      "version": "1.0.4",
+      "date": "2026-07-04",
+      "notes": [
+        "Added pending OAuth account cards so Codex account notes can be saved before authorization and completed later from the same card."
+      ],
+      "locales": {
+        "zh-CN": {
+          "notes": [
+            "新增 Codex 待授权 OAuth 账号卡片，账号备注可先保存，后续从同一张卡片继续完成授权。"
+          ]
+        },
+        "zh-TW": {
+          "notes": [
+            "新增 Codex 待授權 OAuth 帳號卡片，帳號備註可先儲存，後續從同一張卡片繼續完成授權。"
+          ]
+        }
+      }
+    },
+    {
+      "version": "1.0.3",
+      "date": "2026-07-04",
+      "notes": [
+        "Improved Codex platform adapter coverage for API service, batch delete, session transfer, model provider usage, and request log repricing flows.",
+        "Fixed Codex local API service and image generation settings to keep saved runtime options stable across reloads."
+      ],
+      "locales": {
+        "zh-CN": {
+          "notes": [
+            "补齐 Codex 平台 adapter 对 API 服务、批量删除、会话迁移、模型供应商用量和请求日志重算费用等流程的支持。",
+            "修复 Codex 本地 API 服务和 image_generation 设置，保存后的运行选项在刷新或重启后保持稳定。"
+          ]
+        },
+        "zh-TW": {
+          "notes": [
+            "補齊 Codex 平台 adapter 對 API 服務、批量刪除、會話遷移、模型供應商用量與請求日誌重算費用等流程的支援。",
+            "修復 Codex 本機 API 服務與 image_generation 設定，儲存後的執行選項在重新整理或重啟後保持穩定。"
+          ]
+        }
+      }
+    },
     {
       "version": "1.0.2",
       "date": "2026-07-03",
@@ -169,8 +244,15 @@
       "switch.account",
       "accounts.delete",
       "accounts.deleteMany",
+      "accounts.batchDelete.start",
+      "accounts.batchDelete.get",
+      "accounts.batchDelete.resume",
+      "accounts.batchDelete.pause",
+      "accounts.batchDelete.retryFailed",
+      "accounts.batchDelete.clear",
       "accounts.addToken",
       "accounts.addApiKey",
+      "accounts.createPendingOAuth",
       "accounts.updateName",
       "accounts.updateApiKeyCredentials",
       "accounts.updateTags",
@@ -236,6 +318,7 @@
       "localAccess.updateAccountModelRules",
       "localAccess.updateModelRules",
       "localAccess.updateModelPricings",
+      "localAccess.repriceRequestLogs",
       "localAccess.updateRoutingOptions",
       "localAccess.updateTimeouts",
       "localAccess.updateTimeoutPresets",
@@ -278,6 +361,8 @@
       "modelProviders.queryUsage",
       "sessions.syncThreadsAcrossInstances",
       "sessions.syncToInstance",
+      "sessions.transfer.export",
+      "sessions.transfer.import",
       "sessions.visibilityRepairProviders.list",
       "sessions.visibilityRepairInstances.list",
       "sessions.visibilityRepair.run",

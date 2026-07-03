@@ -1383,9 +1383,46 @@ fn switch_account_restart(
     Ok(account)
 }
 
+fn switch_account_without_launch(
+    target: RuntimeTarget,
+    account_id: String,
+    runtime: &Runtime,
+) -> Result<Account, String> {
+    logger::log_info(&format!(
+        "[AntigravityAdapter] 切换 {} 账号但不启动应用: {}",
+        runtime_label(target),
+        account_id
+    ));
+    let mut account = runtime.block_on(account::prepare_account_for_injection(&account_id))?;
+    set_current_account_id_for_target(target, &account_id)?;
+    account.update_last_used();
+    account::save_account(&account)?;
+    if let Err(error) =
+        update_default_settings(target, Some(Some(account_id.clone())), None, Some(false))
+    {
+        logger::log_warn(&format!(
+            "[AntigravityAdapter] 更新默认实例绑定账号失败: {}",
+            error
+        ));
+    }
+    let default_dir = default_user_data_dir(target)?;
+    inject_account_to_profile(target, &default_dir, &account_id)?;
+    let _ = update_default_pid(target, None);
+    Ok(account)
+}
+
 fn switch_account(payload: Value, runtime: &Runtime) -> Result<Value, String> {
     let target = runtime_target();
     let payload: AccountIdPayload = parse_payload(payload)?;
+    if target == RuntimeTarget::Ide
+        && !modules::config::get_user_config().antigravity_launch_on_switch
+    {
+        return to_value(switch_account_without_launch(
+            target,
+            payload.account_id,
+            runtime,
+        )?);
+    }
     if target == RuntimeTarget::Ide
         && modules::config::get_user_config().antigravity_dual_switch_no_restart_enabled
     {

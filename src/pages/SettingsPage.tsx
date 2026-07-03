@@ -7,12 +7,13 @@ import { getVersion } from '@tauri-apps/api/app';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { changeLanguage, getCurrentLanguage, normalizeLanguage } from '../i18n';
 import * as accountService from '../services/accountService';
-import * as codexService from '../services/codexService';
 import { getAccountGroups, type AccountGroup } from '../services/accountGroupService';
 import {
-  getCodexAccountGroups,
-  type CodexAccountGroup,
-} from '../services/codexAccountGroupService';
+  listCodexHostAccountGroups,
+  listCodexHostAccounts,
+  type CodexHostAccount,
+  type CodexHostAccountGroup,
+} from '../services/codexHostAdapterService';
 import { showFloatingCardWindow } from '../services/floatingCardService';
 import { usePlatformRuntimeSupport } from '../hooks/usePlatformRuntimeSupport';
 import { usePlatformLayoutStore } from '../stores/usePlatformLayoutStore';
@@ -31,7 +32,6 @@ import {
 import { resolveUpdaterDownloadUrl } from '../utils/updaterReleaseNotes';
 import { getSubscriptionTier } from '../utils/account';
 import type { Account } from '../types/account';
-import type { CodexAccount } from '../types/codex';
 import {
   FEATURE_UNLOCK_CHANGED_EVENT,
   type FeatureUnlockChangedDetail,
@@ -117,6 +117,12 @@ interface NetworkConfig {
   global_proxy_no_proxy: string;
 }
 
+interface DiagnosticsConfig {
+  errorReportingEnabled: boolean;
+  errorReportingDebug: boolean;
+  endpointConfigured: boolean;
+}
+
 /** 通用配置类型 */
 interface GeneralConfig {
   language: string;
@@ -184,6 +190,7 @@ interface GeneralConfig {
   opencode_auth_overwrite_on_switch: boolean;
   openclaw_auth_overwrite_on_switch: boolean;
   codex_launch_on_switch: boolean;
+  antigravity_launch_on_switch: boolean;
   codex_restart_specified_app_on_switch: boolean;
   codex_local_access_entry_visible: boolean;
   top_right_ad_visible?: boolean;
@@ -464,6 +471,7 @@ export function SettingsPage() {
   }, []);
 
   const handleTopRightAdVisibleChange = useCallback((visible: boolean) => {
+    suppressGeneralSaveRef.current = false;
     setTopRightAdVisible(visible);
     persistStartupAppearance({ topRightAdVisible: visible });
     window.dispatchEvent(
@@ -474,6 +482,11 @@ export function SettingsPage() {
         },
       }),
     );
+  }, []);
+
+  const handleTokenKeeperEnabledChange = useCallback((enabled: boolean) => {
+    suppressGeneralSaveRef.current = false;
+    setTokenKeeperEnabled(enabled);
   }, []);
 
   const startupPageOptions = useMemo(
@@ -540,6 +553,23 @@ export function SettingsPage() {
   const [floatingCardAlwaysOnTop, setFloatingCardAlwaysOnTop] = useState(false);
   const [appAutoLaunchEnabled, setAppAutoLaunchEnabled] = useState(false);
   const [tokenKeeperEnabled, setTokenKeeperEnabled] = useState(true);
+  const [errorReportingEnabled, setErrorReportingEnabled] = useState(true);
+  const [errorReportingSaving, setErrorReportingSaving] = useState(false);
+  const handleErrorReportingEnabledChange = useCallback(async (enabled: boolean) => {
+    const previous = errorReportingEnabled;
+    setErrorReportingEnabled(enabled);
+    setErrorReportingSaving(true);
+    try {
+      await invoke('save_diagnostics_config', {
+        errorReportingEnabled: enabled,
+      });
+    } catch (error) {
+      console.error('保存诊断配置失败:', error);
+      setErrorReportingEnabled(previous);
+    } finally {
+      setErrorReportingSaving(false);
+    }
+  }, [errorReportingEnabled]);
   const [opencodeAppPath, setOpencodeAppPath] = useState('');
   const [antigravityAppPath, setAntigravityAppPath] = useState('');
   const [codexAppPath, setCodexAppPath] = useState('');
@@ -611,6 +641,7 @@ export function SettingsPage() {
   const [opencodeAuthOverwriteOnSwitch, setOpencodeAuthOverwriteOnSwitch] = useState(false);
   const [openclawAuthOverwriteOnSwitch, setOpenclawAuthOverwriteOnSwitch] = useState(false);
   const [codexLaunchOnSwitch, setCodexLaunchOnSwitch] = useState(true);
+  const [antigravityLaunchOnSwitch, setAntigravityLaunchOnSwitch] = useState(true);
   const [codexRestartSpecifiedAppOnSwitch, setCodexRestartSpecifiedAppOnSwitch] = useState(false);
   const [codexLocalAccessEntryVisible, setCodexLocalAccessEntryVisible] = useState(true);
   const [topRightAdVisible, setTopRightAdVisible] = useState(true);
@@ -670,6 +701,8 @@ export function SettingsPage() {
   const unlockFireworksTimerRef = useRef<number | null>(null);
   const [generalLoaded, setGeneralLoaded] = useState(false);
   const generalSaveTimerRef = useRef<number | null>(null);
+  const generalSaveInFlightRef = useRef(false);
+  const pendingExternalConfigReloadRef = useRef(false);
   const suppressGeneralSaveRef = useRef(false);
   const currentAccountRefreshPersistReadyRef = useRef(false);
   
@@ -691,8 +724,8 @@ export function SettingsPage() {
   const updateRemindersTouchedRef = useRef(false);
   const [antigravityAccounts, setAntigravityAccounts] = useState<Account[]>([]);
   const [antigravityAccountGroups, setAntigravityAccountGroups] = useState<AccountGroup[]>([]);
-  const [codexAccounts, setCodexAccounts] = useState<CodexAccount[]>([]);
-  const [codexGroups, setCodexGroups] = useState<CodexAccountGroup[]>([]);
+  const [codexAccounts, setCodexAccounts] = useState<CodexHostAccount[]>([]);
+  const [codexGroups, setCodexGroups] = useState<CodexHostAccountGroup[]>([]);
   const codexRuntimeReady = usePlatformPackageStore((state) => state.canOpenPlatform('codex'));
 
   const antigravityScopeTypeOptions = useMemo(
@@ -740,8 +773,8 @@ export function SettingsPage() {
           await Promise.all([
             accountService.listAccounts(),
             getAccountGroups(),
-            codexRuntimeReady ? codexService.listCodexAccounts() : Promise.resolve([]),
-            codexRuntimeReady ? getCodexAccountGroups() : Promise.resolve([]),
+            codexRuntimeReady ? listCodexHostAccounts() : Promise.resolve([]),
+            codexRuntimeReady ? listCodexHostAccountGroups() : Promise.resolve([]),
           ]);
         if (!mounted) return;
         setAntigravityAccounts(nextAntigravityAccounts || []);
@@ -890,6 +923,7 @@ export function SettingsPage() {
   useEffect(() => {
     loadGeneralConfig();
     loadNetworkConfig();
+    loadDiagnosticsConfig();
   }, []);
   
   useEffect(() => {
@@ -923,6 +957,7 @@ export function SettingsPage() {
 
     if (generalSaveTimerRef.current) {
       window.clearTimeout(generalSaveTimerRef.current);
+      generalSaveTimerRef.current = null;
     }
 
     if (
@@ -984,6 +1019,8 @@ export function SettingsPage() {
     }
 
     generalSaveTimerRef.current = window.setTimeout(async () => {
+      generalSaveTimerRef.current = null;
+      generalSaveInFlightRef.current = true;
       try {
         await invoke('save_general_config', {
           language,
@@ -1039,6 +1076,7 @@ export function SettingsPage() {
           opencodeAuthOverwriteOnSwitch,
           openclawAuthOverwriteOnSwitch,
           codexLaunchOnSwitch,
+          antigravityLaunchOnSwitch,
           codexRestartSpecifiedAppOnSwitch,
           codexLocalAccessEntryVisible,
           topRightAdVisible,
@@ -1124,6 +1162,13 @@ export function SettingsPage() {
       } catch (err) {
         console.error('保存通用配置失败:', err);
         alert(`${t('settings.network.saveFailed').replace('{error}', String(err))}`);
+      } finally {
+        generalSaveInFlightRef.current = false;
+        if (pendingExternalConfigReloadRef.current) {
+          pendingExternalConfigReloadRef.current = false;
+          suppressGeneralSaveRef.current = true;
+          void loadGeneralConfig();
+        }
       }
     }, 300);
 
@@ -1181,6 +1226,7 @@ export function SettingsPage() {
     opencodeAuthOverwriteOnSwitch,
     openclawAuthOverwriteOnSwitch,
     codexLaunchOnSwitch,
+    antigravityLaunchOnSwitch,
     codexRestartSpecifiedAppOnSwitch,
     codexLocalAccessEntryVisible,
     topRightAdVisible,
@@ -1270,6 +1316,10 @@ export function SettingsPage() {
     const handleConfigUpdated = (event: Event) => {
       const detail = (event as CustomEvent<ConfigUpdatedEventDetail>).detail;
       if (detail?.source === SETTINGS_PAGE_CONFIG_UPDATE_SOURCE) {
+        return;
+      }
+      if (generalSaveTimerRef.current !== null || generalSaveInFlightRef.current) {
+        pendingExternalConfigReloadRef.current = true;
         return;
       }
       suppressGeneralSaveRef.current = true;
@@ -1512,6 +1562,7 @@ export function SettingsPage() {
       setOpencodeAuthOverwriteOnSwitch(config.opencode_auth_overwrite_on_switch ?? false);
       setOpenclawAuthOverwriteOnSwitch(config.openclaw_auth_overwrite_on_switch ?? false);
       setCodexLaunchOnSwitch(config.codex_launch_on_switch ?? true);
+      setAntigravityLaunchOnSwitch(config.antigravity_launch_on_switch ?? true);
       setCodexRestartSpecifiedAppOnSwitch(
         config.codex_restart_specified_app_on_switch ?? false,
       );
@@ -1592,6 +1643,15 @@ export function SettingsPage() {
       setGeneralLoaded(true);
     } catch (err) {
       console.error('加载通用配置失败:', err);
+    }
+  };
+
+  const loadDiagnosticsConfig = async () => {
+    try {
+      const config = await invoke<DiagnosticsConfig>('get_diagnostics_config');
+      setErrorReportingEnabled(config.errorReportingEnabled);
+    } catch (error) {
+      console.error('加载诊断配置失败:', error);
     }
   };
 
@@ -2997,7 +3057,25 @@ export function SettingsPage() {
                   <select
                     className="settings-select"
                     value={tokenKeeperEnabled ? 'true' : 'false'}
-                    onChange={(e) => setTokenKeeperEnabled(e.target.value === 'true')}
+                    onChange={(e) => handleTokenKeeperEnabledChange(e.target.value === 'true')}
+                  >
+                    <option value="true">{t('common.enable', '启用')}</option>
+                    <option value="false">{t('common.disable', '停用')}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <div className="row-label">
+                  <div className="row-title">{t('settings.general.errorReporting')}</div>
+                  <div className="row-desc">{t('settings.general.errorReportingDesc')}</div>
+                </div>
+                <div className="row-control">
+                  <select
+                    className="settings-select"
+                    value={errorReportingEnabled ? 'true' : 'false'}
+                    disabled={errorReportingSaving}
+                    onChange={(e) => void handleErrorReportingEnabledChange(e.target.value === 'true')}
                   >
                     <option value="true">{t('common.enable', '启用')}</option>
                     <option value="false">{t('common.disable', '停用')}</option>
@@ -3178,17 +3256,48 @@ export function SettingsPage() {
               {renderCurrentAccountRefreshRow('antigravity')}
               {renderAccountLevelRefreshConfig('antigravity')}
 
-              <div className="settings-row settings-row--align-start">
-<div className="row-label">
-                  <div className="row-title">{t('settings.general.antigravityAppPath', 'Antigravity IDE 启动路径')}</div>
-                  <div className="row-desc">{t('settings.general.codexAppPathDesc', '留空则使用默认路径')}</div>
+              <div className="settings-row">
+                <div className="row-label">
+                  <div className="row-title">
+                    {t(
+                      'settings.general.antigravityLaunchOnSwitch',
+                      '切换时启动 Antigravity IDE',
+                    )}
+                  </div>
+                  <div className="row-desc">
+                    {t(
+                      'settings.general.antigravityLaunchOnSwitchDesc',
+                      '关闭后切号只写入 Antigravity IDE 默认账号数据，不会关闭、启动或重启应用，适合只使用 CLI 的场景。',
+                    )}
+                  </div>
                 </div>
-  {renderAppLaunchPathControl({
-    target: 'antigravity',
-    value: antigravityAppPath,
-    onChange: setAntigravityAppPath,
-  })}
-</div>
+                <div className="row-control">
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={antigravityLaunchOnSwitch}
+                      onChange={(event) =>
+                        setAntigravityLaunchOnSwitch(event.target.checked)
+                      }
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              {antigravityLaunchOnSwitch && (
+                <div className="settings-row settings-row--align-start">
+                  <div className="row-label">
+                    <div className="row-title">{t('settings.general.antigravityAppPath', 'Antigravity IDE 启动路径')}</div>
+                    <div className="row-desc">{t('settings.general.codexAppPathDesc', '留空则使用默认路径')}</div>
+                  </div>
+                  {renderAppLaunchPathControl({
+                    target: 'antigravity',
+                    value: antigravityAppPath,
+                    onChange: setAntigravityAppPath,
+                  })}
+                </div>
+              )}
 
               {antigravitySeamlessSwitchUnlocked && (
                 <div className="settings-row">

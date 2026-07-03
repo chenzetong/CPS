@@ -381,7 +381,7 @@
     "packageInstallConfirmTitle": "Pasang paket {{platform}}",
     "packageInstallConfirmDesc": "{{platform}} perlu mengunduh paket platform sebelum dibuka. Versi {{version}}, ukuran {{size}}.",
     "packageInstallNotReady": "Paket sudah diproses, tetapi runtime belum siap.",
-    "packageInstallCardTitle": "Paket {{platform}} belum terpasang",
+    "packageInstallCardTitle": "Komponen pengelolaan akun {{platform}} belum terpasang",
     "packageInstallCardDesc": "Unduh versi {{version}}, ukuran {{size}}. Platform akan dibuka setelah pemasangan.",
     "packageUpdateAvailableShort": "Pembaruan",
     "packageRepairRequired": "Perbaiki",
@@ -432,8 +432,8 @@
     "packageOperationFailedFriendly": "Operasi paket platform gagal. Coba lagi nanti.",
     "packageOperationCanceled": "Operasi paket platform dibatalkan.",
     "packageOperationRetryHint": "Anda dapat mengeklik tombol di bawah untuk mencoba lagi.",
-    "packagePageRepairTitle": "Paket {{platform}} perlu diperbaiki",
-    "packagePageInstallTitle": "Paket {{platform}} belum terpasang",
+    "packagePageRepairTitle": "Komponen pengelolaan akun {{platform}} perlu diperbaiki",
+    "packagePageInstallTitle": "Komponen pengelolaan akun {{platform}} belum terpasang",
     "packagePageInstallDesc": "Anda dapat memasang langsung dari halaman ini, atau memakai aksi paket di kanan atas untuk memasang atau memperbaiki sebelum mengelola akun. Akun, OAuth, pengalihan, dan penyegaran latar belakang tidak akan dimuat sebelum pemasangan.",
     "packageDashboardStateDesc": "Buka halaman {{platform}} untuk memasang langsung, atau gunakan aksi kanan atas untuk memperbarui, memperbaiki, atau melihat catatan perubahan.",
     "packageOpenPlatformPage": "Buka halaman platform",
@@ -767,6 +767,8 @@
       "appAutoLaunchDesc": "Jalankan aplikasi secara otomatis setelah masuk ke sistem",
       "tokenKeeper": "Jaga otorisasi akun",
       "tokenKeeperDesc": "Saat aktif, aplikasi menyegarkan otorisasi akun yang hampir kedaluwarsa di latar belakang setelah jeda dan secara bertahap; saat nonaktif, pemeliharaan otomatis berhenti, sementara refresh manual, pindah akun, dan impor tetap berjalan.",
+      "errorReporting": "Diagnostik telemetri",
+      "errorReportingDesc": "Aktif secara default dan hanya digunakan untuk menelusuri masalah startup, UI, dan paket platform. Jika dimatikan, pengiriman telemetri berhenti. Event disunting dan tidak menyertakan sandi, token, rahasia 2FA, nomor telepon, atau data sensitif lain.",
       "platformQuickSettingsTitle": "Pengaturan platform",
       "platformQuickSettingsDesc": "Pengaturan tiap platform kini ada di halaman platform. Buka cepat dari sini.",
       "platformQuickSettingsItemDesc": "Halaman platform",
@@ -939,7 +941,10 @@
       "claudeAutoRefreshDesc": "Menyegarkan cache kuota akun Claude secara otomatis di latar belakang.",
       "claudeAppPath": "Target peluncuran Claude Desktop",
       "claudeAppPathDesc": "Profil default dapat memakai target Microsoft Store; profil multi-instans membutuhkan Claude.exe asli.",
-      "platformQuickSettingsEntryTitle": "{{platform}} akses pengaturan"
+      "platformQuickSettingsEntryTitle": "{{platform}} akses pengaturan",
+      "antigravityLaunchOnSwitch": "Buka Antigravity IDE saat beralih",
+      "antigravityLaunchOnSwitchLabel": "Mulai atau mulai ulang app setelah beralih",
+      "antigravityLaunchOnSwitchDesc": "Saat nonaktif, pergantian hanya menulis data akun default Antigravity IDE. App tidak akan ditutup, dimulai, atau dimulai ulang, cocok untuk alur kerja khusus CLI."
     },
     "network": {
       "apiTitle": "API Antigravity Cockpit",
@@ -1772,7 +1777,8 @@
     "installFailed": "Instalasi sistem gagal. Coba lagi nanti atau unduh secara manual.",
     "restartRequiredAfterInstall": "Pembaruan terpasang. Mulai ulang aplikasi secara manual untuk menyelesaikan peralihan.",
     "stoppingApiService": "Menghentikan layanan API...",
-    "stopApiServiceFailed": "Layanan API tidak dapat dihentikan. Nonaktifkan dulu, lalu coba lagi."
+    "stopApiServiceFailed": "Layanan API tidak dapat dihentikan. Nonaktifkan dulu, lalu coba lagi.",
+    "stopApiServiceFailedContinue": "Layanan API tidak berhenti dengan benar. Tetap melanjutkan mulai ulang..."
   },
   "closeDialog": {
     "title": "Tutup Jendela",
@@ -1959,7 +1965,8 @@
         "freeNoticeUnstable": "Proxy akun Free bisa tidak stabil. Gunakan dengan hati-hati.",
         "restrictFreeDisableConfirmTitle": "Izinkan akun Free",
         "restrictFreeDisableConfirmMessage": "Proxy akun Free bisa tidak stabil. Yakin ingin menggunakannya?",
-        "manageMembers": "Kelola anggota"
+        "manageMembers": "Kelola anggota",
+        "pendingOAuthUnsupported": "Selesaikan otorisasi OAuth sebelum menambahkan akun tertunda ini ke layanan API"
       },
       "entryAction": "Tambahkan ke Layanan API",
       "testAction": "Tes",
@@ -3393,6 +3400,18 @@
       "completed": "Penghapusan selesai",
       "preparing": "Menyiapkan tugas hapus...",
       "retryFailed": "Coba ulang gagal"
+    },
+    "pendingAuth": {
+      "badge": "Menunggu auth",
+      "emailRequired": "Masukkan email akun",
+      "saving": "Menyimpan akun tertunda...",
+      "saved": "Akun tertunda disimpan",
+      "saveFailed": "Gagal menyimpan akun tertunda: {{error}}",
+      "emailLabel": "Akun tertunda",
+      "emailPlaceholder": "Masukkan email akun OpenAI",
+      "saveDraft": "Simpan kartu tertunda",
+      "authorizeAction": "Otorisasi",
+      "cardHint": "Catatan disimpan. Selesaikan OAuth untuk memakai akun ini."
     }
   },
   "codebuddy": {

@@ -4944,12 +4944,31 @@ fn upsert_account_from_auth_tokens(tokens: CodexAuthTokens) -> Result<CodexAccou
     };
 
     if normalize_optional_ref(Some(&tokens.id_token)).is_none()
-        && decode_jwt_payload_value(&tokens.access_token).is_some()
+        && is_importable_access_token(&tokens.access_token)
     {
-        return upsert_account_from_access_token(tokens.access_token, None);
+        return upsert_account_from_access_token_with_hints(
+            tokens.access_token,
+            CodexAccessTokenImportHints {
+                account_id: account_id_hint,
+                ..Default::default()
+            },
+        );
     }
 
     upsert_account_with_hints(tokens, account_id_hint, None)
+}
+
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+struct CodexAccessTokenImportHints {
+    email: Option<String>,
+    user_id: Option<String>,
+    plan_type: Option<String>,
+    subscription_active_until: Option<String>,
+    account_id: Option<String>,
+    organization_id: Option<String>,
+    account_name: Option<String>,
+    account_structure: Option<String>,
+    account_note: Option<String>,
 }
 
 enum CodexJsonImportCandidate {
@@ -4960,7 +4979,7 @@ enum CodexJsonImportCandidate {
     },
     AccessToken {
         access_token: String,
-        account_note: Option<String>,
+        hints: CodexAccessTokenImportHints,
     },
     RefreshToken {
         refresh_token: String,
@@ -5144,12 +5163,169 @@ fn extract_account_note_from_value(value: &serde_json::Value) -> Option<String> 
     })
 }
 
+fn is_opaque_access_token(token: &str) -> bool {
+    normalize_optional_ref(Some(token))
+        .map(|token| token.starts_with("at-"))
+        .unwrap_or(false)
+}
+
+fn is_importable_access_token(token: &str) -> bool {
+    decode_jwt_payload_value(token).is_some() || is_opaque_access_token(token)
+}
+
+fn first_json_scalar_string(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
+    paths.iter().find_map(|path| {
+        let mut current = value;
+        for key in *path {
+            current = current.get(*key)?;
+        }
+        normalize_optional_json_scalar(Some(current))
+    })
+}
+
+fn merge_access_token_import_hints(
+    mut primary: CodexAccessTokenImportHints,
+    fallback: CodexAccessTokenImportHints,
+) -> CodexAccessTokenImportHints {
+    if primary.email.is_none() {
+        primary.email = fallback.email;
+    }
+    if primary.user_id.is_none() {
+        primary.user_id = fallback.user_id;
+    }
+    if primary.plan_type.is_none() {
+        primary.plan_type = fallback.plan_type;
+    }
+    if primary.subscription_active_until.is_none() {
+        primary.subscription_active_until = fallback.subscription_active_until;
+    }
+    if primary.account_id.is_none() {
+        primary.account_id = fallback.account_id;
+    }
+    if primary.organization_id.is_none() {
+        primary.organization_id = fallback.organization_id;
+    }
+    if primary.account_name.is_none() {
+        primary.account_name = fallback.account_name;
+    }
+    if primary.account_structure.is_none() {
+        primary.account_structure = fallback.account_structure;
+    }
+    if primary.account_note.is_none() {
+        primary.account_note = fallback.account_note;
+    }
+    primary
+}
+
+fn extract_access_token_import_hints_from_value(
+    value: &serde_json::Value,
+) -> CodexAccessTokenImportHints {
+    CodexAccessTokenImportHints {
+        email: first_json_scalar_string(
+            value,
+            &[
+                &["email"],
+                &["account_email"],
+                &["accountEmail"],
+                &["user", "email"],
+                &["profile", "email"],
+                &["account", "email"],
+                &["credentials", "email"],
+            ],
+        ),
+        user_id: first_json_scalar_string(
+            value,
+            &[
+                &["user_id"],
+                &["userId"],
+                &["user", "id"],
+                &["account", "user_id"],
+                &["account", "userId"],
+            ],
+        ),
+        plan_type: first_json_scalar_string(
+            value,
+            &[
+                &["plan_type"],
+                &["planType"],
+                &["account", "plan_type"],
+                &["account", "planType"],
+                &["account", "plan"],
+            ],
+        ),
+        subscription_active_until: first_json_scalar_string(
+            value,
+            &[
+                &["subscription_active_until"],
+                &["subscriptionActiveUntil"],
+                &["account", "subscription_active_until"],
+                &["account", "subscriptionActiveUntil"],
+            ],
+        ),
+        account_id: first_json_scalar_string(
+            value,
+            &[
+                &["account_id"],
+                &["accountId"],
+                &["chatgpt_account_id"],
+                &["workspace_id"],
+                &["account", "id"],
+                &["account", "account_id"],
+                &["account", "accountId"],
+                &["credentials", "account_id"],
+                &["credentials", "accountId"],
+            ],
+        ),
+        organization_id: first_json_scalar_string(
+            value,
+            &[
+                &["organization_id"],
+                &["organizationId"],
+                &["org_id"],
+                &["orgId"],
+                &["poid"],
+                &["POID"],
+                &["account", "organization_id"],
+                &["account", "organizationId"],
+                &["account", "org_id"],
+                &["account", "orgId"],
+            ],
+        ),
+        account_name: first_json_scalar_string(
+            value,
+            &[
+                &["account_name"],
+                &["accountName"],
+                &["name"],
+                &["display_name"],
+                &["account", "name"],
+                &["account", "display_name"],
+                &["account", "account_name"],
+                &["account", "accountName"],
+            ],
+        ),
+        account_structure: first_json_scalar_string(
+            value,
+            &[
+                &["account_structure"],
+                &["accountStructure"],
+                &["structure"],
+                &["account", "structure"],
+                &["account", "account_structure"],
+                &["account", "accountStructure"],
+                &["account", "type"],
+            ],
+        ),
+        account_note: extract_account_note_from_value(value),
+    }
+}
+
 fn is_codex_session_object(value: &serde_json::Value) -> bool {
     let Some(obj) = value.as_object() else {
         return false;
     };
     let has_access_token = first_json_string(value, &[&["accessToken"], &["access_token"]])
-        .filter(|token| decode_jwt_payload_value(token).is_some())
+        .filter(|token| is_importable_access_token(token))
         .is_some();
     if !has_access_token {
         return false;
@@ -5210,36 +5386,58 @@ fn extract_codex_session_candidate_from_value(
 ) -> Option<CodexJsonImportCandidate> {
     let session = normalize_codex_session_value(value, 0)?;
     let access_token = first_json_string(&session, &[&["accessToken"], &["access_token"]])
-        .filter(|token| decode_jwt_payload_value(token).is_some())?;
-    let id_token = first_json_string(&session, &[&["idToken"], &["id_token"]])
-        .unwrap_or_else(|| access_token.clone());
-    let refresh_token = first_json_string(
-        &session,
-        &[
-            &["refreshToken"],
-            &["refresh_token"],
-            &["sessionToken"],
-            &["session_token"],
-        ],
-    );
+        .filter(|token| is_importable_access_token(token))?;
     let account_id_hint = first_json_string(&session, &[&["account", "id"], &["account_id"]]);
+    let account_note = extract_account_note_from_value(value)
+        .or_else(|| extract_account_note_from_value(&session));
+    let mut session_hints = merge_access_token_import_hints(
+        extract_access_token_import_hints_from_value(&session),
+        extract_access_token_import_hints_from_value(value),
+    );
+    if session_hints.account_id.is_none() {
+        session_hints.account_id = account_id_hint.clone();
+    }
+    if session_hints.account_note.is_none() {
+        session_hints.account_note = account_note.clone();
+    }
 
-    Some(CodexJsonImportCandidate::FullToken {
-        tokens: CodexTokens {
-            id_token,
-            access_token,
-            refresh_token,
-        },
-        account_id_hint,
-        account_note: extract_account_note_from_value(value)
-            .or_else(|| extract_account_note_from_value(&session)),
+    if let Some(id_token) = first_json_string(&session, &[&["idToken"], &["id_token"]]) {
+        let refresh_token = first_json_string(&session, &[&["refreshToken"], &["refresh_token"]]);
+        return Some(CodexJsonImportCandidate::FullToken {
+            tokens: CodexTokens {
+                id_token,
+                access_token,
+                refresh_token,
+            },
+            account_id_hint,
+            account_note,
+        });
+    }
+
+    if decode_jwt_payload_value(&access_token).is_some() {
+        let refresh_token = first_json_string(&session, &[&["refreshToken"], &["refresh_token"]]);
+        return Some(CodexJsonImportCandidate::FullToken {
+            tokens: CodexTokens {
+                id_token: access_token.clone(),
+                access_token,
+                refresh_token,
+            },
+            account_id_hint,
+            account_note,
+        });
+    }
+
+    Some(CodexJsonImportCandidate::AccessToken {
+        access_token,
+        hints: session_hints,
     })
 }
 
 fn extract_refresh_token_only_from_value(value: &serde_json::Value) -> Option<String> {
     match value {
-        serde_json::Value::String(raw) => normalize_optional_ref(Some(raw))
-            .filter(|token| decode_jwt_payload_value(token).is_none()),
+        serde_json::Value::String(raw) => normalize_optional_ref(Some(raw)).filter(|token| {
+            decode_jwt_payload_value(token).is_none() && !is_opaque_access_token(token)
+        }),
         serde_json::Value::Object(_) => first_json_string(
             value,
             &[
@@ -5253,10 +5451,13 @@ fn extract_refresh_token_only_from_value(value: &serde_json::Value) -> Option<St
     }
 }
 
-fn extract_access_token_only_from_value(value: &serde_json::Value) -> Option<String> {
+fn extract_access_token_only_from_value(
+    value: &serde_json::Value,
+) -> Option<(String, CodexAccessTokenImportHints)> {
     match value {
         serde_json::Value::String(raw) => normalize_optional_ref(Some(raw))
-            .filter(|token| decode_jwt_payload_value(token).is_some()),
+            .filter(|token| is_importable_access_token(token))
+            .map(|token| (token, CodexAccessTokenImportHints::default())),
         serde_json::Value::Object(_) => first_json_string(
             value,
             &[
@@ -5269,7 +5470,8 @@ fn extract_access_token_only_from_value(value: &serde_json::Value) -> Option<Str
                 &["token"],
             ],
         )
-        .filter(|token| decode_jwt_payload_value(token).is_some()),
+        .filter(|token| is_importable_access_token(token))
+        .map(|token| (token, extract_access_token_import_hints_from_value(value))),
         _ => None,
     }
 }
@@ -5296,10 +5498,13 @@ fn extract_codex_import_candidate_from_value(
         });
     }
 
-    extract_access_token_only_from_value(value).map(|access_token| {
+    extract_access_token_only_from_value(value).map(|(access_token, mut hints)| {
+        if hints.account_note.is_none() {
+            hints.account_note = extract_account_note_from_value(value);
+        }
         CodexJsonImportCandidate::AccessToken {
             access_token,
-            account_note: extract_account_note_from_value(value),
+            hints,
         }
     })
 }
@@ -5321,14 +5526,50 @@ fn upsert_account_from_access_token(
     access_token: String,
     account_note: Option<String>,
 ) -> Result<CodexAccount, String> {
+    upsert_account_from_access_token_with_hints(
+        access_token,
+        CodexAccessTokenImportHints {
+            account_note,
+            ..Default::default()
+        },
+    )
+}
+
+fn upsert_account_from_access_token_with_hints(
+    access_token: String,
+    hints: CodexAccessTokenImportHints,
+) -> Result<CodexAccount, String> {
     let access_token =
         normalize_optional_value(Some(access_token)).ok_or("accessToken 不能为空")?;
-    let (email, user_id, plan_type, subscription_active_until, account_id, organization_id) =
-        extract_access_token_identity(&access_token);
-    let email = email
+    let (
+        token_email,
+        token_user_id,
+        token_plan_type,
+        token_subscription,
+        token_account_id,
+        token_org_id,
+    ) = extract_access_token_identity(&access_token);
+    let account_id = normalize_optional_value(token_account_id.or(hints.account_id.clone()));
+    let organization_id = normalize_optional_value(token_org_id.or(hints.organization_id.clone()));
+    let email = token_email
+        .or(hints.email.clone())
         .or_else(|| account_id.as_ref().map(|value| format!("codex-{}", value)))
-        .or_else(|| user_id.as_ref().map(|value| format!("codex-{}", value)))
+        .or_else(|| {
+            token_user_id
+                .as_ref()
+                .map(|value| format!("codex-{}", value))
+        })
+        .or_else(|| {
+            hints
+                .user_id
+                .as_ref()
+                .map(|value| format!("codex-{}", value))
+        })
         .unwrap_or_else(|| format!("codex-access-{}", access_token_fingerprint(&access_token)));
+    let user_id = normalize_optional_value(token_user_id.or(hints.user_id.clone()));
+    let plan_type = normalize_optional_value(token_plan_type.or(hints.plan_type.clone()));
+    let subscription_active_until =
+        normalize_optional_value(token_subscription.or(hints.subscription_active_until.clone()));
     let mut tokens = CodexTokens {
         id_token: String::new(),
         access_token,
@@ -5351,6 +5592,7 @@ fn upsert_account_from_access_token(
         acc.tokens = tokens;
         mark_token_chain_updated(&mut acc);
         acc.auth_mode = CodexAuthMode::OAuth;
+        acc.authorization_status = None;
         acc.openai_api_key = None;
         acc.api_base_url = None;
         acc.api_provider_mode = CodexApiProviderMode::OpenaiBuiltin;
@@ -5363,8 +5605,14 @@ fn upsert_account_from_access_token(
         acc.subscription_active_until = subscription_active_until.clone();
         acc.account_id = account_id.clone();
         acc.organization_id = organization_id.clone();
-        if account_note.is_some() {
-            acc.account_note = account_note;
+        if hints.account_name.is_some() {
+            acc.account_name = hints.account_name.clone();
+        }
+        if hints.account_structure.is_some() {
+            acc.account_structure = hints.account_structure.clone();
+        }
+        if hints.account_note.is_some() {
+            acc.account_note = hints.account_note.clone();
         }
         acc.update_last_used();
         acc
@@ -5373,6 +5621,7 @@ fn upsert_account_from_access_token(
         let mut acc = CodexAccount::new(existing_id.clone(), email.clone(), tokens);
         mark_token_chain_updated(&mut acc);
         acc.auth_mode = CodexAuthMode::OAuth;
+        acc.authorization_status = None;
         acc.openai_api_key = None;
         acc.api_base_url = None;
         acc.api_provider_mode = CodexApiProviderMode::OpenaiBuiltin;
@@ -5385,7 +5634,9 @@ fn upsert_account_from_access_token(
         acc.subscription_active_until = subscription_active_until.clone();
         acc.account_id = account_id.clone();
         acc.organization_id = organization_id.clone();
-        acc.account_note = account_note;
+        acc.account_name = hints.account_name.clone();
+        acc.account_structure = hints.account_structure.clone();
+        acc.account_note = hints.account_note.clone();
 
         index.accounts.retain(|item| item.id != existing_id);
         index.accounts.push(CodexAccountSummary {
@@ -5445,8 +5696,8 @@ async fn import_codex_candidate(
         }
         CodexJsonImportCandidate::AccessToken {
             access_token,
-            account_note,
-        } => upsert_account_from_access_token(access_token, account_note),
+            hints,
+        } => upsert_account_from_access_token_with_hints(access_token, hints),
         CodexJsonImportCandidate::RefreshToken {
             refresh_token,
             account_note,
@@ -5887,7 +6138,7 @@ enum CodexBatchImportDraft {
     },
     AccessToken {
         access_token: String,
-        account_note: Option<String>,
+        hints: CodexAccessTokenImportHints,
     },
 }
 
@@ -6164,15 +6415,34 @@ fn preview_account_from_full_tokens(
 
 fn preview_account_from_access_token(
     access_token: String,
-    account_note: Option<String>,
+    hints: CodexAccessTokenImportHints,
 ) -> Result<CodexAccount, String> {
     let access_token =
         normalize_optional_value(Some(access_token)).ok_or("accessToken 不能为空")?;
-    let (email, user_id, plan_type, subscription_active_until, account_id, organization_id) =
-        extract_access_token_identity(&access_token);
-    let email = email
+    let (
+        token_email,
+        token_user_id,
+        token_plan_type,
+        token_subscription,
+        token_account_id,
+        token_org_id,
+    ) = extract_access_token_identity(&access_token);
+    let account_id = normalize_optional_value(token_account_id.or(hints.account_id.clone()));
+    let organization_id = normalize_optional_value(token_org_id.or(hints.organization_id.clone()));
+    let email = token_email
+        .or(hints.email.clone())
         .or_else(|| account_id.as_ref().map(|value| format!("codex-{}", value)))
-        .or_else(|| user_id.as_ref().map(|value| format!("codex-{}", value)))
+        .or_else(|| {
+            token_user_id
+                .as_ref()
+                .map(|value| format!("codex-{}", value))
+        })
+        .or_else(|| {
+            hints
+                .user_id
+                .as_ref()
+                .map(|value| format!("codex-{}", value))
+        })
         .unwrap_or_else(|| format!("codex-access-{}", access_token_fingerprint(&access_token)));
     let tokens = CodexTokens {
         id_token: String::new(),
@@ -6184,12 +6454,16 @@ fn preview_account_from_access_token(
     let mut account = CodexAccount::new(storage_id, email, tokens);
     mark_token_chain_updated(&mut account);
     account.auth_mode = CodexAuthMode::OAuth;
-    account.user_id = user_id;
-    account.plan_type = plan_type;
-    account.subscription_active_until = subscription_active_until;
+    account.authorization_status = None;
+    account.user_id = normalize_optional_value(token_user_id.or(hints.user_id));
+    account.plan_type = normalize_optional_value(token_plan_type.or(hints.plan_type));
+    account.subscription_active_until =
+        normalize_optional_value(token_subscription.or(hints.subscription_active_until));
     account.account_id = account_id;
     account.organization_id = organization_id;
-    account.account_note = account_note;
+    account.account_name = hints.account_name;
+    account.account_structure = hints.account_structure;
+    account.account_note = hints.account_note;
     Ok(account)
 }
 
@@ -6207,8 +6481,8 @@ fn preview_account_for_draft(draft: &CodexBatchImportDraft) -> Result<CodexAccou
         ),
         CodexBatchImportDraft::AccessToken {
             access_token,
-            account_note,
-        } => preview_account_from_access_token(access_token.clone(), account_note.clone()),
+            hints,
+        } => preview_account_from_access_token(access_token.clone(), hints.clone()),
     }
 }
 
@@ -6227,10 +6501,10 @@ fn codex_batch_import_draft_from_candidate(
         },
         CodexJsonImportCandidate::AccessToken {
             access_token,
-            account_note,
+            hints,
         } => CodexBatchImportDraft::AccessToken {
             access_token,
-            account_note,
+            hints,
         },
         CodexJsonImportCandidate::RefreshToken { .. } => {
             unreachable!("refresh_token candidates are resolved before creating a draft")
@@ -6326,11 +6600,14 @@ async fn codex_batch_import_draft_from_value(
                 refresh_token: tokens.refresh_token,
             };
             if normalize_optional_ref(Some(&tokens.id_token)).is_none()
-                && decode_jwt_payload_value(&tokens.access_token).is_some()
+                && is_importable_access_token(&tokens.access_token)
             {
                 return Ok(Some(CodexBatchImportDraft::AccessToken {
                     access_token: tokens.access_token,
-                    account_note: None,
+                    hints: CodexAccessTokenImportHints {
+                        account_id: account_id_hint,
+                        ..Default::default()
+                    },
                 }));
             }
             return Ok(Some(CodexBatchImportDraft::FullToken {
@@ -6916,8 +7193,8 @@ pub fn confirm_codex_batch_import(
             }
             CodexBatchImportDraft::AccessToken {
                 access_token,
-                account_note,
-            } => upsert_account_from_access_token(access_token, account_note),
+                hints,
+            } => upsert_account_from_access_token_with_hints(access_token, hints),
         };
         match result {
             Ok(mut account) => {
@@ -7003,15 +7280,7 @@ fn extract_codex_tokens_from_value(
         first_json_string(value, &[&["id_token"], &["idToken"]]),
         first_json_string(value, &[&["access_token"], &["accessToken"]]),
     ) {
-        let refresh_token = first_json_string(
-            value,
-            &[
-                &["refresh_token"],
-                &["refreshToken"],
-                &["session_token"],
-                &["sessionToken"],
-            ],
-        );
+        let refresh_token = first_json_string(value, &[&["refresh_token"], &["refreshToken"]]);
         let account_id_hint = first_json_string(value, &[&["account_id"], &["accountId"]]);
         return Some((
             CodexTokens {
@@ -7034,14 +7303,7 @@ fn extract_codex_tokens_from_value(
         ) {
             let refresh_token = first_json_string(
                 value,
-                &[
-                    &["tokens", "refresh_token"],
-                    &["tokens", "refreshToken"],
-                    &["tokens", "session_token"],
-                    &["tokens", "sessionToken"],
-                    &["session_token"],
-                    &["sessionToken"],
-                ],
+                &[&["tokens", "refresh_token"], &["tokens", "refreshToken"]],
             );
             let account_id_hint = first_json_string(
                 value,
@@ -7082,14 +7344,14 @@ mod tests {
         resolve_api_provider_config, save_account, save_account_index,
         should_accept_authority_snapshot, sync_account_from_auth_dir,
         sync_managed_projection_from_auth_dir, upsert_account, upsert_account_for_reauth,
-        upsert_account_from_access_token, upsert_account_from_auth_tokens,
-        validate_api_key_credentials, write_account_bundle_to_dir,
+        upsert_account_from_access_token, upsert_account_from_access_token_with_hints,
+        upsert_account_from_auth_tokens, validate_api_key_credentials, write_account_bundle_to_dir,
         write_api_key_provider_to_config_toml, write_api_provider_to_config_toml,
         write_managed_projection_to_dir, write_quick_config_to_config_toml, ApiProviderConfig,
-        CodexAccountIndex, CodexAccountSummary, CodexAuthFile, CodexAuthTokens,
-        CodexJsonImportCandidate, LocalCodexOAuthSnapshot, CODEX_ACCOUNT_DETAIL_SCHEMA_VERSION,
-        CODEX_AUTHORIZATION_STATUS_PENDING, CODEX_AUTO_COMPACT_DEFAULT_LIMIT,
-        CODEX_CONTEXT_WINDOW_1M_VALUE,
+        CodexAccessTokenImportHints, CodexAccountIndex, CodexAccountSummary, CodexAuthFile,
+        CodexAuthTokens, CodexJsonImportCandidate, LocalCodexOAuthSnapshot,
+        CODEX_ACCOUNT_DETAIL_SCHEMA_VERSION, CODEX_AUTHORIZATION_STATUS_PENDING,
+        CODEX_AUTO_COMPACT_DEFAULT_LIMIT, CODEX_CONTEXT_WINDOW_1M_VALUE,
     };
     use crate::models::codex::{CodexAccount, CodexApiProviderMode, CodexTokens};
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -7513,7 +7775,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_tokens_from_flat_codex_json_falls_back_to_session_token() {
+    fn extract_tokens_from_flat_codex_json_does_not_use_session_token_as_refresh_token() {
         let value = serde_json::json!({
             "id_token": "id.jwt.token",
             "access_token": "access.jwt.token",
@@ -7528,10 +7790,7 @@ mod tests {
 
         assert_eq!(tokens.id_token, "id.jwt.token");
         assert_eq!(tokens.access_token, "access.jwt.token");
-        assert_eq!(
-            tokens.refresh_token.as_deref(),
-            Some("encrypted-session-token")
-        );
+        assert_eq!(tokens.refresh_token, None);
         assert_eq!(account_id_hint.as_deref(), Some("acc_cpa"));
     }
 
@@ -7556,7 +7815,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_tokens_from_nested_tokens_json_falls_back_to_session_token() {
+    fn extract_tokens_from_nested_tokens_json_does_not_use_session_token_as_refresh_token() {
         let value = serde_json::json!({
             "tokens": {
                 "id_token": "id.jwt.token",
@@ -7572,10 +7831,7 @@ mod tests {
 
         assert_eq!(tokens.id_token, "id.jwt.token");
         assert_eq!(tokens.access_token, "access.jwt.token");
-        assert_eq!(
-            tokens.refresh_token.as_deref(),
-            Some("encrypted-session-token")
-        );
+        assert_eq!(tokens.refresh_token, None);
         assert_eq!(account_id_hint.as_deref(), Some("acc_nested"));
     }
 
@@ -7613,6 +7869,11 @@ mod tests {
         let plain_token_value = serde_json::json!({
             "token": "not-a-jwt-token"
         });
+        let opaque_access_token_value = serde_json::json!({
+            "token": "at-confirmed-opaque-token",
+            "email": "opaque@example.com",
+            "account_id": "acc-opaque"
+        });
 
         let full_candidate = extract_codex_import_candidate_from_value(&full_value)
             .expect("full token JSON should still be accepted");
@@ -7632,6 +7893,10 @@ mod tests {
             extract_codex_import_candidate_from_value(&plain_token_value).is_none(),
             "plain token fields should not be treated as accessToken-only"
         );
+        assert!(matches!(
+            extract_codex_import_candidate_from_value(&opaque_access_token_value),
+            Some(CodexJsonImportCandidate::AccessToken { .. })
+        ));
     }
 
     #[test]
@@ -7747,9 +8012,9 @@ mod tests {
         match candidate {
             CodexJsonImportCandidate::AccessToken {
                 access_token,
-                account_note,
+                hints,
             } => {
-                assert_eq!(account_note.as_deref(), Some("imported from sub2api"));
+                assert_eq!(hints.account_note.as_deref(), Some("imported from sub2api"));
                 assert!(decode_jwt_payload_value(&access_token).is_some());
             }
             _ => panic!("expected accessToken-only candidate"),
@@ -7771,6 +8036,85 @@ mod tests {
         });
 
         assert!(looks_like_sub2api_export(&value));
+    }
+
+    #[test]
+    fn extract_candidate_accepts_opaque_access_token_with_hints() {
+        let value = serde_json::json!({
+            "tokens": {
+                "id_token": "",
+                "access_token": "at-confirmed-team-token",
+                "refresh_token": ""
+            },
+            "email": "team@example.com",
+            "plan_type": "team",
+            "account_id": "acc-team",
+            "organization_id": "org-team",
+            "account_name": "Team Workspace",
+            "account_structure": "team",
+            "account_note": "confirmed import"
+        });
+
+        let candidate = extract_codex_import_candidate_from_value(&value)
+            .expect("opaque at-* access token should be accepted");
+
+        match candidate {
+            CodexJsonImportCandidate::AccessToken {
+                access_token,
+                hints,
+            } => {
+                assert_eq!(access_token, "at-confirmed-team-token");
+                assert_eq!(hints.email.as_deref(), Some("team@example.com"));
+                assert_eq!(hints.plan_type.as_deref(), Some("team"));
+                assert_eq!(hints.account_id.as_deref(), Some("acc-team"));
+                assert_eq!(hints.organization_id.as_deref(), Some("org-team"));
+                assert_eq!(hints.account_name.as_deref(), Some("Team Workspace"));
+                assert_eq!(hints.account_structure.as_deref(), Some("team"));
+                assert_eq!(hints.account_note.as_deref(), Some("confirmed import"));
+            }
+            _ => panic!("expected opaque access-token-only candidate"),
+        }
+    }
+
+    #[test]
+    fn upsert_opaque_access_token_only_account_uses_import_hints() {
+        let _lock = crate::modules::test_support::env_lock()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let _env = TestEnvGuard::new("codex-opaque-access-token-import-test");
+
+        let account = upsert_account_from_access_token_with_hints(
+            "at-confirmed-team-token".to_string(),
+            CodexAccessTokenImportHints {
+                email: Some("team@example.com".to_string()),
+                user_id: Some("user-team".to_string()),
+                plan_type: Some("team".to_string()),
+                subscription_active_until: None,
+                account_id: Some("acc-team".to_string()),
+                organization_id: Some("org-team".to_string()),
+                account_name: Some("Team Workspace".to_string()),
+                account_structure: Some("team".to_string()),
+                account_note: Some("confirmed import".to_string()),
+            },
+        )
+        .expect("upsert opaque access token account");
+
+        assert_eq!(account.email, "team@example.com");
+        assert_eq!(account.user_id.as_deref(), Some("user-team"));
+        assert_eq!(account.plan_type.as_deref(), Some("team"));
+        assert_eq!(account.account_id.as_deref(), Some("acc-team"));
+        assert_eq!(account.organization_id.as_deref(), Some("org-team"));
+        assert_eq!(account.account_name.as_deref(), Some("Team Workspace"));
+        assert_eq!(account.account_structure.as_deref(), Some("team"));
+        assert_eq!(account.tokens.id_token, "");
+        assert_eq!(account.tokens.access_token, "at-confirmed-team-token");
+        assert_eq!(account.tokens.refresh_token, None);
+        assert!(!account.requires_reauth);
+        assert_eq!(account.reauth_reason, None);
+
+        let persisted = load_account(&account.id).expect("persisted opaque account");
+        assert_eq!(persisted.tokens.access_token, account.tokens.access_token);
+        assert_eq!(persisted.account_id.as_deref(), Some("acc-team"));
     }
 
     #[test]

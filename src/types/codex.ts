@@ -35,6 +35,10 @@ export interface CodexAccount {
   user_id?: string;
   plan_type?: string;
   subscription_active_until?: string;
+  subscription_query_last_attempt_at?: number;
+  subscription_query_last_success_at?: number;
+  subscription_query_next_retry_at?: number;
+  subscription_query_last_error?: string;
   auth_file_plan_type?: string;
   account_id?: string;
   organization_id?: string;
@@ -934,6 +938,7 @@ const HOUR_IN_MS = 60 * 60 * 1000;
 
 export type CodexSubscriptionExpiryBucket =
   | "missing"
+  | "access_token_only"
   | "expired"
   | "within_24h"
   | "within_7d"
@@ -1046,6 +1051,47 @@ export function getCodexSubscriptionPresentation(
     detailText,
     titleText: t("codex.subscription.titleWithDate", { date: detailText }),
     timestampMs,
+  };
+}
+
+function isCodexOpaqueAccessTokenOnlyAccount(account: CodexAccount): boolean {
+  const accessToken = account.tokens?.access_token?.trim() || "";
+  const refreshToken = account.tokens?.refresh_token?.trim() || "";
+  return accessToken.startsWith("at-") && !refreshToken;
+}
+
+function isCodexAccessTokenOnlySubscriptionLimited(account: CodexAccount): boolean {
+  if (!isCodexTeamLikePlan(account.plan_type)) return false;
+  if (!isCodexOpaqueAccessTokenOnlyAccount(account)) return false;
+  if (!account.quota || account.quota_error) return false;
+  const lastError = account.subscription_query_last_error || "";
+  return /no_matching_rule|rejected_by_access_enforcement|access enforcement/i.test(
+    lastError,
+  );
+}
+
+export function getCodexSubscriptionPresentationForAccount(
+  account: CodexAccount,
+  t: Translate,
+): CodexSubscriptionPresentation {
+  const base = getCodexSubscriptionPresentation(account.subscription_active_until, t);
+  if (base.bucket !== "missing") return base;
+
+  if (!isCodexAccessTokenOnlySubscriptionLimited(account)) return base;
+
+  const valueText = t("codex.subscription.accessTokenOnlyUsable", {
+    defaultValue: "Token 可用",
+  });
+  const detailText = t("codex.subscription.accessTokenOnlyUsableDetail", {
+    defaultValue: "订阅信息接口受限，但配额与 Codex 使用正常",
+  });
+  return {
+    bucket: "access_token_only",
+    tone: "active",
+    valueText,
+    detailText,
+    titleText: detailText,
+    timestampMs: null,
   };
 }
 

@@ -452,6 +452,12 @@ type CodexAccountNoteFormState = {
 type CodexAccountNoteMailPreviewState = MailVerificationCodePreview & {
   fetchedAt: number;
   truncated: boolean;
+  status: "initial" | "changed" | "unchanged";
+};
+
+type CodexAccountNoteMailPreviewSnapshot = {
+  mailUrl: string;
+  code: string;
 };
 
 type CodexAccountNoteFieldErrors = {
@@ -509,6 +515,16 @@ function getCodexAccountNoteTitle(account: CodexAccount, fallback: string): stri
     account.mail_url?.trim() ||
     fallback
   );
+}
+
+function formatCodexAccountNoteMailPreviewTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
 }
 
 function formatMfaRecordOption(record: MfaRecord, fallback: string): string {
@@ -1333,6 +1349,8 @@ export function CodexAccountsPage() {
   const [accountNoteMailPreviewError, setAccountNoteMailPreviewError] =
     useState<string | null>(null);
   const accountNoteMailPreviewSeqRef = useRef(0);
+  const accountNoteMailPreviewSnapshotRef =
+    useRef<CodexAccountNoteMailPreviewSnapshot | null>(null);
   const [mfaTimeRemaining, setMfaTimeRemaining] = useState(
     getMfaTimeRemaining,
   );
@@ -2989,6 +3007,7 @@ export function CodexAccountsPage() {
 
   const resetAccountNoteMailPreview = useCallback(() => {
     accountNoteMailPreviewSeqRef.current += 1;
+    accountNoteMailPreviewSnapshotRef.current = null;
     setAccountNoteMailPreview(null);
     setAccountNoteMailPreviewError(null);
     setAccountNoteMailPreviewLoading(false);
@@ -3002,6 +3021,7 @@ export function CodexAccountsPage() {
       setAccountNoteMailPreview(null);
       setAccountNoteMailPreviewError(null);
       if (!mailUrl) {
+        accountNoteMailPreviewSnapshotRef.current = null;
         setAccountNoteMailPreviewLoading(false);
         return;
       }
@@ -3017,10 +3037,22 @@ export function CodexAccountsPage() {
           );
           return;
         }
+        const previousPreview = accountNoteMailPreviewSnapshotRef.current;
+        const status =
+          previousPreview?.mailUrl === mailUrl
+            ? previousPreview.code === preview.code
+              ? "unchanged"
+              : "changed"
+            : "initial";
+        accountNoteMailPreviewSnapshotRef.current = {
+          mailUrl,
+          code: preview.code,
+        };
         setAccountNoteMailPreview({
           ...preview,
           fetchedAt: Date.now(),
           truncated: response.truncated,
+          status,
         });
       } catch (error) {
         if (accountNoteMailPreviewSeqRef.current !== requestSeq) return;
@@ -15963,7 +15995,15 @@ export function CodexAccountsPage() {
                     ) : null}
                   </label>
                   <label className="codex-account-note-field">
-                    <span>{t("codex.accountNote.mailUrlLabel", "邮件地址")}</span>
+                    <span className="codex-account-note-label-row">
+                      <span>{t("codex.accountNote.mailUrlLabel", "邮件地址")}</span>
+                      <span className="codex-account-note-label-hint">
+                        {t(
+                          "codex.accountNote.mailUrlHint",
+                          "填写可打开的邮件查询网页地址",
+                        )}
+                      </span>
+                    </span>
                     <div className="codex-account-note-input-row">
                       <input
                         className="codex-account-note-input"
@@ -16044,12 +16084,17 @@ export function CodexAccountsPage() {
                         {accountNoteMailPreviewError}
                       </span>
                     ) : accountNoteMailPreview ? (
-                      <div className="codex-account-note-mail-preview">
+                      <div
+                        key={`${accountNoteMailPreview.code}-${accountNoteMailPreview.fetchedAt}`}
+                        className={`codex-account-note-mail-preview ${
+                          accountNoteMailPreview.status === "changed" ? "is-changed" : ""
+                        }`}
+                      >
                         <div className="codex-account-note-mail-preview__code">
                           <span>
                             {t(
                               "codex.accountNote.mailPreviewCode",
-                              "邮件验证码",
+                              "最近一条邮箱验证码",
                             )}
                           </span>
                           <strong>{accountNoteMailPreview.code}</strong>
@@ -16076,6 +16121,30 @@ export function CodexAccountsPage() {
                         <p title={accountNoteMailPreview.snippet}>
                           {accountNoteMailPreview.snippet}
                         </p>
+                        <em
+                          className={`codex-account-note-mail-preview__status status-${accountNoteMailPreview.status}`}
+                        >
+                          {accountNoteMailPreview.status === "changed"
+                            ? t("codex.accountNote.mailPreviewStatusChanged", {
+                                defaultValue: "新验证码 · {{time}}",
+                                time: formatCodexAccountNoteMailPreviewTime(
+                                  accountNoteMailPreview.fetchedAt,
+                                ),
+                              })
+                            : accountNoteMailPreview.status === "unchanged"
+                              ? t("codex.accountNote.mailPreviewStatusUnchanged", {
+                                  defaultValue: "未变化 · {{time}}",
+                                  time: formatCodexAccountNoteMailPreviewTime(
+                                    accountNoteMailPreview.fetchedAt,
+                                  ),
+                                })
+                              : t("codex.accountNote.mailPreviewStatusInitial", {
+                                  defaultValue: "获取于 {{time}}",
+                                  time: formatCodexAccountNoteMailPreviewTime(
+                                    accountNoteMailPreview.fetchedAt,
+                                  ),
+                                })}
+                        </em>
                         {accountNoteMailPreview.truncated ? (
                           <em>
                             {t(

@@ -434,7 +434,7 @@
         "en-US"
       ],
       "showOnce": true,
-      "popup": false,
+      "popup": true,
       "createdAt": "2026-07-10T00:00:00.000Z",
       "expiresAt": null,
       "locales": {

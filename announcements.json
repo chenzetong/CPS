@@ -454,6 +454,41 @@
           "content": "Some Windows users may see only GPT-5.4 and GPT-5.5 after switching accounts through the Codex API service or an API key. This usually means the Codex launch path still points to the legacy Codex.exe.\n\nOpen Settings from the upper-right corner of the Codex account page, scroll to Codex App Path, click Scan Apps, and select the current client whose path ends in ChatGPT.exe.\n\nSwitch the account again after saving the path. Do not select the legacy Codex.exe."
         }
       }
+    },
+    {
+      "id": "ann-2026-07-chatgpt-api-key-gpt56-oauth-binding",
+      "type": "info",
+      "priority": 510,
+      "title": "ChatGPT API Key GPT-5.6 模型显示补充说明",
+      "summary": "启动路径正确但 GPT-5.6 仍未显示时，可通过绑定 OAuth 账号解决。",
+      "content": "如果已经按照上一条公告正确设置 ChatGPT.exe 启动路径，但通过 Cockpit Tools 切号或重启 ChatGPT 后，GPT-5.6 仍未显示，可以为对应的 API Key 绑定一个 OAuth 账号。\n\n绑定方法：\n\n1. 进入 Cockpit Tools 的 Codex 账号页面\n2. 找到需要使用的 API Key 账号卡片或 Codex API 服务账号卡片\n3. 在账号卡片信息中找到「OAuth 绑定」\n4. 点击右侧的「绑定」\n5. 从账号列表中选择一个已添加的普通 Codex OAuth 账号\n6. 完成绑定后，重新通过 Cockpit Tools 切换一次该 API Key 账号\n\n绑定后的效果：\n\n• ChatGPT 的启动、重启、模型显示和客户端交互与普通账号一致\n• 实际对话请求仍通过该 API Key 对应的供应商发送\n• Codex API 服务账号同样适用，不会改为消耗 OAuth 账号的对话额度\n\n建议优先选择 Plus、Team 或更高套餐的 OAuth 账号进行绑定，以获得更完整、稳定的客户端功能和模型显示体验。",
+      "targetVersions": ">=1.1.4",
+      "targetLanguages": [
+        "zh-CN",
+        "en",
+        "en-US"
+      ],
+      "showOnce": true,
+      "popup": true,
+      "createdAt": "2026-07-10T00:00:00.000Z",
+      "expiresAt": null,
+      "locales": {
+        "zh-CN": {
+          "title": "ChatGPT API Key GPT-5.6 模型显示补充说明",
+          "summary": "启动路径正确但 GPT-5.6 仍未显示时，可通过绑定 OAuth 账号解决。",
+          "content": "如果已经按照上一条公告正确设置 ChatGPT.exe 启动路径，但通过 Cockpit Tools 切号或重启 ChatGPT 后，GPT-5.6 仍未显示，可以为对应的 API Key 绑定一个 OAuth 账号。\n\n绑定方法：\n\n1. 进入 Cockpit Tools 的 Codex 账号页面\n2. 找到需要使用的 API Key 账号卡片或 Codex API 服务账号卡片\n3. 在账号卡片信息中找到「OAuth 绑定」\n4. 点击右侧的「绑定」\n5. 从账号列表中选择一个已添加的普通 Codex OAuth 账号\n6. 完成绑定后，重新通过 Cockpit Tools 切换一次该 API Key 账号\n\n绑定后的效果：\n\n• ChatGPT 的启动、重启、模型显示和客户端交互与普通账号一致\n• 实际对话请求仍通过该 API Key 对应的供应商发送\n• Codex API 服务账号同样适用，不会改为消耗 OAuth 账号的对话额度\n\n建议优先选择 Plus、Team 或更高套餐的 OAuth 账号进行绑定，以获得更完整、稳定的客户端功能和模型显示体验。"
+        },
+        "en": {
+          "title": "ChatGPT API Key GPT-5.6 Model Visibility: Additional Guidance",
+          "summary": "If GPT-5.6 is still missing after correcting the launch path, bind an OAuth account to the API key.",
+          "content": "If ChatGPT.exe is already configured as described in the previous announcement but GPT-5.6 is still missing after switching or restarting ChatGPT through Cockpit Tools, bind an OAuth account to the corresponding API key.\n\nHow to bind an account:\n\n1. Open the Codex account page in Cockpit Tools\n2. Find the API key account card or Codex API service account card you want to use\n3. Find OAuth Binding in the account card details\n4. Click Bind on the right\n5. Select a regular Codex OAuth account that has already been added\n6. After binding, switch to the API key account again through Cockpit Tools\n\nAfter binding:\n\n• ChatGPT startup, restart, model visibility, and client interactions work like a regular account\n• Actual conversation requests still use the provider associated with the API key\n• Codex API service accounts are also supported and do not consume the OAuth account's conversation quota\n\nWe recommend binding a Plus, Team, or higher-tier OAuth account for more complete and stable client features and model visibility."
+        },
+        "en-US": {
+          "title": "ChatGPT API Key GPT-5.6 Model Visibility: Additional Guidance",
+          "summary": "If GPT-5.6 is still missing after correcting the launch path, bind an OAuth account to the API key.",
+          "content": "If ChatGPT.exe is already configured as described in the previous announcement but GPT-5.6 is still missing after switching or restarting ChatGPT through Cockpit Tools, bind an OAuth account to the corresponding API key.\n\nHow to bind an account:\n\n1. Open the Codex account page in Cockpit Tools\n2. Find the API key account card or Codex API service account card you want to use\n3. Find OAuth Binding in the account card details\n4. Click Bind on the right\n5. Select a regular Codex OAuth account that has already been added\n6. After binding, switch to the API key account again through Cockpit Tools\n\nAfter binding:\n\n• ChatGPT startup, restart, model visibility, and client interactions work like a regular account\n• Actual conversation requests still use the provider associated with the API key\n• Codex API service accounts are also supported and do not consume the OAuth account's conversation quota\n\nWe recommend binding a Plus, Team, or higher-tier OAuth account for more complete and stable client features and model visibility."
+        }
+      }
     }
   ]
 }

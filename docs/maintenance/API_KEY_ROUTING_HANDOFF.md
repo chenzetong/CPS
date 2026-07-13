@@ -384,3 +384,28 @@ Verification before packaging:
 The 1.3.0 local package must reuse the checked-in sidecar binary because Go is
 not installed. Record its installer names, checksums, installation result, and
 runtime port check here after packaging; do not include credentials.
+
+Local 1.3.0 package verification:
+
+```text
+target/release/bundle/nsis/Cockpit Tools_1.3.0_x64-setup.exe
+size: 27360759 bytes
+time: 2026-07-13 10:24:20 +08:00
+sha256: A1357C483ABB6E9071400B0112F9983E5153CD7D40F6D0C0906F6C482C36DE3C
+
+target/release/bundle/msi/Cockpit Tools_1.3.0_x64_en-US.msi
+size: 37269504 bytes
+time: 2026-07-13 10:23:20 +08:00
+sha256: A3B3BA20255F7702040D9D99593756D22AFABF539C047365766D459453987870
+```
+
+- The compatible checked-in Windows sidecar was reused without a Go rebuild.
+- The NSIS silent installer exited with `0`.
+- Installed product version: `1.3.0`.
+- Installed application SHA-256:
+  `F1B0861E725E5E4C306073F49D18307E6698364039772CACC26F93110CDD285F`.
+- Restarted application process ID: `65972`.
+- API sidecar port `54548`: listening.
+- Unauthenticated `GET /v1/models`: HTTP `401`, confirming the restarted
+  API service is reachable and enforces authentication without exposing a
+  client API Key in the verification record.

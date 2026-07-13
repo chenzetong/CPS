@@ -1740,8 +1740,8 @@ export function buildGrokAccountPresentation(
         item.used != null && item.total != null
           ? Math.max(0, item.total - item.used)
           : null;
-      // 主文案展示剩余额度（非仅用量）；进度条仍按 used% 填充
-      const remainingText = t("common.shared.quota.leftPercent", "剩余 {{value}}%", {
+      // 与 Gemini 一致：文案与进度条均为剩余%（额度越少条越短）；颜色按已用比例
+      const remainingText = t("common.shared.quota.leftPercent", "{{value}}% left", {
         value: Math.round(remaining),
       });
       const valueText = amountText
@@ -1751,8 +1751,7 @@ export function buildGrokAccountPresentation(
         key: item.key,
         label: item.label,
         percentage: remaining,
-        progressPercent: usedPercent,
-        // Match overview card coloring (used% based), not remaining-only class.
+        progressPercent: remaining,
         quotaClass: getGrokQuotaClass(usedPercent),
         valueText,
         resetAt: item.resetAtMs,

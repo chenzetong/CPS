@@ -512,17 +512,18 @@ export function GrokAccountsPage() {
               </div>
             )}
             {items.map((item) => {
-              // item.percentage 为 used%；界面主文案展示剩余%，进度条仍按已用填充
+              // item.percentage 为 used%；文案与进度条均展示剩余%（与 Gemini 等平台一致：越用越短）
               const usedPercent = Math.max(
                 0,
                 Math.min(100, Math.round(item.percentage)),
               );
               const remainingPercent = Math.max(0, Math.min(100, 100 - usedPercent));
+              // 颜色按已用比例（越用越红），条长度按剩余
               const quotaClass = getGrokQuotaClass(usedPercent);
               const amountText = formatGrokQuotaUsedTotal(item.used, item.total);
               const remainingLabel = t(
                 "common.shared.quota.leftPercent",
-                "剩余 {{value}}%",
+                "{{value}}% left",
                 { value: remainingPercent },
               );
               const resetText = formatGrokQuotaResetTime(item.resetAtMs);
@@ -563,7 +564,7 @@ export function GrokAccountsPage() {
                     <div className="quota-bar-track">
                       <div
                         className={`quota-bar ${quotaClass}`}
-                        style={{ width: `${usedPercent}%` }}
+                        style={{ width: `${remainingPercent}%` }}
                       />
                     </div>
                     <span className="quota-reset">{resetDisplay}</span>
@@ -592,7 +593,7 @@ export function GrokAccountsPage() {
                   <div className="quota-progress-track">
                     <div
                       className={`quota-progress-bar ${quotaClass}`}
-                      style={{ width: `${usedPercent}%` }}
+                      style={{ width: `${remainingPercent}%` }}
                     />
                   </div>
                   <div className="quota-footer">

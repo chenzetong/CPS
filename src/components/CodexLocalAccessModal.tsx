@@ -62,6 +62,7 @@ import {
 import {
   getCodexLocalAccessAccountIneligibleReason,
   isCodexLocalAccessEligibleAccount,
+  resolveCodexLocalAccessInitialAccountIds,
 } from "../utils/codexLocalAccessAccounts";
 import { isBlockingCodexQuotaError } from "../utils/codexQuotaError";
 import { AccountTagFilterDropdown } from "./AccountTagFilterDropdown";
@@ -108,6 +109,7 @@ interface CodexLocalAccessModalProps {
   addressOptions: Array<{ value: string; label: string }>;
   onAddressKindChange: (value: string) => void;
   accounts: CodexAccount[];
+  accountsLoaded: boolean;
   accountGroups: CodexAccountGroup[];
   memberView?: CodexLocalAccessMemberViewConfig;
   initialSelectedIds: string[];
@@ -319,6 +321,7 @@ export function CodexLocalAccessModal({
   addressOptions,
   onAddressKindChange,
   accounts,
+  accountsLoaded,
   accountGroups,
   memberView,
   initialSelectedIds,
@@ -480,6 +483,7 @@ export function CodexLocalAccessModal({
     });
   const testDialogBusy = testDialogRunning || testing;
   const actionBusy = saving || testing || starting || portCleanupBusy;
+  const membersInteractionDisabled = actionBusy || !accountsLoaded;
   const summaryStats = useMemo(
     () => [
       {
@@ -582,19 +586,21 @@ export function CodexLocalAccessModal({
     return summary;
   }, [collection?.accountIds, localAccessAccounts, state?.accountHealth]);
   const initialRestrictFreeAccounts = collection?.restrictFreeAccounts ?? true;
-  const normalizedInitialSelectedIds = useMemo(() => {
-    const accountById = new Map(
-      localAccessAccounts.map((account) => [account.id, account]),
-    );
-    return initialSelectedIds.filter((accountId) => {
-      const account = accountById.get(accountId);
-      if (!account) return false;
-      return isCodexLocalAccessEligibleAccount(
-        account,
+  const normalizedInitialSelectedIds = useMemo(
+    () =>
+      resolveCodexLocalAccessInitialAccountIds(
+        initialSelectedIds,
+        localAccessAccounts,
         initialRestrictFreeAccounts,
-      );
-    });
-  }, [initialSelectedIds, initialRestrictFreeAccounts, localAccessAccounts]);
+        accountsLoaded,
+      ),
+    [
+      accountsLoaded,
+      initialSelectedIds,
+      initialRestrictFreeAccounts,
+      localAccessAccounts,
+    ],
+  );
 
   useEffect(() => {
     if (!isOpen || mode !== "members") {
@@ -1348,7 +1354,9 @@ export function CodexLocalAccessModal({
   };
 
   const toggleSelectAllVisible = () => {
-    if (actionBusy || visibleEnabledAccounts.length === 0) return;
+    if (membersInteractionDisabled || visibleEnabledAccounts.length === 0) {
+      return;
+    }
     setMembersDraftDirty(true);
     setSelected((prev) => {
       const next = new Set(prev);
@@ -1366,13 +1374,13 @@ export function CodexLocalAccessModal({
   };
 
   const handleToggleRestrictFreeAccounts = async () => {
-    if (actionBusy) return;
+    if (membersInteractionDisabled) return;
     setMembersDraftDirty(true);
     setRestrictFreeAccounts((prev) => !prev);
   };
 
   const toggleSelect = (accountId: string) => {
-    if (actionBusy) return;
+    if (membersInteractionDisabled) return;
     const account = localAccessAccountById.get(accountId);
     if (!account) return;
     const isSelectionBlocked =
@@ -1394,6 +1402,7 @@ export function CodexLocalAccessModal({
   };
 
   const handleSaveMembers = async () => {
+    if (!accountsLoaded) return;
     setError("");
     setNotice("");
     try {
@@ -1525,7 +1534,7 @@ export function CodexLocalAccessModal({
   };
 
   const toggleMemberBackup = (accountId: string) => {
-    if (actionBusy) return;
+    if (membersInteractionDisabled) return;
     if (!selected.has(accountId)) {
       setMembersDraftDirty(true);
       setSelected((prev) => {
@@ -1556,7 +1565,7 @@ export function CodexLocalAccessModal({
 
   const confirmMemberBackup = () => {
     const accountId = backupConfirmAccountId;
-    if (!accountId || actionBusy) return;
+    if (!accountId || membersInteractionDisabled) return;
     setMembersDraftDirty(true);
     setCustomRoutingDraft((prev) => {
       const current = prev[accountId] ??
@@ -2743,7 +2752,7 @@ export function CodexLocalAccessModal({
                         type="checkbox"
                         checked={restrictFreeAccounts}
                         onChange={() => void handleToggleRestrictFreeAccounts()}
-                        disabled={actionBusy}
+                        disabled={membersInteractionDisabled}
                       />
                       <span>
                         {t(
@@ -2894,13 +2903,20 @@ export function CodexLocalAccessModal({
                     type="checkbox"
                     checked={allVisibleSelected}
                     onChange={toggleSelectAllVisible}
-                    disabled={actionBusy || visibleEnabledAccounts.length === 0}
+                    disabled={
+                      membersInteractionDisabled ||
+                      visibleEnabledAccounts.length === 0
+                    }
                   />
                   <div className="group-account-main" />
                 </div>
 
                 <div className="group-account-list codex-local-access-member-list">
-                  {localAccessAccounts.length === 0 ? (
+                  {!accountsLoaded ? (
+                    <div className="group-account-empty">
+                      {t("common.loading", "加载中...")}
+                    </div>
+                  ) : localAccessAccounts.length === 0 ? (
                     <div className="group-account-empty">
                       {t(
                         "codex.localAccess.modal.empty",
@@ -2946,7 +2962,8 @@ export function CodexLocalAccessModal({
                             className="codex-local-access-member-select"
                             checked={isChecked}
                             disabled={
-                              actionBusy || isChatCompletionsApiKeyUnsupported
+                              membersInteractionDisabled ||
+                              isChatCompletionsApiKeyUnsupported
                             }
                             onChange={() => toggleSelect(account.id)}
                             aria-label={maskAccountText(
@@ -2962,7 +2979,7 @@ export function CodexLocalAccessModal({
                                   presentation.displayName,
                                 )}
                                 disabled={
-                                  actionBusy ||
+                                  membersInteractionDisabled ||
                                   isChatCompletionsApiKeyUnsupported
                                 }
                                 onClick={() => toggleSelect(account.id)}
@@ -2985,7 +3002,7 @@ export function CodexLocalAccessModal({
                                       "codex.localAccess.customRoutingBackupTitle",
                                       "备用账号",
                                     )}
-                                    disabled={actionBusy}
+                                    disabled={membersInteractionDisabled}
                                     onClick={(event) => {
                                       event.preventDefault();
                                       event.stopPropagation();
@@ -3064,14 +3081,13 @@ export function CodexLocalAccessModal({
                 <button
                   className="btn btn-secondary"
                   onClick={onClose}
-                  disabled={actionBusy}
                 >
                   {t("common.cancel")}
                 </button>
                 <button
                   className="btn btn-primary"
                   onClick={() => void handleSaveMembers()}
-                  disabled={actionBusy || !selectionDirty}
+                  disabled={membersInteractionDisabled || !selectionDirty}
                 >
                   {saving
                     ? t("common.saving")
@@ -3082,7 +3098,6 @@ export function CodexLocalAccessModal({
               <button
                 className="btn btn-secondary"
                 onClick={onClose}
-                disabled={actionBusy}
               >
                 {t("common.close")}
               </button>

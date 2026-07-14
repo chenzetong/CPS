@@ -592,8 +592,13 @@ function gatewayModeLabel(
 export function CodexApiServicePage() {
   const { t } = useTranslation();
   const { platformGroups } = usePlatformLayoutStore();
-  const { accounts, currentAccount, fetchAccounts, fetchCurrentAccount } =
-    useCodexAccountStore();
+  const {
+    accounts,
+    accountsLoaded,
+    currentAccount,
+    fetchAccounts,
+    fetchCurrentAccount,
+  } = useCodexAccountStore();
   const [state, setState] = useState<CodexLocalAccessState | null>(null);
   const [groups, setGroups] = useState<CodexAccountGroup[]>([]);
   const [activeTab, setActiveTab] = useState<ServiceTab>("overview");
@@ -677,6 +682,7 @@ export function CodexApiServicePage() {
   const [requestLogApiKeyQuery, setRequestLogApiKeyQuery] = useState("");
   const [requestLogErrorQuery, setRequestLogErrorQuery] = useState("");
   const mountedRef = useRef(true);
+  const stateRequestSeqRef = useRef(0);
   const testChatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const collection = state?.collection ?? null;
@@ -1042,14 +1048,24 @@ export function CodexApiServicePage() {
   );
 
   const reloadState = useCallback(async () => {
-    const nextState = await codexLocalAccessService.getCodexLocalAccessState();
-    if (!mountedRef.current) return nextState;
-    setState(nextState);
-    setPortInput(
-      nextState.collection?.port ? String(nextState.collection.port) : "",
-    );
-    setProxyInput(nextState.collection?.upstreamProxyUrl ?? "");
-    return nextState;
+    const requestSeq = ++stateRequestSeqRef.current;
+    try {
+      const nextState = await codexLocalAccessService.getCodexLocalAccessState();
+      if (!mountedRef.current || requestSeq !== stateRequestSeqRef.current) {
+        return null;
+      }
+      setState(nextState);
+      setPortInput(
+        nextState.collection?.port ? String(nextState.collection.port) : "",
+      );
+      setProxyInput(nextState.collection?.upstreamProxyUrl ?? "");
+      return nextState;
+    } catch (error) {
+      if (!mountedRef.current || requestSeq !== stateRequestSeqRef.current) {
+        return null;
+      }
+      throw error;
+    }
   }, []);
 
   useEffect(() => {
@@ -5744,6 +5760,7 @@ export function CodexApiServicePage() {
           setAddressKind(normalizeAddressKind(value))
         }
         accounts={accounts}
+        accountsLoaded={accountsLoaded}
         accountGroups={groups}
         memberView={memberView}
         initialSelectedIds={memberIds}

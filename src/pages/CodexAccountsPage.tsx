@@ -1051,6 +1051,7 @@ export function CodexAccountsPage() {
   >(new Set());
   const [localAccessState, setLocalAccessState] =
     useState<CodexLocalAccessState | null>(null);
+  const localAccessStateRequestSeqRef = useRef(0);
   const [showLocalAccessModal, setShowLocalAccessModal] = useState(false);
   const [localAccessModalMode, setLocalAccessModalMode] = useState<
     "panel" | "members"
@@ -2186,11 +2187,14 @@ export function CodexAccountsPage() {
   }, [activeGroupId, filterPersistenceEnabled, filterPersistenceScope]);
 
   const reloadLocalAccessState = useCallback(async () => {
+    const requestSeq = ++localAccessStateRequestSeqRef.current;
     try {
       const nextState =
         await codexLocalAccessService.getCodexLocalAccessState();
+      if (requestSeq !== localAccessStateRequestSeqRef.current) return;
       setLocalAccessState(nextState);
     } catch (error) {
+      if (requestSeq !== localAccessStateRequestSeqRef.current) return;
       console.error("Failed to load codex local access state:", error);
       setMessage({
         text: t("messages.actionFailed", {
@@ -17904,6 +17908,7 @@ export function CodexAccountsPage() {
             addressOptions={localAccessAddressOptions}
             onAddressKindChange={handleLocalAccessAddressKindChange}
             accounts={accounts}
+            accountsLoaded={store.accountsLoaded}
             accountGroups={codexGroups}
             memberView={
               localAccessModalMode === "members"

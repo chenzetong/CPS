@@ -62,6 +62,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Fixed Codex / Grok multi-account batch quota refresh failures under high concurrency**: Codex group and local-access batch refresh go through a backend concurrency limit; Grok full refresh is similarly limited and retries billing transport failures with short backoff; Grok progress bars use remaining percent for width.
 - **Fixed Codex API Service cost estimates that disagreed with tier, long-context, and service_tier handling**: Priority uses absolute rates when present, otherwise a multiplier; long-context adjusts input/cache/output rates for the whole session when total input exceeds the threshold; the default book covers available models such as GPT-5.6.
 - **Fixed “Add to API Service” member-row plan/column misalignment and hard-to-hit backup toggles**: columns stay aligned; clicking the email selects the row, and the full backup control toggles backup without fighting row selection.
+- **Fixed Codex API Service members sometimes appearing empty during startup**: persisted members remain intact until the account list finishes its first load, late stale state responses are ignored, and the dialog can still be closed while loading or saving instead of appearing frozen.
+- **Fixed Windows and Linux release-package build failures**: enabled the Windows system API features required for process detection and removed invalid tray attributes left behind after Gemini CLI removal.
 
 ---
 ## [1.3.0] - 2026-07-13

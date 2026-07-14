@@ -18,7 +18,8 @@ use crate::models::codex_local_access::{
 };
 use crate::modules::atomic_write::write_string_atomic;
 use crate::modules::{
-    account, codex_account, codex_oauth, codex_protocol, codex_quota, codex_wakeup, logger, process,
+    account, codex_account, codex_oauth, codex_protocol, codex_quota, codex_wakeup, codex_wsl,
+    logger, process,
 };
 use base64::{engine::general_purpose, Engine as _};
 use futures_util::{SinkExt, StreamExt};
@@ -145,6 +146,7 @@ const BOUND_OAUTH_QUOTA_RESERVE_REFRESH_INTERVAL: Duration = Duration::from_secs
 const BOUND_OAUTH_QUOTA_RESERVE_MONITOR_TICK: Duration = Duration::from_secs(5);
 const BOUND_OAUTH_QUOTA_RESERVE_REQUEST_REFRESH_MIN_INTERVAL: Duration = Duration::from_secs(30);
 const GATEWAY_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+const WSL_ACCESS_PLAN_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const GATEWAY_PORT_RELEASE_TIMEOUT: Duration = Duration::from_secs(5);
 const GATEWAY_PORT_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(15);
@@ -349,6 +351,12 @@ struct GatewayRuntime {
     shutdown_sender: Option<watch::Sender<bool>>,
     task: Option<tokio::task::JoinHandle<()>>,
     sidecar_child: Option<Child>,
+    wsl_access_plan: Option<codex_wsl::WslAccessPlan>,
+    wsl_access_plan_resolved_at: Option<Instant>,
+    wsl_relay_bind_host: Option<String>,
+    wsl_relay_port: Option<u16>,
+    wsl_relay_shutdown_sender: Option<watch::Sender<bool>>,
+    wsl_relay_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 #[derive(Default)]
@@ -8199,6 +8207,14 @@ fn inspect_local_access_profile_attachment(
     profile_dir: &Path,
     collection: Option<&CodexLocalAccessCollection>,
 ) -> CodexLocalAccessProfileAttachment {
+    inspect_local_access_profile_attachment_with_base_url(profile_dir, collection, None)
+}
+
+fn inspect_local_access_profile_attachment_with_base_url(
+    profile_dir: &Path,
+    collection: Option<&CodexLocalAccessCollection>,
+    expected_base_url_override: Option<&str>,
+) -> CodexLocalAccessProfileAttachment {
     let profile_dir_text = normalize_profile_dir_key(profile_dir);
     let Some(collection) = collection else {
         return CodexLocalAccessProfileAttachment {
@@ -8213,7 +8229,11 @@ fn inspect_local_access_profile_attachment(
         };
     };
 
-    let expected_base_url = build_collection_base_url(collection);
+    let expected_base_url = expected_base_url_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| build_collection_base_url(collection));
     let expected_api_key = collection.api_key.trim();
     let mut attachment = CodexLocalAccessProfileAttachment {
         profile_dir: profile_dir_text,
@@ -10557,6 +10577,182 @@ fn bind_host_for_collection(collection: &CodexLocalAccessCollection) -> &'static
     bind_host_for_access_scope(collection.access_scope)
 }
 
+async fn stop_wsl_relay() {
+    let (shutdown_sender, task) = {
+        let mut runtime = gateway_runtime().lock().await;
+        runtime.wsl_relay_bind_host = None;
+        runtime.wsl_relay_port = None;
+        runtime.wsl_access_plan = None;
+        runtime.wsl_access_plan_resolved_at = None;
+        (
+            runtime.wsl_relay_shutdown_sender.take(),
+            runtime.wsl_relay_task.take(),
+        )
+    };
+    if let Some(sender) = shutdown_sender {
+        let _ = sender.send(true);
+    }
+    if let Some(mut task) = task {
+        tokio::select! {
+            result = &mut task => {
+                let _ = result;
+            }
+            _ = tokio::time::sleep(GATEWAY_SHUTDOWN_TIMEOUT) => {
+                task.abort();
+                let _ = task.await;
+            }
+        }
+    }
+}
+
+fn spawn_tcp_relay(
+    listener: TcpListener,
+    target_host: &'static str,
+    target_port: u16,
+) -> (watch::Sender<bool>, tokio::task::JoinHandle<()>) {
+    let (shutdown_sender, mut shutdown_receiver) = watch::channel(false);
+    let task = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                changed = shutdown_receiver.changed() => {
+                    if changed.is_err() || *shutdown_receiver.borrow() {
+                        break;
+                    }
+                }
+                accepted = listener.accept() => {
+                    let Ok((mut inbound, peer)) = accepted else {
+                        break;
+                    };
+                    tokio::spawn(async move {
+                        let target = format!("{}:{}", target_host, target_port);
+                        match TcpStream::connect(&target).await {
+                            Ok(mut outbound) => {
+                                if let Err(error) = tokio::io::copy_bidirectional(&mut inbound, &mut outbound).await {
+                                    logger::log_codex_api_warn(&format!(
+                                        "[CodexLocalAccess][WSL] 转发连接中断: peer={} target={} error={}",
+                                        peer, target, error
+                                    ));
+                                }
+                            }
+                            Err(error) => logger::log_codex_api_warn(&format!(
+                                "[CodexLocalAccess][WSL] 连接 Windows 本地 API 服务失败: peer={} target={} error={}",
+                                peer, target, error
+                            )),
+                        }
+                    });
+                }
+            }
+        }
+    });
+    (shutdown_sender, task)
+}
+
+async fn ensure_wsl_relay_for_collection(collection: &CodexLocalAccessCollection) {
+    let Some(config_dir) = codex_wsl::configured_wsl_config_dir() else {
+        stop_wsl_relay().await;
+        return;
+    };
+    let use_loopback_relay = collection.access_scope == CodexLocalAccessScope::Localhost;
+    let configured_distro = codex_wsl::parse_wsl_distro_from_path_text(
+        config_dir.to_string_lossy().as_ref(),
+    );
+    let cached_plan_is_current = {
+        let runtime = gateway_runtime().lock().await;
+        runtime
+            .wsl_access_plan
+            .as_ref()
+            .zip(runtime.wsl_access_plan_resolved_at)
+            .is_some_and(|(plan, resolved_at)| {
+                let relay_expected =
+                    use_loopback_relay && plan.mode == codex_wsl::WslNetworkingMode::Nat;
+                let relay_ready = if relay_expected {
+                    plan.relay_bind_host
+                        .map(|host| host.to_string())
+                        .as_deref()
+                        == runtime.wsl_relay_bind_host.as_deref()
+                        && runtime.wsl_relay_port == Some(collection.port)
+                        && runtime
+                            .wsl_relay_task
+                            .as_ref()
+                            .is_some_and(|task| !task.is_finished())
+                } else {
+                    plan.relay_bind_host.is_none()
+                };
+                configured_distro.as_deref() == Some(plan.distro.as_str())
+                    && resolved_at.elapsed() < WSL_ACCESS_PLAN_REFRESH_INTERVAL
+                    && relay_ready
+            })
+    };
+    if cached_plan_is_current {
+        return;
+    }
+    let plan = match codex_wsl::resolve_access_plan(&config_dir, use_loopback_relay).await {
+        Ok(plan) => plan,
+        Err(error) => {
+            stop_wsl_relay().await;
+            logger::log_codex_api_warn(&format!(
+                "[CodexLocalAccess][WSL] 自动适配失败，Windows API 服务保持运行: profile_dir={}, error={}",
+                config_dir.display(),
+                error
+            ));
+            return;
+        }
+    };
+
+    let Some(relay_bind_host) = plan.relay_bind_host else {
+        stop_wsl_relay().await;
+        let mut runtime = gateway_runtime().lock().await;
+        runtime.wsl_access_plan = Some(plan.clone());
+        runtime.wsl_access_plan_resolved_at = Some(Instant::now());
+        logger::log_codex_api_info(&format!(
+            "[CodexLocalAccess][WSL] 已使用原生网络访问: distro={} mode={:?} client_host={}",
+            plan.distro, plan.mode, plan.client_host
+        ));
+        return;
+    };
+
+    let bind_host = relay_bind_host.to_string();
+    let port = collection.port;
+    let already_running = {
+        let runtime = gateway_runtime().lock().await;
+        runtime.wsl_relay_bind_host.as_deref() == Some(bind_host.as_str())
+            && runtime.wsl_relay_port == Some(port)
+            && runtime.wsl_relay_task.is_some()
+    };
+    if already_running {
+        let mut runtime = gateway_runtime().lock().await;
+        runtime.wsl_access_plan = Some(plan);
+        runtime.wsl_access_plan_resolved_at = Some(Instant::now());
+        return;
+    }
+
+    stop_wsl_relay().await;
+    let listener = match TcpListener::bind((relay_bind_host, port)).await {
+        Ok(listener) => listener,
+        Err(error) => {
+            logger::log_codex_api_warn(&format!(
+                "[CodexLocalAccess][WSL] 无法绑定 WSL 专属转发入口，Windows API 服务保持运行: bind={}:{} error={}",
+                bind_host, port, error
+            ));
+            return;
+        }
+    };
+    let (shutdown_sender, task) =
+        spawn_tcp_relay(listener, CODEX_LOCAL_ACCESS_LOCALHOST_BIND_HOST, port);
+
+    logger::log_codex_api_info(&format!(
+        "[CodexLocalAccess][WSL] NAT 专属转发已启动: distro={} bind={}:{} target={}:{}",
+        plan.distro, bind_host, port, CODEX_LOCAL_ACCESS_LOCALHOST_BIND_HOST, port
+    ));
+    let mut runtime = gateway_runtime().lock().await;
+    runtime.wsl_access_plan = Some(plan);
+    runtime.wsl_access_plan_resolved_at = Some(Instant::now());
+    runtime.wsl_relay_bind_host = Some(bind_host);
+    runtime.wsl_relay_port = Some(port);
+    runtime.wsl_relay_shutdown_sender = Some(shutdown_sender);
+    runtime.wsl_relay_task = Some(task);
+}
+
 #[derive(Debug)]
 struct LanIpv4Candidate {
     interface_name: String,
@@ -10795,6 +10991,15 @@ async fn write_local_access_profile_takeover(
     collection: &CodexLocalAccessCollection,
     api_key: Option<&str>,
 ) -> Result<(), String> {
+    write_local_access_profile_takeover_with_base_url(profile_dir, collection, api_key, None).await
+}
+
+async fn write_local_access_profile_takeover_with_base_url(
+    profile_dir: &Path,
+    collection: &CodexLocalAccessCollection,
+    api_key: Option<&str>,
+    base_url_override: Option<&str>,
+) -> Result<(), String> {
     let bound_oauth_account_id =
         normalize_optional_account_ref(collection.bound_oauth_account_id.as_deref());
     if let Some(bound_id) = bound_oauth_account_id.as_deref() {
@@ -10802,7 +11007,11 @@ async fn write_local_access_profile_takeover(
         let _ = codex_account::ensure_managed_account_fresh(bound_id).await?;
     }
     let runtime_account = build_runtime_account(
-        build_collection_base_url(collection),
+        base_url_override
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| build_collection_base_url(collection)),
         api_key
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -10886,20 +11095,48 @@ async fn ensure_profile_takeover(
     profile_dir: &Path,
     collection: &CodexLocalAccessCollection,
 ) -> Result<(), String> {
+    ensure_profile_takeover_with_base_url(profile_dir, collection, None).await
+}
+
+async fn ensure_profile_takeover_with_base_url(
+    profile_dir: &Path,
+    collection: &CodexLocalAccessCollection,
+    expected_base_url_override: Option<&str>,
+) -> Result<(), String> {
     if !collection.enabled {
         return Ok(());
     }
 
-    let current = inspect_local_access_profile_attachment(profile_dir, Some(collection));
+    let current = inspect_local_access_profile_attachment_with_base_url(
+        profile_dir,
+        Some(collection),
+        expected_base_url_override,
+    );
     if current.attached && current.error.is_none() {
-        write_local_access_profile_takeover(profile_dir, collection, None).await?;
+        write_local_access_profile_takeover_with_base_url(
+            profile_dir,
+            collection,
+            None,
+            expected_base_url_override,
+        )
+        .await?;
         return Ok(());
     }
 
     save_profile_takeover_backup(profile_dir, &collection.api_key)?;
-    write_local_access_profile_takeover(profile_dir, collection, None).await?;
+    write_local_access_profile_takeover_with_base_url(
+        profile_dir,
+        collection,
+        None,
+        expected_base_url_override,
+    )
+    .await?;
 
-    let next = inspect_local_access_profile_attachment(profile_dir, Some(collection));
+    let next = inspect_local_access_profile_attachment_with_base_url(
+        profile_dir,
+        Some(collection),
+        expected_base_url_override,
+    );
     if !next.attached {
         return Err(format!(
             "Codex API 服务已启动，但 Codex 配置未接管本地 API: profile_dir={}, expected_base_url={}",
@@ -10924,9 +11161,38 @@ async fn ensure_local_access_profile_takeovers(
     collection: &CodexLocalAccessCollection,
 ) -> Result<(), String> {
     let mut failures = Vec::new();
-    for profile_dir in collect_local_access_profile_takeover_dirs() {
+    let profile_dirs = collect_local_access_profile_takeover_dirs();
+    let default_profile_key = normalize_profile_dir_key(&codex_account::get_codex_home());
+    let default_profile_is_bound = profile_dirs
+        .iter()
+        .any(|profile_dir| normalize_profile_dir_key(profile_dir) == default_profile_key);
+    for profile_dir in profile_dirs {
         if let Err(err) = ensure_profile_takeover(&profile_dir, collection).await {
             failures.push(err);
+        }
+    }
+
+    if default_profile_is_bound {
+        let wsl_target = {
+            let runtime = gateway_runtime().lock().await;
+            codex_wsl::configured_wsl_config_dir().zip(runtime.wsl_access_plan.clone())
+        };
+        if let Some((wsl_config_dir, plan)) = wsl_target {
+            let wsl_base_url = format!("http://{}:{}/v1", plan.client_host, collection.port);
+            if let Err(err) = ensure_profile_takeover_with_base_url(
+                &wsl_config_dir,
+                collection,
+                Some(&wsl_base_url),
+            )
+            .await
+            {
+                failures.push(format!(
+                    "WSL Codex 配置接管失败: distro={}, profile_dir={}, error={}",
+                    plan.distro,
+                    wsl_config_dir.display(),
+                    err
+                ));
+            }
         }
     }
     if failures.is_empty() {
@@ -10949,6 +11215,31 @@ async fn ensure_local_access_profile_takeovers_from_runtime() -> Result<(), Stri
         ensure_local_access_profile_takeovers(collection).await?;
     }
     Ok(())
+}
+
+/// Re-apply the WSL projection after account switching overwrites the shared
+/// WSL `auth.json`/`config.toml` bundle. This is intentionally a no-op unless
+/// the local API service is already running, so switching an account does not
+/// implicitly start a gateway.
+pub async fn reapply_wsl_profile_takeover_after_account_switch() {
+    let collection = {
+        let runtime = gateway_runtime().lock().await;
+        runtime
+            .collection
+            .clone()
+            .filter(|collection| collection.enabled && runtime.running)
+    };
+    let Some(collection) = collection else {
+        return;
+    };
+
+    ensure_wsl_relay_for_collection(&collection).await;
+    if let Err(error) = ensure_local_access_profile_takeovers(&collection).await {
+        logger::log_codex_api_warn(&format!(
+            "[CodexLocalAccess][WSL] 账号切换后重新接管 WSL 配置失败: {}",
+            error
+        ));
+    }
 }
 
 fn generate_local_api_key() -> String {
@@ -12900,6 +13191,7 @@ async fn ensure_gateway_matches_runtime_locked() -> Result<(), String> {
             && actual_bind_host.as_deref() == Some(bind_host)
             && actual_fingerprint.is_none()
         {
+            ensure_wsl_relay_for_collection(&collection).await;
             return Ok(());
         }
         if running {
@@ -12920,7 +13212,9 @@ async fn ensure_gateway_matches_runtime_locked() -> Result<(), String> {
         if let Some(endpoint) = stopped_endpoint {
             wait_for_gateway_port_release(&endpoint.bind_host, endpoint.port).await?;
         }
-        return start_legacy_gateway_locked(&collection).await;
+        start_legacy_gateway_locked(&collection).await?;
+        ensure_wsl_relay_for_collection(&collection).await;
+        return Ok(());
     }
 
     let launch_config = match prepare_sidecar_launch_config(&collection).await {
@@ -12939,6 +13233,7 @@ async fn ensure_gateway_matches_runtime_locked() -> Result<(), String> {
         && actual_bind_host.as_deref() == Some(bind_host)
         && actual_fingerprint.as_deref() == Some(launch_config.fingerprint.as_str())
     {
+        ensure_wsl_relay_for_collection(&collection).await;
         return Ok(());
     }
     if running {
@@ -13150,6 +13445,8 @@ async fn ensure_gateway_matches_runtime_locked() -> Result<(), String> {
     runtime.shutdown_sender = None;
     runtime.task = Some(task);
     runtime.sidecar_child = Some(child);
+    drop(runtime);
+    ensure_wsl_relay_for_collection(&collection).await;
     Ok(())
 }
 
@@ -13159,6 +13456,7 @@ async fn stop_gateway() -> Option<GatewayBindEndpoint> {
 }
 
 async fn stop_gateway_locked() -> Option<GatewayBindEndpoint> {
+    stop_wsl_relay().await;
     let (shutdown_sender, task, child, endpoint) = {
         let mut runtime = gateway_runtime().lock().await;
         let endpoint = runtime
@@ -22414,6 +22712,45 @@ async fn handle_connection(
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn tcp_relay_forwards_both_directions_and_releases_listener() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap();
+        let upstream_addr = upstream.local_addr().unwrap();
+        let upstream_task = tokio::spawn(async move {
+            let (mut stream, _) = upstream.accept().await.unwrap();
+            let mut buffer = [0_u8; 4];
+            stream.read_exact(&mut buffer).await.unwrap();
+            stream.write_all(&buffer).await.unwrap();
+        });
+
+        let relay_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap();
+        let relay_addr = relay_listener.local_addr().unwrap();
+        let (shutdown_sender, relay_task) =
+            super::spawn_tcp_relay(relay_listener, "127.0.0.1", upstream_addr.port());
+
+        let mut client = tokio::net::TcpStream::connect(relay_addr).await.unwrap();
+        client.write_all(b"ping").await.unwrap();
+        let mut response = [0_u8; 4];
+        client.read_exact(&mut response).await.unwrap();
+        assert_eq!(&response, b"ping");
+        drop(client);
+        upstream_task.await.unwrap();
+
+        shutdown_sender.send(true).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), relay_task)
+            .await
+            .unwrap()
+            .unwrap();
+        let rebound = tokio::net::TcpListener::bind(relay_addr).await.unwrap();
+        drop(rebound);
+    }
 
     #[test]
     fn port_in_reserved_ranges_detects_membership() {

@@ -4404,7 +4404,9 @@ fn write_api_key_provider_override_to_config_toml(
         &provider_config,
         &api_key,
         api_key_account.api_supports_websockets,
-        api_key_account_supports_image_generation(api_key_account),
+        // 已绑定 OAuth 时必须继续让 Codex 使用 auth.json / Keychain 登录态；
+        // requires_openai_auth=false 与生图 actor header 仅用于未绑定 OAuth 的 API Key 投影。
+        false,
     )?;
     Ok(provider_config)
 }
@@ -5304,6 +5306,8 @@ pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, St
             let updated_account = switch_account_with_prepared(account_id, account)?;
             let codex_home = get_codex_home();
             activate_provider_gateway_after_switch_if_needed(&codex_home, &updated_account).await?;
+            crate::modules::codex_local_access::reapply_wsl_profile_takeover_after_account_switch()
+                .await;
             return Ok(updated_account);
         }
         let oauth_account = refresh_bound_oauth_account_for_api_key(&account, "switch").await?;
@@ -5339,6 +5343,8 @@ pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, St
         ));
 
         activate_provider_gateway_after_switch_if_needed(&codex_home, &updated_account).await?;
+        crate::modules::codex_local_access::reapply_wsl_profile_takeover_after_account_switch()
+            .await;
 
         return Ok(updated_account);
     }
@@ -5347,7 +5353,9 @@ pub async fn switch_account_managed(account_id: &str) -> Result<CodexAccount, St
     let _guard = lock.lock().await;
     let _file_guard = acquire_codex_token_refresh_file_lock(account_id, "switch").await?;
     let account = refresh_managed_account_locked(account_id, false, "switch", None).await?;
-    switch_account_with_prepared(account_id, account)
+    let switched = switch_account_with_prepared(account_id, account)?;
+    crate::modules::codex_local_access::reapply_wsl_profile_takeover_after_account_switch().await;
+    Ok(switched)
 }
 
 /// 从本地 auth.json 导入账号
@@ -10663,7 +10671,7 @@ http_headers = { "x-openai-actor-authorization" = "legacy", "X-Custom" = "keep-m
             Some("http://127.0.0.1:14998/v1".to_string()),
             Some("codex_local_access".to_string()),
             Some("Codex API Service".to_string()),
-            Vec::new(),
+            vec![CODEX_IMAGE_MODEL_ID.to_string()],
         );
         api_key_account.bound_oauth_account_id = Some(oauth_account.id.clone());
         let profile_dir = env.home_dir.join("managed-profile");
@@ -10689,7 +10697,9 @@ http_headers = { "x-openai-actor-authorization" = "legacy", "X-Custom" = "keep-m
 
         let config = fs::read_to_string(profile_dir.join("config.toml")).expect("read config");
         assert!(config.contains("model_provider = \"codex_local_access\""));
+        assert!(config.contains("requires_openai_auth = true"));
         assert!(config.contains("experimental_bearer_token = \"local-service-key\""));
+        assert!(!config.contains(CODEX_IMAGEGEN_ACTOR_HEADER));
     }
 
     #[test]

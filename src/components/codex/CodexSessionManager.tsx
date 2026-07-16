@@ -101,8 +101,14 @@ function buildGroups(sessions: CodexSessionRecord[]): SessionGroup[] {
     );
 }
 
-function buildDefaultExpandedGroups(_groups: SessionGroup[]): string[] {
-  return [];
+function buildDefaultExpandedGroups(groups: SessionGroup[]): string[] {
+  return groups
+    .filter((group) =>
+      group.sessions.some((session) =>
+        session.locations.some((location) => location.readOnly === true),
+      ),
+    )
+    .map((group) => group.cwd);
 }
 
 function writableSessionLocations(session: CodexSessionRecord) {

@@ -1,6 +1,7 @@
 use crate::models::codex::CodexAccount;
 use crate::models::ssh_server::{
-    SshAuthConfig, SshCodexSyncResult, SshCodexSyncStatus, SshServer, SshServerStore,
+    SshAuthConfig, SshCodexStateRepairStatus, SshCodexSyncResult, SshCodexSyncStatus, SshServer,
+    SshServerStore,
 };
 use crate::modules::{account, atomic_write, codex_account, logger};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -21,8 +22,12 @@ const CONNECTION_TIMEOUT_SECS: u64 = 12;
 const TEST_COMMAND_TIMEOUT_SECS: u64 = 20;
 /// 读写同步脚本墙钟超时
 const SYNC_TIMEOUT_SECS: u64 = 45;
-/// 远端 app-server reload 墙钟超时（略放宽；失败不阻断已校验写入）
+/// 远端 SQLite 在线备份可能明显慢于凭据写入。
+const STATE_REPAIR_TIMEOUT_SECS: u64 = 120;
+/// 远端 app-server reload 墙钟超时。
 const APP_SERVER_RELOAD_TIMEOUT_SECS: u64 = 20;
+const DEFAULT_MODEL_PROVIDER_ID: &str = "openai";
+const STATE_REPAIR_OUTPUT_PREFIX: &str = "__COCKPIT_CODEX_STATE_REPAIR__";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SshServerList {
@@ -405,7 +410,7 @@ async fn read_remote_config_toml(server: &SshServer) -> Result<Option<String>, S
 codex_home=$1
 case "$codex_home" in
   "~") codex_home="$HOME" ;;
-  "~/"*) codex_home="$HOME/${{codex_home#~/}}" ;;
+  "~/"*) codex_home="$HOME/${codex_home#~/}" ;;
 esac
 target="$codex_home/config.toml"
 if [ -f "$target" ]; then
@@ -433,6 +438,45 @@ fi
         return Ok(None);
     }
     Err("ssh_remote_read_failed: unexpected remote read response".to_string())
+}
+
+fn validate_model_provider_config(config_toml: Option<&str>) -> Result<String, String> {
+    let content = config_toml.unwrap_or_default();
+    let doc = crate::modules::codex_config_format::read_codex_config_doc_from_str(content)
+        .map_err(|error| {
+            format!(
+                "ssh_remote_model_provider_invalid: config.toml parse failed: {}",
+                sanitize_error(error)
+            )
+        })?;
+    let provider = match doc.get("model_provider") {
+        Some(item) => item
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                "ssh_remote_model_provider_invalid: model_provider must be a non-empty string"
+                    .to_string()
+            })?,
+        None => DEFAULT_MODEL_PROVIDER_ID,
+    };
+    let provider_is_defined = provider == DEFAULT_MODEL_PROVIDER_ID
+        || doc
+            .get("model_providers")
+            .and_then(|item| item.as_table())
+            .is_some_and(|providers| providers.contains_key(provider));
+    if !provider_is_defined {
+        return Err(format!(
+            "ssh_remote_model_provider_invalid: Model provider {} not found",
+            provider
+        ));
+    }
+    Ok(provider.to_string())
+}
+
+async fn validate_remote_model_provider(server: &SshServer) -> Result<String, String> {
+    let config_toml = read_remote_config_toml(server).await?;
+    validate_model_provider_config(config_toml.as_deref())
 }
 
 async fn upload_and_verify_bundle(
@@ -510,6 +554,220 @@ done
     Ok(())
 }
 
+fn remote_state_repair_script() -> &'static str {
+    r#"set -eu
+codex_home=$1
+provider_encoded=$2
+case "$codex_home" in
+  "~") codex_home="$HOME" ;;
+  "~/"*) codex_home="$HOME/${codex_home#~/}" ;;
+esac
+db="$codex_home/state_5.sqlite"
+if [ ! -f "$db" ]; then
+  printf '%s\n' '__COCKPIT_CODEX_STATE_REPAIR__{"database_found":false,"backup_path":null,"provider_schema_supported":false,"visibility_schema_supported":false,"provider_rows_to_repair":0,"visibility_rows_to_repair":0,"rows_repaired":0,"provider_rows_remaining":0,"visibility_rows_remaining":0,"quick_check":null}'
+  exit 0
+fi
+
+python_bin=''
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    python_bin=$candidate
+    break
+  fi
+done
+if [ -z "$python_bin" ]; then
+  printf 'python3 or python is required to safely back up and repair %s\n' "$db" >&2
+  exit 6
+fi
+if ! model_provider="$(printf '%s' "$provider_encoded" | base64 -d 2>/dev/null)"; then
+  model_provider="$(printf '%s' "$provider_encoded" | base64 -D)"
+fi
+
+"$python_bin" - "$codex_home" "$model_provider" <<'__COCKPIT_CODEX_STATE_PY__'
+import datetime
+import json
+import os
+import sqlite3
+import sys
+from pathlib import Path
+
+OUTPUT_PREFIX = "__COCKPIT_CODEX_STATE_REPAIR__"
+root = Path(sys.argv[1])
+model_provider = sys.argv[2]
+db_path = root / "state_5.sqlite"
+
+
+def quick_check(connection):
+    return "; ".join(str(row[0]) for row in connection.execute("PRAGMA quick_check"))
+
+
+connection = sqlite3.connect(str(db_path), timeout=10.0, isolation_level=None)
+connection.execute("PRAGMA busy_timeout = 10000")
+initial_check = quick_check(connection)
+if initial_check != "ok":
+    raise RuntimeError("state_5.sqlite quick_check failed before repair: " + initial_check)
+
+stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+backup_dir = root / ("recovery-backup-" + stamp + "-ssh-sync")
+backup_dir.mkdir(mode=0o700, parents=False, exist_ok=False)
+os.chmod(backup_dir, 0o700)
+backup_path = backup_dir / "state_5.sqlite"
+backup_connection = sqlite3.connect(str(backup_path))
+try:
+    connection.backup(backup_connection)
+finally:
+    backup_connection.close()
+os.chmod(backup_path, 0o600)
+
+columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(threads)")}
+provider_supported = "model_provider" in columns
+visibility_supported = {"first_user_message", "has_user_event"}.issubset(columns)
+has_thread_source = "thread_source" in columns
+if not provider_supported or not visibility_supported:
+    raise RuntimeError(
+        "unsupported threads schema: model_provider={}, visibility={}".format(
+            provider_supported, visibility_supported
+        )
+    )
+
+provider_where = "COALESCE(model_provider, '') <> ?"
+visibility_terms = ["COALESCE(has_user_event, 0) <> 1"]
+if has_thread_source:
+    visibility_terms.append("COALESCE(thread_source, '') = ''")
+visibility_where = (
+    "COALESCE(first_user_message, '') <> '' AND ("
+    + " OR ".join(visibility_terms)
+    + ")"
+)
+
+provider_rows_to_repair = connection.execute(
+    "SELECT COUNT(*) FROM threads WHERE " + provider_where,
+    (model_provider,),
+).fetchone()[0]
+visibility_rows_to_repair = connection.execute(
+    "SELECT COUNT(*) FROM threads WHERE " + visibility_where
+).fetchone()[0]
+
+assignments = [
+    "model_provider = ?",
+    "has_user_event = CASE WHEN COALESCE(first_user_message, '') <> '' "
+    "THEN 1 ELSE has_user_event END",
+]
+if has_thread_source:
+    assignments.append(
+        "thread_source = CASE WHEN COALESCE(thread_source, '') = '' "
+        "AND COALESCE(first_user_message, '') <> '' THEN 'user' ELSE thread_source END"
+    )
+parameters = [model_provider, model_provider]
+
+connection.execute("BEGIN IMMEDIATE")
+try:
+    cursor = connection.execute(
+        "UPDATE threads SET "
+        + ", ".join(assignments)
+        + " WHERE "
+        + provider_where
+        + " OR ("
+        + visibility_where
+        + ")",
+        tuple(parameters),
+    )
+    rows_repaired = max(cursor.rowcount, 0)
+    provider_rows_remaining = connection.execute(
+        "SELECT COUNT(*) FROM threads WHERE " + provider_where,
+        (model_provider,),
+    ).fetchone()[0]
+    visibility_rows_remaining = connection.execute(
+        "SELECT COUNT(*) FROM threads WHERE " + visibility_where
+    ).fetchone()[0]
+    final_check = quick_check(connection)
+    if provider_rows_remaining != 0 or visibility_rows_remaining != 0:
+        raise RuntimeError(
+            "row verification failed: provider_remaining={}, visibility_remaining={}".format(
+                provider_rows_remaining, visibility_rows_remaining
+            )
+        )
+    if final_check != "ok":
+        raise RuntimeError("state_5.sqlite quick_check failed after repair: " + final_check)
+    connection.execute("COMMIT")
+except Exception:
+    connection.execute("ROLLBACK")
+    raise
+finally:
+    connection.close()
+
+result = {
+    "database_found": True,
+    "backup_path": str(backup_path),
+    "provider_schema_supported": provider_supported,
+    "visibility_schema_supported": visibility_supported,
+    "provider_rows_to_repair": provider_rows_to_repair,
+    "visibility_rows_to_repair": visibility_rows_to_repair,
+    "rows_repaired": rows_repaired,
+    "provider_rows_remaining": provider_rows_remaining,
+    "visibility_rows_remaining": visibility_rows_remaining,
+    "quick_check": final_check,
+}
+print(OUTPUT_PREFIX + json.dumps(result, separators=(",", ":"), ensure_ascii=True))
+__COCKPIT_CODEX_STATE_PY__
+"#
+}
+
+fn parse_remote_state_repair_output(output: &str) -> Result<SshCodexStateRepairStatus, String> {
+    let payload = output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(STATE_REPAIR_OUTPUT_PREFIX))
+        .ok_or_else(|| "ssh_remote_state_repair_failed: missing state repair result".to_string())?;
+    let result: SshCodexStateRepairStatus = serde_json::from_str(payload).map_err(|error| {
+        format!(
+            "ssh_remote_state_repair_failed: invalid state repair result: {}",
+            error
+        )
+    })?;
+    if result.database_found {
+        if result.backup_path.as_deref().is_none_or(str::is_empty) {
+            return Err(
+                "ssh_remote_state_repair_failed: state database backup was not reported"
+                    .to_string(),
+            );
+        }
+        if !result.provider_schema_supported || !result.visibility_schema_supported {
+            return Err(
+                "ssh_remote_state_repair_failed: unsupported remote threads schema".to_string(),
+            );
+        }
+        if result.provider_rows_remaining != 0 || result.visibility_rows_remaining != 0 {
+            return Err(format!(
+                "ssh_remote_state_repair_failed: row verification failed: provider_remaining={}, visibility_remaining={}",
+                result.provider_rows_remaining, result.visibility_rows_remaining
+            ));
+        }
+        if result.quick_check.as_deref() != Some("ok") {
+            return Err(format!(
+                "ssh_remote_state_repair_failed: quick_check returned {}",
+                result.quick_check.as_deref().unwrap_or("no result")
+            ));
+        }
+    }
+    Ok(result)
+}
+
+async fn repair_remote_state_database(
+    server: &SshServer,
+    model_provider: &str,
+) -> Result<SshCodexStateRepairStatus, String> {
+    let provider_encoded = STANDARD.encode(model_provider.as_bytes());
+    let output = run_ssh(
+        server,
+        STATE_REPAIR_TIMEOUT_SECS,
+        &["sh", "-s", "--", &server.codex_home, &provider_encoded],
+        Some(remote_state_repair_script().to_string()),
+    )
+    .await
+    .map_err(|error| format!("ssh_remote_state_repair_failed: {}", sanitize_error(error)))?;
+    parse_remote_state_repair_output(&output)
+}
+
 /// 远端刷新 Codex app-server：daemon restart 必须有硬超时，避免整段 SSH 被挂死。
 fn reload_app_server_script() -> &'static str {
     r#"set +e
@@ -551,7 +809,7 @@ exit 0
 "#
 }
 
-async fn reload_remote_codex_app_server(server: &SshServer) -> Result<(), String> {
+async fn reload_remote_codex_app_server(server: &SshServer) -> Result<String, String> {
     let output = run_ssh(
         server,
         APP_SERVER_RELOAD_TIMEOUT_SECS,
@@ -561,12 +819,16 @@ async fn reload_remote_codex_app_server(server: &SshServer) -> Result<(), String
     .await
     .map_err(|e| format!("ssh_remote_app_server_reload_failed: {}", sanitize_error(e)))?;
 
-    let status = output.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("");
+    let status = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
     if matches!(
         status,
         "daemon-restarted" | "app-server-terminated" | "no-app-server"
     ) {
-        Ok(())
+        Ok(status.to_string())
     } else {
         Err(format!(
             "ssh_remote_app_server_reload_failed: unexpected reload response: {}",
@@ -583,6 +845,11 @@ fn result_from_status(server: &SshServer, status: SshCodexSyncStatus) -> SshCode
         account_email: status.account_email,
         token_generation: status.token_generation,
         bundle_hash: status.bundle_hash,
+        bundle_verified: status.bundle_verified,
+        model_provider: status.model_provider,
+        model_provider_verified: status.model_provider_verified,
+        state_repair: status.state_repair,
+        app_server_reload_status: status.app_server_reload_status,
         verified: status.verified,
         error: status.error,
         synced_at: status.synced_at,
@@ -608,45 +875,47 @@ fn persist_sync_status(
 
 async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> SshCodexSyncResult {
     let synced_at = now_timestamp();
+    let mut status = SshCodexSyncStatus {
+        account_id: account.id.clone(),
+        account_email: account.email.clone(),
+        token_generation: account.token_generation,
+        bundle_hash: String::new(),
+        bundle_verified: false,
+        model_provider: None,
+        model_provider_verified: false,
+        state_repair: None,
+        app_server_reload_status: None,
+        synced_at,
+        verified: false,
+        error: None,
+    };
     let sync_attempt = async {
         validate_server(&server)?;
         let existing_config = read_remote_config_toml(&server).await?;
         let bundle =
             codex_account::build_projection_bundle_for_remote(account, existing_config.as_deref())
                 .map_err(|e| format!("codex_bundle_failed: {}", sanitize_error(e)))?;
-        // 鉴权落盘 + 校验是硬条件
+        status.account_id = bundle.account_id.clone();
+        status.account_email = bundle.account_email.clone();
+        status.token_generation = bundle.token_generation;
+        status.bundle_hash = bundle.bundle_hash.clone();
+
         upload_and_verify_bundle(&server, &bundle).await?;
-        // reload 是软条件：远端没 codex / 进程卡死 / 超时不应把已成功写入判失败
-        if let Err(reload_error) = reload_remote_codex_app_server(&server).await {
-            logger::log_warn(&format!(
-                "[Codex SSH] 远端 app-server 刷新失败（鉴权已写入）: server_id={}, error={}",
-                server.id, reload_error
-            ));
-        }
-        Ok::<_, String>(bundle)
+        status.bundle_verified = true;
+        let model_provider = validate_remote_model_provider(&server).await?;
+        status.model_provider = Some(model_provider.clone());
+        status.model_provider_verified = true;
+
+        status.state_repair = Some(repair_remote_state_database(&server, &model_provider).await?);
+        status.app_server_reload_status = Some(reload_remote_codex_app_server(&server).await?);
+        Ok::<(), String>(())
     }
     .await;
 
-    let status = match sync_attempt {
-        Ok(bundle) => SshCodexSyncStatus {
-            account_id: bundle.account_id,
-            account_email: bundle.account_email,
-            token_generation: bundle.token_generation,
-            bundle_hash: bundle.bundle_hash,
-            synced_at,
-            verified: true,
-            error: None,
-        },
-        Err(error) => SshCodexSyncStatus {
-            account_id: account.id.clone(),
-            account_email: account.email.clone(),
-            token_generation: account.token_generation,
-            bundle_hash: String::new(),
-            synced_at,
-            verified: false,
-            error: Some(sanitize_error(error)),
-        },
-    };
+    match sync_attempt {
+        Ok(()) => status.verified = true,
+        Err(error) => status.error = Some(sanitize_error(error)),
+    }
 
     match persist_sync_status(&server.id, status.clone()) {
         Ok(result) => result,
@@ -786,8 +1055,12 @@ mod tests {
             path: "/tmp/id_test".to_string(),
         };
         let args = build_ssh_args(&server, 12);
-        assert!(args.windows(2).any(|w| w[0] == "-o" && w[1] == "IdentitiesOnly=yes"));
-        assert!(args.windows(2).any(|w| w[0] == "-i" && w[1] == "/tmp/id_test"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "-o" && w[1] == "IdentitiesOnly=yes"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "-i" && w[1] == "/tmp/id_test"));
     }
 
     #[test]
@@ -799,6 +1072,157 @@ mod tests {
         assert!(script.contains("codex app-server proxy"));
         assert!(script.contains("no-app-server"));
         assert!(!script.contains("pkill"));
+    }
+
+    #[test]
+    fn model_provider_validation_accepts_default_and_defined_provider() {
+        assert_eq!(
+            validate_model_provider_config(None).expect("default provider"),
+            DEFAULT_MODEL_PROVIDER_ID
+        );
+        let config = r#"model_provider = "relay"
+
+[model_providers.relay]
+name = "Relay"
+base_url = "https://example.com/v1"
+"#;
+        assert_eq!(
+            validate_model_provider_config(Some(config)).expect("defined provider"),
+            "relay"
+        );
+    }
+
+    #[test]
+    fn model_provider_validation_rejects_missing_definition() {
+        let error =
+            validate_model_provider_config(Some(r#"model_provider = "codex_local_access""#))
+                .expect_err("missing provider definition must fail");
+        assert!(error.contains("Model provider codex_local_access not found"));
+    }
+
+    #[test]
+    fn state_repair_output_requires_verified_rows_and_integrity() {
+        let valid = format!(
+            "noise\n{}{}",
+            STATE_REPAIR_OUTPUT_PREFIX,
+            r#"{"database_found":true,"backup_path":"/tmp/backup/state_5.sqlite","provider_schema_supported":true,"visibility_schema_supported":true,"provider_rows_to_repair":2,"visibility_rows_to_repair":1,"rows_repaired":2,"provider_rows_remaining":0,"visibility_rows_remaining":0,"quick_check":"ok"}"#
+        );
+        let parsed = parse_remote_state_repair_output(&valid).expect("valid repair output");
+        assert_eq!(parsed.rows_repaired, 2);
+
+        let invalid = valid.replace(
+            "\"visibility_rows_remaining\":0",
+            "\"visibility_rows_remaining\":1",
+        );
+        assert!(parse_remote_state_repair_output(&invalid)
+            .expect_err("remaining rows must fail")
+            .contains("row verification failed"));
+    }
+
+    #[test]
+    fn state_repair_script_uses_online_backup_and_transaction() {
+        let script = remote_state_repair_script();
+        assert!(script.contains("connection.backup(backup_connection)"));
+        assert!(script.contains("BEGIN IMMEDIATE"));
+        assert!(script.contains("PRAGMA quick_check"));
+        assert!(!script.contains("cp \"$db\""));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn state_repair_script_aligns_provider_and_restores_only_user_threads() {
+        use rusqlite::Connection;
+        use std::io::Write;
+        use std::process::{Command as StdCommand, Stdio as StdStdio};
+
+        let temp_dir =
+            std::env::temp_dir().join(format!("cockpit-ssh-state-repair-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).expect("create temporary Codex home");
+        let db_path = temp_dir.join("state_5.sqlite");
+        let connection = Connection::open(&db_path).expect("create state database");
+        connection
+            .execute_batch(
+                r#"
+                PRAGMA journal_mode = WAL;
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    model_provider TEXT,
+                    first_user_message TEXT,
+                    has_user_event INTEGER,
+                    thread_source TEXT
+                );
+                INSERT INTO threads VALUES ('user-needs-repair', 'old', 'hello', 0, '');
+                INSERT INTO threads VALUES ('child-thread', 'old', '', 0, 'subagent');
+                INSERT INTO threads VALUES ('user-ok', 'openai', 'ready', 1, 'user');
+                "#,
+            )
+            .expect("seed state database");
+
+        let mut child = StdCommand::new("sh")
+            .args([
+                "-s",
+                "--",
+                temp_dir.to_str().expect("utf-8 temporary path"),
+                &STANDARD.encode(DEFAULT_MODEL_PROVIDER_ID.as_bytes()),
+            ])
+            .stdin(StdStdio::piped())
+            .stdout(StdStdio::piped())
+            .stderr(StdStdio::piped())
+            .spawn()
+            .expect("spawn repair script");
+        child
+            .stdin
+            .as_mut()
+            .expect("repair script stdin")
+            .write_all(remote_state_repair_script().as_bytes())
+            .expect("write repair script");
+        let output = child.wait_with_output().expect("wait for repair script");
+        assert!(
+            output.status.success(),
+            "repair failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("utf-8 repair output");
+        let result = parse_remote_state_repair_output(&stdout).expect("parse repair result");
+        assert_eq!(result.provider_rows_to_repair, 2);
+        assert_eq!(result.visibility_rows_to_repair, 1);
+        assert_eq!(result.rows_repaired, 2);
+        assert_eq!(result.quick_check.as_deref(), Some("ok"));
+
+        let repaired: (String, i64, String) = connection
+            .query_row(
+                "SELECT model_provider, has_user_event, thread_source FROM threads WHERE id = 'user-needs-repair'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read repaired user thread");
+        assert_eq!(repaired, ("openai".to_string(), 1, "user".to_string()));
+        let child_thread: (String, i64, String) = connection
+            .query_row(
+                "SELECT model_provider, has_user_event, thread_source FROM threads WHERE id = 'child-thread'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read child thread");
+        assert_eq!(
+            child_thread,
+            ("openai".to_string(), 0, "subagent".to_string())
+        );
+
+        let backup =
+            Connection::open(result.backup_path.expect("backup path")).expect("open online backup");
+        let backup_state: (String, i64, String) = backup
+            .query_row(
+                "SELECT model_provider, has_user_event, thread_source FROM threads WHERE id = 'user-needs-repair'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read backup state");
+        assert_eq!(backup_state, ("old".to_string(), 0, String::new()));
+
+        drop(backup);
+        drop(connection);
+        std::fs::remove_dir_all(&temp_dir).expect("remove temporary Codex home");
     }
 
     #[test]

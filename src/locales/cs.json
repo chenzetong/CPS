@@ -2484,6 +2484,7 @@
         "tokenUsage": "Využití tokenů"
       },
       "locationRunning": " (spuštěno)",
+      "locationSshReadOnly": "SSH jen pro čtení",
       "untitled": "Nepojmenovaná relace",
       "restoreModal": {
         "title": "Koš",

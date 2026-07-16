@@ -2484,6 +2484,7 @@
         "tokenUsage": "Token 使用量"
       },
       "locationRunning": "（実行中）",
+      "locationSshReadOnly": "SSH 読み取り専用",
       "untitled": "無題のセッション",
       "restoreModal": {
         "title": "ゴミ箱",

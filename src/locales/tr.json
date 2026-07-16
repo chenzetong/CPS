@@ -2484,6 +2484,7 @@
         "tokenUsage": "Token kullanımı"
       },
       "locationRunning": " (çalışıyor)",
+      "locationSshReadOnly": "SSH salt okunur",
       "untitled": "Adsız oturum",
       "restoreModal": {
         "title": "Çöp kutusu",

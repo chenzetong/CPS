@@ -2484,6 +2484,7 @@
         "tokenUsage": "Uso de tokens"
       },
       "locationRunning": " (en ejecución)",
+      "locationSshReadOnly": "SSH de solo lectura",
       "untitled": "Sesión sin título",
       "restoreModal": {
         "title": "Papelera",

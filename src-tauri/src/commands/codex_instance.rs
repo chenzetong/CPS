@@ -848,7 +848,7 @@ pub async fn codex_list_sessions_across_instances(
     title_query: Option<String>,
     content_query: Option<String>,
 ) -> Result<Vec<modules::codex_session_manager::CodexSessionRecord>, String> {
-    modules::codex_session_manager::list_sessions_across_instances(title_query, content_query)
+    modules::codex_session_manager::list_sessions_across_instances(title_query, content_query).await
 }
 
 #[tauri::command]

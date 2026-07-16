@@ -2484,6 +2484,7 @@
         "tokenUsage": "Mức dùng token"
       },
       "locationRunning": " (đang chạy)",
+      "locationSshReadOnly": "SSH chỉ đọc",
       "untitled": "Phiên chưa đặt tên",
       "restoreModal": {
         "title": "Thùng rác",

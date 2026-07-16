@@ -11,6 +11,7 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tokio::task::JoinSet;
 use tokio::time::timeout;
 use uuid::Uuid;
 
@@ -26,13 +27,34 @@ const SYNC_TIMEOUT_SECS: u64 = 45;
 const STATE_REPAIR_TIMEOUT_SECS: u64 = 120;
 /// 远端 app-server reload 墙钟超时。
 const APP_SERVER_RELOAD_TIMEOUT_SECS: u64 = 20;
+/// 只读列出远端会话的墙钟超时。
+const SESSION_LIST_TIMEOUT_SECS: u64 = 20;
 const DEFAULT_MODEL_PROVIDER_ID: &str = "openai";
 const STATE_REPAIR_OUTPUT_PREFIX: &str = "__COCKPIT_CODEX_STATE_REPAIR__";
+const SESSION_LIST_OUTPUT_PREFIX: &str = "__COCKPIT_CODEX_SESSION_LIST__";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SshServerList {
     pub selected_server_id: Option<String>,
     pub servers: Vec<SshServer>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SshCodexSessionSnapshot {
+    pub server_id: String,
+    pub server_name: String,
+    pub session_id: String,
+    pub title: String,
+    pub cwd: String,
+    pub updated_at: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteSessionRow {
+    id: String,
+    title: String,
+    cwd: String,
+    updated_at: Option<i64>,
 }
 
 fn now_timestamp() -> i64 {
@@ -381,6 +403,182 @@ async fn run_ssh(
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn remote_session_list_script() -> &'static str {
+    r#"set -eu
+codex_home_encoded="$1"
+python_bin=""
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    python_bin="$candidate"
+    break
+  fi
+done
+if [ -z "$python_bin" ]; then
+  printf '__COCKPIT_CODEX_SESSION_LIST__[]\n'
+  exit 0
+fi
+
+"$python_bin" - "$codex_home_encoded" <<'__COCKPIT_CODEX_SESSION_LIST_PY__'
+import base64
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+OUTPUT_PREFIX = "__COCKPIT_CODEX_SESSION_LIST__"
+root = Path(base64.b64decode(sys.argv[1]).decode("utf-8")).expanduser()
+db_path = root / "state_5.sqlite"
+if not db_path.exists():
+    print(OUTPUT_PREFIX + "[]")
+    raise SystemExit(0)
+
+connection = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(threads)")}
+if not {"id", "cwd"}.issubset(columns):
+    print(OUTPUT_PREFIX + "[]")
+    raise SystemExit(0)
+
+title_terms = []
+for column in ("title", "first_user_message", "preview"):
+    if column in columns:
+        title_terms.append("NULLIF(" + column + ", '')")
+title_terms.append("id")
+title_expr = "COALESCE(" + ", ".join(title_terms) + ")"
+
+updated_terms = []
+for column in ("updated_at", "recency_at", "created_at"):
+    if column in columns:
+        updated_terms.append(column)
+for column in ("updated_at_ms", "recency_at_ms", "created_at_ms"):
+    if column in columns:
+        updated_terms.append("CAST(" + column + " / 1000 AS INTEGER)")
+if not updated_terms:
+    updated_expr = "NULL"
+elif len(updated_terms) == 1:
+    updated_expr = updated_terms[0]
+else:
+    updated_expr = "COALESCE(" + ", ".join(updated_terms) + ")"
+
+where_terms = []
+if "archived" in columns:
+    where_terms.append("COALESCE(archived, 0) = 0")
+if "has_user_event" in columns:
+    where_terms.append("COALESCE(has_user_event, 0) = 1")
+if "first_user_message" in columns:
+    where_terms.append("COALESCE(first_user_message, '') <> ''")
+if "thread_source" in columns:
+    where_terms.append("COALESCE(thread_source, 'user') = 'user'")
+where_sql = " WHERE " + " AND ".join(where_terms) if where_terms else ""
+
+query = (
+    "SELECT id, " + title_expr + " AS title, cwd, " + updated_expr
+    + " AS updated_at FROM threads" + where_sql + " ORDER BY updated_at DESC"
+)
+rows = [
+    {
+        "id": str(row[0] or ""),
+        "title": str(row[1] or row[0] or ""),
+        "cwd": str(row[2] or ""),
+        "updated_at": int(row[3]) if row[3] is not None else None,
+    }
+    for row in connection.execute(query)
+]
+connection.close()
+print(OUTPUT_PREFIX + json.dumps(rows, separators=(",", ":"), ensure_ascii=True))
+__COCKPIT_CODEX_SESSION_LIST_PY__
+"#
+}
+
+fn parse_remote_session_list_output(
+    server: &SshServer,
+    output: &str,
+) -> Result<Vec<SshCodexSessionSnapshot>, String> {
+    let payload = output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(SESSION_LIST_OUTPUT_PREFIX))
+        .ok_or_else(|| "ssh_remote_session_list_failed: missing session list result".to_string())?;
+    let rows: Vec<RemoteSessionRow> = serde_json::from_str(payload).map_err(|error| {
+        format!(
+            "ssh_remote_session_list_failed: invalid session list result: {}",
+            sanitize_error(error)
+        )
+    })?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let session_id = row.id.trim().to_string();
+            if session_id.is_empty() {
+                return None;
+            }
+            let title = if row.title.trim().is_empty() {
+                session_id.clone()
+            } else {
+                row.title.trim().to_string()
+            };
+            let cwd = if row.cwd.trim().is_empty() {
+                server.codex_home.clone()
+            } else {
+                row.cwd.trim().to_string()
+            };
+            Some(SshCodexSessionSnapshot {
+                server_id: server.id.clone(),
+                server_name: server.name.clone(),
+                session_id,
+                title,
+                cwd,
+                updated_at: row.updated_at,
+            })
+        })
+        .collect())
+}
+
+async fn list_sessions_from_server(
+    server: &SshServer,
+) -> Result<Vec<SshCodexSessionSnapshot>, String> {
+    let codex_home_encoded = STANDARD.encode(server.codex_home.as_bytes());
+    let output = run_ssh(
+        server,
+        SESSION_LIST_TIMEOUT_SECS,
+        &["sh", "-s", "--", &codex_home_encoded],
+        Some(remote_session_list_script().to_string()),
+    )
+    .await
+    .map_err(|error| format!("ssh_remote_session_list_failed: {}", sanitize_error(error)))?;
+    parse_remote_session_list_output(server, &output)
+}
+
+pub async fn list_codex_sessions_from_servers() -> Result<Vec<SshCodexSessionSnapshot>, String> {
+    let store = load_store()?;
+    let mut tasks = JoinSet::new();
+    for server in store.servers {
+        tasks.spawn(async move {
+            let result = list_sessions_from_server(&server).await;
+            (server.name.clone(), result)
+        });
+    }
+
+    let mut sessions = Vec::new();
+    while let Some(result) = tasks.join_next().await {
+        match result {
+            Ok((_, Ok(mut remote_sessions))) => sessions.append(&mut remote_sessions),
+            Ok((server_name, Err(error))) => {
+                eprintln!(
+                    "[SSH Session List] skipped unavailable server {}: {}",
+                    server_name,
+                    sanitize_error(error)
+                );
+            }
+            Err(error) => {
+                eprintln!(
+                    "[SSH Session List] worker failed: {}",
+                    sanitize_error(error)
+                );
+            }
+        }
+    }
+    Ok(sessions)
 }
 
 pub async fn test_connection(server_id: &str) -> Result<String, String> {
@@ -1130,6 +1328,87 @@ base_url = "https://example.com/v1"
 
     #[cfg(unix)]
     #[test]
+    fn session_list_script_returns_only_visible_user_threads() {
+        use rusqlite::Connection;
+        use std::io::Write;
+        use std::process::{Command as StdCommand, Stdio as StdStdio};
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "cockpit ssh session list {}; metacharacters",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_dir).expect("create temporary Codex home");
+        let connection =
+            Connection::open(temp_dir.join("state_5.sqlite")).expect("create state database");
+        connection
+            .execute_batch(
+                r#"
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    cwd TEXT,
+                    updated_at INTEGER,
+                    archived INTEGER,
+                    first_user_message TEXT,
+                    has_user_event INTEGER,
+                    thread_source TEXT
+                );
+                INSERT INTO threads VALUES ('visible', 'Visible task', '/repo', 42, 0, 'hello', 1, 'user');
+                INSERT INTO threads VALUES ('archived', 'Archived task', '/repo', 41, 1, 'hello', 1, 'user');
+                INSERT INTO threads VALUES ('subagent', 'Child task', '/repo', 40, 0, '', 0, 'subagent');
+                "#,
+            )
+            .expect("seed state database");
+
+        let temp_dir_encoded = STANDARD.encode(
+            temp_dir
+                .to_str()
+                .expect("utf-8 temporary path")
+                .as_bytes(),
+        );
+        let mut child = StdCommand::new("sh")
+            .args([
+                "-s",
+                "--",
+                &temp_dir_encoded,
+            ])
+            .stdin(StdStdio::piped())
+            .stdout(StdStdio::piped())
+            .stderr(StdStdio::piped())
+            .spawn()
+            .expect("spawn session list script");
+        child
+            .stdin
+            .as_mut()
+            .expect("session list script stdin")
+            .write_all(remote_session_list_script().as_bytes())
+            .expect("write session list script");
+        let output = child
+            .wait_with_output()
+            .expect("wait for session list script");
+        assert!(
+            output.status.success(),
+            "session list failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("utf-8 session list output");
+        let sessions =
+            parse_remote_session_list_output(&valid_server(), &stdout).expect("parse sessions");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "visible");
+        assert_eq!(sessions[0].title, "Visible task");
+        assert_eq!(sessions[0].cwd, "/repo");
+        assert_eq!(sessions[0].updated_at, Some(42));
+        assert_eq!(sessions[0].server_name, "Dev");
+        assert!(remote_session_list_script().contains("?mode=ro"));
+        assert!(remote_session_list_script().contains("uri=True"));
+
+        drop(connection);
+        std::fs::remove_dir_all(&temp_dir).expect("remove temporary Codex home");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn state_repair_script_aligns_provider_and_restores_only_user_threads() {
         use rusqlite::Connection;
         use std::io::Write;
@@ -1237,6 +1516,29 @@ base_url = "https://example.com/v1"
         assert!(!sanitized.contains("def456"));
         assert!(!sanitized.contains("ghi789"));
         assert!(!sanitized.contains("sk-test"));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_ssh_lists_configured_sessions() {
+        if std::env::var("COCKPIT_LIVE_SSH_SESSION_LIST")
+            .ok()
+            .as_deref()
+            != Some("1")
+        {
+            eprintln!("set COCKPIT_LIVE_SSH_SESSION_LIST=1 to run the live SSH session list test");
+            return;
+        }
+
+        let sessions = list_codex_sessions_from_servers()
+            .await
+            .expect("configured SSH session list should load");
+        assert!(
+            sessions
+                .iter()
+                .any(|session| session.session_id == "019f63fa-d011-7ba2-9001-ded71f7c7598"),
+            "expected the chenj_la test usage session in the remote list"
+        );
     }
 
     #[tokio::test]

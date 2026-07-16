@@ -2530,6 +2530,7 @@
         "tokenUsage": "Token-Nutzung"
       },
       "locationRunning": " (wird ausgeführt)",
+      "locationSshReadOnly": "SSH schreibgeschützt",
       "untitled": "Unbenannte Sitzung",
       "restoreModal": {
         "title": "Papierkorb",

@@ -2530,6 +2530,7 @@
         "tokenUsage": "토큰 사용량"
       },
       "locationRunning": " (실행 중)",
+      "locationSshReadOnly": "SSH 읽기 전용",
       "untitled": "제목 없는 세션",
       "restoreModal": {
         "title": "휴지통",

@@ -2577,6 +2577,7 @@
         "tokenUsage": "استخدام الرموز"
       },
       "locationRunning": " (قيد التشغيل)",
+      "locationSshReadOnly": "SSH للقراءة فقط",
       "untitled": "جلسة بدون عنوان",
       "restoreModal": {
         "title": "المهملات",

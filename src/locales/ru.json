@@ -2530,6 +2530,7 @@
         "tokenUsage": "Использование токенов"
       },
       "locationRunning": " (запущено)",
+      "locationSshReadOnly": "SSH только для чтения",
       "untitled": "Сессия без названия",
       "restoreModal": {
         "title": "Корзина",

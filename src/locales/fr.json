@@ -2530,6 +2530,7 @@
         "tokenUsage": "Utilisation des tokens"
       },
       "locationRunning": " (en cours d’exécution)",
+      "locationSshReadOnly": "SSH en lecture seule",
       "untitled": "Session sans titre",
       "restoreModal": {
         "title": "Corbeille",

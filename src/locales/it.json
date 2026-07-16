@@ -2530,6 +2530,7 @@
         "tokenUsage": "Utilizzo token"
       },
       "locationRunning": " (in esecuzione)",
+      "locationSshReadOnly": "SSH sola lettura",
       "untitled": "Sessione senza titolo",
       "restoreModal": {
         "title": "Cestino",

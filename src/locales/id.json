@@ -2708,6 +2708,7 @@
         "tokenUsage": "Penggunaan token"
       },
       "locationRunning": " (berjalan)",
+      "locationSshReadOnly": "SSH hanya-baca",
       "untitled": "Sesi tanpa judul",
       "restoreModal": {
         "title": "Sampah",

@@ -762,7 +762,7 @@ case "$codex_home" in
 esac
 db="$codex_home/state_5.sqlite"
 if [ ! -f "$db" ]; then
-  printf '%s\n' '__COCKPIT_CODEX_STATE_REPAIR__{"database_found":false,"backup_path":null,"provider_schema_supported":false,"visibility_schema_supported":false,"provider_rows_to_repair":0,"visibility_rows_to_repair":0,"rows_repaired":0,"provider_rows_remaining":0,"visibility_rows_remaining":0,"quick_check":null}'
+  printf '%s\n' '__COCKPIT_CODEX_STATE_REPAIR__{"database_found":false,"backup_path":null,"provider_schema_supported":false,"visibility_schema_supported":false,"rollout_schema_supported":false,"provider_rows_to_repair":0,"visibility_rows_to_repair":0,"rollout_files_to_repair":0,"rows_repaired":0,"rollout_files_repaired":0,"provider_rows_remaining":0,"visibility_rows_remaining":0,"rollout_files_remaining":0,"quick_check":null}'
   exit 0
 fi
 
@@ -785,18 +785,109 @@ fi
 import datetime
 import json
 import os
+import shutil
 import sqlite3
 import sys
 from pathlib import Path
 
 OUTPUT_PREFIX = "__COCKPIT_CODEX_STATE_REPAIR__"
-root = Path(sys.argv[1])
+root = Path(sys.argv[1]).expanduser().resolve()
 model_provider = sys.argv[2]
 db_path = root / "state_5.sqlite"
 
 
 def quick_check(connection):
     return "; ".join(str(row[0]) for row in connection.execute("PRAGMA quick_check"))
+
+
+def resolve_managed_rollout(raw_path):
+    path = Path(str(raw_path))
+    if not path.is_absolute():
+        path = root / path
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return None
+    return resolved
+
+
+def prepare_rollout_rewrite(path):
+    content = path.read_bytes()
+    newline_index = content.find(b"\n")
+    if newline_index < 0:
+        first_line = content
+        separator = b""
+        rest = b""
+    else:
+        first_line = content[:newline_index]
+        if first_line.endswith(b"\r"):
+            first_line = first_line[:-1]
+            separator = b"\r\n"
+        else:
+            separator = b"\n"
+        rest = content[newline_index + 1:]
+    try:
+        record = json.loads(first_line.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(record, dict)
+        or record.get("type") != "session_meta"
+        or not isinstance(record.get("payload"), dict)
+    ):
+        return None
+    payload = record["payload"]
+    if payload.get("model_provider") == model_provider:
+        return None
+    payload["model_provider"] = model_provider
+    updated_first_line = json.dumps(
+        record, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return updated_first_line + separator + rest
+
+
+def read_rollout_provider(path):
+    with path.open("rb") as source:
+        first_line = source.readline().rstrip(b"\r\n")
+    try:
+        record = json.loads(first_line.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(record, dict)
+        or record.get("type") != "session_meta"
+        or not isinstance(record.get("payload"), dict)
+    ):
+        return None
+    return record["payload"].get("model_provider")
+
+
+def write_atomic(path, content, metadata_path):
+    metadata = metadata_path.stat()
+    temporary = path.parent / (
+        "." + path.name + ".cockpit-ssh-sync-" + str(os.getpid()) + ".tmp"
+    )
+    try:
+        with temporary.open("xb") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, metadata.st_mode & 0o7777)
+        os.utime(
+            temporary,
+            ns=(metadata.st_atime_ns, metadata.st_mtime_ns),
+            follow_symlinks=False,
+        )
+        os.replace(temporary, path)
+        directory_fd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 connection = sqlite3.connect(str(db_path), timeout=10.0, isolation_level=None)
@@ -820,6 +911,7 @@ os.chmod(backup_path, 0o600)
 columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(threads)")}
 provider_supported = "model_provider" in columns
 visibility_supported = {"first_user_message", "has_user_event"}.issubset(columns)
+rollout_supported = "rollout_path" in columns
 has_thread_source = "thread_source" in columns
 if not provider_supported or not visibility_supported:
     raise RuntimeError(
@@ -846,6 +938,36 @@ visibility_rows_to_repair = connection.execute(
     "SELECT COUNT(*) FROM threads WHERE " + visibility_where
 ).fetchone()[0]
 
+rollout_changes = []
+seen_rollouts = set()
+if rollout_supported:
+    referenced_rollouts = connection.execute(
+        "SELECT rollout_path FROM threads "
+        "WHERE rollout_path IS NOT NULL AND rollout_path <> ''"
+    ).fetchall()
+    for (raw_path,) in referenced_rollouts:
+        rollout_path = resolve_managed_rollout(raw_path)
+        if (
+            rollout_path is None
+            or rollout_path in seen_rollouts
+            or not rollout_path.is_file()
+        ):
+            continue
+        seen_rollouts.add(rollout_path)
+        updated_content = prepare_rollout_rewrite(rollout_path)
+        if updated_content is None:
+            continue
+        relative_path = rollout_path.relative_to(root)
+        rollout_backup_path = backup_dir / "rollouts" / relative_path
+        rollout_changes.append(
+            (rollout_path, rollout_backup_path, updated_content)
+        )
+
+rollout_files_to_repair = len(rollout_changes)
+for rollout_path, rollout_backup_path, _ in rollout_changes:
+    rollout_backup_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    shutil.copy2(rollout_path, rollout_backup_path)
+
 assignments = [
     "model_provider = ?",
     "has_user_event = CASE WHEN COALESCE(first_user_message, '') <> '' "
@@ -858,38 +980,61 @@ if has_thread_source:
     )
 parameters = [model_provider, model_provider]
 
-connection.execute("BEGIN IMMEDIATE")
+changed_rollouts = []
 try:
-    cursor = connection.execute(
-        "UPDATE threads SET "
-        + ", ".join(assignments)
-        + " WHERE "
-        + provider_where
-        + " OR ("
-        + visibility_where
-        + ")",
-        tuple(parameters),
-    )
-    rows_repaired = max(cursor.rowcount, 0)
-    provider_rows_remaining = connection.execute(
-        "SELECT COUNT(*) FROM threads WHERE " + provider_where,
-        (model_provider,),
-    ).fetchone()[0]
-    visibility_rows_remaining = connection.execute(
-        "SELECT COUNT(*) FROM threads WHERE " + visibility_where
-    ).fetchone()[0]
-    final_check = quick_check(connection)
-    if provider_rows_remaining != 0 or visibility_rows_remaining != 0:
+    for rollout_path, rollout_backup_path, updated_content in rollout_changes:
+        changed_rollouts.append((rollout_path, rollout_backup_path))
+        write_atomic(rollout_path, updated_content, rollout_backup_path)
+
+    rollout_files_remaining = 0
+    for rollout_path, _, _ in rollout_changes:
+        if read_rollout_provider(rollout_path) != model_provider:
+            rollout_files_remaining += 1
+    if rollout_files_remaining != 0:
         raise RuntimeError(
-            "row verification failed: provider_remaining={}, visibility_remaining={}".format(
-                provider_rows_remaining, visibility_rows_remaining
+            "rollout verification failed: remaining={}".format(
+                rollout_files_remaining
             )
         )
-    if final_check != "ok":
-        raise RuntimeError("state_5.sqlite quick_check failed after repair: " + final_check)
-    connection.execute("COMMIT")
+
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        cursor = connection.execute(
+            "UPDATE threads SET "
+            + ", ".join(assignments)
+            + " WHERE "
+            + provider_where
+            + " OR ("
+            + visibility_where
+            + ")",
+            tuple(parameters),
+        )
+        rows_repaired = max(cursor.rowcount, 0)
+        provider_rows_remaining = connection.execute(
+            "SELECT COUNT(*) FROM threads WHERE " + provider_where,
+            (model_provider,),
+        ).fetchone()[0]
+        visibility_rows_remaining = connection.execute(
+            "SELECT COUNT(*) FROM threads WHERE " + visibility_where
+        ).fetchone()[0]
+        final_check = quick_check(connection)
+        if provider_rows_remaining != 0 or visibility_rows_remaining != 0:
+            raise RuntimeError(
+                "row verification failed: provider_remaining={}, visibility_remaining={}".format(
+                    provider_rows_remaining, visibility_rows_remaining
+                )
+            )
+        if final_check != "ok":
+            raise RuntimeError(
+                "state_5.sqlite quick_check failed after repair: " + final_check
+            )
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
 except Exception:
-    connection.execute("ROLLBACK")
+    for rollout_path, rollout_backup_path in reversed(changed_rollouts):
+        write_atomic(rollout_path, rollout_backup_path.read_bytes(), rollout_backup_path)
     raise
 finally:
     connection.close()
@@ -899,11 +1044,15 @@ result = {
     "backup_path": str(backup_path),
     "provider_schema_supported": provider_supported,
     "visibility_schema_supported": visibility_supported,
+    "rollout_schema_supported": rollout_supported,
     "provider_rows_to_repair": provider_rows_to_repair,
     "visibility_rows_to_repair": visibility_rows_to_repair,
+    "rollout_files_to_repair": rollout_files_to_repair,
     "rows_repaired": rows_repaired,
+    "rollout_files_repaired": len(changed_rollouts),
     "provider_rows_remaining": provider_rows_remaining,
     "visibility_rows_remaining": visibility_rows_remaining,
+    "rollout_files_remaining": rollout_files_remaining,
     "quick_check": final_check,
 }
 print(OUTPUT_PREFIX + json.dumps(result, separators=(",", ":"), ensure_ascii=True))
@@ -938,6 +1087,16 @@ fn parse_remote_state_repair_output(output: &str) -> Result<SshCodexStateRepairS
             return Err(format!(
                 "ssh_remote_state_repair_failed: row verification failed: provider_remaining={}, visibility_remaining={}",
                 result.provider_rows_remaining, result.visibility_rows_remaining
+            ));
+        }
+        if result.rollout_files_remaining != 0
+            || result.rollout_files_repaired != result.rollout_files_to_repair
+        {
+            return Err(format!(
+                "ssh_remote_state_repair_failed: rollout verification failed: repaired={}, expected={}, remaining={}",
+                result.rollout_files_repaired,
+                result.rollout_files_to_repair,
+                result.rollout_files_remaining
             ));
         }
         if result.quick_check.as_deref() != Some("ok") {
@@ -1303,7 +1462,7 @@ base_url = "https://example.com/v1"
         let valid = format!(
             "noise\n{}{}",
             STATE_REPAIR_OUTPUT_PREFIX,
-            r#"{"database_found":true,"backup_path":"/tmp/backup/state_5.sqlite","provider_schema_supported":true,"visibility_schema_supported":true,"provider_rows_to_repair":2,"visibility_rows_to_repair":1,"rows_repaired":2,"provider_rows_remaining":0,"visibility_rows_remaining":0,"quick_check":"ok"}"#
+            r#"{"database_found":true,"backup_path":"/tmp/backup/state_5.sqlite","provider_schema_supported":true,"visibility_schema_supported":true,"rollout_schema_supported":true,"provider_rows_to_repair":2,"visibility_rows_to_repair":1,"rollout_files_to_repair":2,"rows_repaired":2,"rollout_files_repaired":2,"provider_rows_remaining":0,"visibility_rows_remaining":0,"rollout_files_remaining":0,"quick_check":"ok"}"#
         );
         let parsed = parse_remote_state_repair_output(&valid).expect("valid repair output");
         assert_eq!(parsed.rows_repaired, 2);
@@ -1315,6 +1474,14 @@ base_url = "https://example.com/v1"
         assert!(parse_remote_state_repair_output(&invalid)
             .expect_err("remaining rows must fail")
             .contains("row verification failed"));
+
+        let invalid_rollout = valid.replace(
+            "\"rollout_files_remaining\":0",
+            "\"rollout_files_remaining\":1",
+        );
+        assert!(parse_remote_state_repair_output(&invalid_rollout)
+            .expect_err("remaining rollout must fail")
+            .contains("rollout verification failed"));
     }
 
     #[test]
@@ -1323,6 +1490,8 @@ base_url = "https://example.com/v1"
         assert!(script.contains("connection.backup(backup_connection)"));
         assert!(script.contains("BEGIN IMMEDIATE"));
         assert!(script.contains("PRAGMA quick_check"));
+        assert!(script.contains("shutil.copy2(rollout_path, rollout_backup_path)"));
+        assert!(script.contains("os.replace(temporary, path)"));
         assert!(!script.contains("cp \"$db\""));
     }
 
@@ -1360,18 +1529,10 @@ base_url = "https://example.com/v1"
             )
             .expect("seed state database");
 
-        let temp_dir_encoded = STANDARD.encode(
-            temp_dir
-                .to_str()
-                .expect("utf-8 temporary path")
-                .as_bytes(),
-        );
+        let temp_dir_encoded =
+            STANDARD.encode(temp_dir.to_str().expect("utf-8 temporary path").as_bytes());
         let mut child = StdCommand::new("sh")
-            .args([
-                "-s",
-                "--",
-                &temp_dir_encoded,
-            ])
+            .args(["-s", "--", &temp_dir_encoded])
             .stdin(StdStdio::piped())
             .stdout(StdStdio::piped())
             .stderr(StdStdio::piped())
@@ -1409,7 +1570,7 @@ base_url = "https://example.com/v1"
 
     #[cfg(unix)]
     #[test]
-    fn state_repair_script_aligns_provider_and_restores_only_user_threads() {
+    fn state_repair_script_aligns_database_and_rollout_providers() {
         use rusqlite::Connection;
         use std::io::Write;
         use std::process::{Command as StdCommand, Stdio as StdStdio};
@@ -1417,6 +1578,32 @@ base_url = "https://example.com/v1"
         let temp_dir =
             std::env::temp_dir().join(format!("cockpit-ssh-state-repair-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).expect("create temporary Codex home");
+        let rollout_dir = temp_dir.join("sessions").join("2026").join("07").join("16");
+        std::fs::create_dir_all(&rollout_dir).expect("create rollout directory");
+        let user_rollout = rollout_dir.join("rollout-user-needs-repair.jsonl");
+        let child_rollout = rollout_dir.join("rollout-child-thread.jsonl");
+        let ok_rollout = rollout_dir.join("rollout-user-ok.jsonl");
+        std::fs::write(
+            &user_rollout,
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"user-needs-repair\",\"model_provider\":\"old\"}}\n{\"type\":\"event_msg\",\"payload\":{}}\n",
+        )
+        .expect("write user rollout");
+        std::fs::write(
+            &child_rollout,
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"child-thread\",\"model_provider\":\"old\"}}\n",
+        )
+        .expect("write child rollout");
+        std::fs::write(
+            &ok_rollout,
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"user-ok\",\"model_provider\":\"openai\"}}\n",
+        )
+        .expect("write matching rollout");
+        let relative_rollout = |path: &std::path::Path| {
+            path.strip_prefix(&temp_dir)
+                .expect("rollout is inside Codex home")
+                .to_string_lossy()
+                .to_string()
+        };
         let db_path = temp_dir.join("state_5.sqlite");
         let connection = Connection::open(&db_path).expect("create state database");
         connection
@@ -1425,17 +1612,33 @@ base_url = "https://example.com/v1"
                 PRAGMA journal_mode = WAL;
                 CREATE TABLE threads (
                     id TEXT PRIMARY KEY,
+                    rollout_path TEXT,
                     model_provider TEXT,
                     first_user_message TEXT,
                     has_user_event INTEGER,
                     thread_source TEXT
                 );
-                INSERT INTO threads VALUES ('user-needs-repair', 'old', 'hello', 0, '');
-                INSERT INTO threads VALUES ('child-thread', 'old', '', 0, 'subagent');
-                INSERT INTO threads VALUES ('user-ok', 'openai', 'ready', 1, 'user');
                 "#,
             )
-            .expect("seed state database");
+            .expect("create state database schema");
+        connection
+            .execute(
+                "INSERT INTO threads VALUES ('user-needs-repair', ?1, 'old', 'hello', 0, '')",
+                [relative_rollout(&user_rollout)],
+            )
+            .expect("insert user thread");
+        connection
+            .execute(
+                "INSERT INTO threads VALUES ('child-thread', ?1, 'old', '', 0, 'subagent')",
+                [relative_rollout(&child_rollout)],
+            )
+            .expect("insert child thread");
+        connection
+            .execute(
+                "INSERT INTO threads VALUES ('user-ok', ?1, 'openai', 'ready', 1, 'user')",
+                [relative_rollout(&ok_rollout)],
+            )
+            .expect("insert matching thread");
 
         let mut child = StdCommand::new("sh")
             .args([
@@ -1465,8 +1668,22 @@ base_url = "https://example.com/v1"
         let result = parse_remote_state_repair_output(&stdout).expect("parse repair result");
         assert_eq!(result.provider_rows_to_repair, 2);
         assert_eq!(result.visibility_rows_to_repair, 1);
+        assert!(result.rollout_schema_supported);
+        assert_eq!(result.rollout_files_to_repair, 2);
+        assert_eq!(result.rollout_files_repaired, 2);
+        assert_eq!(result.rollout_files_remaining, 0);
         assert_eq!(result.rows_repaired, 2);
         assert_eq!(result.quick_check.as_deref(), Some("ok"));
+
+        assert!(std::fs::read_to_string(&user_rollout)
+            .expect("read repaired user rollout")
+            .contains("\"model_provider\":\"openai\""));
+        assert!(std::fs::read_to_string(&child_rollout)
+            .expect("read repaired child rollout")
+            .contains("\"model_provider\":\"openai\""));
+        assert!(std::fs::read_to_string(&ok_rollout)
+            .expect("read matching rollout")
+            .contains("\"model_provider\":\"openai\""));
 
         let repaired: (String, i64, String) = connection
             .query_row(
@@ -1488,8 +1705,15 @@ base_url = "https://example.com/v1"
             ("openai".to_string(), 0, "subagent".to_string())
         );
 
-        let backup =
-            Connection::open(result.backup_path.expect("backup path")).expect("open online backup");
+        let backup_path = std::path::PathBuf::from(result.backup_path.expect("backup path"));
+        let backup_root = backup_path.parent().expect("backup directory");
+        let user_rollout_backup = backup_root
+            .join("rollouts")
+            .join(relative_rollout(&user_rollout));
+        assert!(std::fs::read_to_string(user_rollout_backup)
+            .expect("read rollout backup")
+            .contains("\"model_provider\":\"old\""));
+        let backup = Connection::open(backup_path).expect("open online backup");
         let backup_state: (String, i64, String) = backup
             .query_row(
                 "SELECT model_provider, has_user_event, thread_source FROM threads WHERE id = 'user-needs-repair'",
@@ -1539,6 +1763,41 @@ base_url = "https://example.com/v1"
                 .any(|session| session.session_id == "019f63fa-d011-7ba2-9001-ded71f7c7598"),
             "expected the chenj_la test usage session in the remote list"
         );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_ssh_syncs_selected_configured_server() {
+        if std::env::var("COCKPIT_LIVE_SSH_CONFIGURED_SYNC")
+            .ok()
+            .as_deref()
+            != Some("1")
+        {
+            eprintln!(
+                "set COCKPIT_LIVE_SSH_CONFIGURED_SYNC=1 to sync the selected configured server"
+            );
+            return;
+        }
+
+        let result = sync_current_account_to_server(None)
+            .await
+            .expect("configured SSH sync should return a result");
+        assert!(
+            result.verified,
+            "configured SSH sync should verify remote state: {:?}",
+            result.error
+        );
+        let repair = result
+            .state_repair
+            .expect("configured SSH sync should report state repair");
+        assert_eq!(repair.provider_rows_remaining, 0);
+        assert_eq!(repair.visibility_rows_remaining, 0);
+        assert_eq!(repair.rollout_files_remaining, 0);
+        assert_eq!(
+            repair.rollout_files_repaired,
+            repair.rollout_files_to_repair
+        );
+        assert_eq!(repair.quick_check.as_deref(), Some("ok"));
     }
 
     #[tokio::test]

@@ -104,11 +104,12 @@ function describeSyncStatus(t: TFunction, sync: SshCodexSyncStatus) {
   const state = sync.state_repair?.database_found
     ? t(
         'codex.ssh.stateRepaired',
-        '状态库已对齐 {{rows}} 行（provider {{providerRows}}，可见性 {{visibilityRows}}），备份已校验',
+        '状态库已对齐 {{rows}} 行（provider {{providerRows}}，可见性 {{visibilityRows}}），rollout 已修复 {{rolloutFiles}} 个，备份已校验',
         {
           rows: sync.state_repair.rows_repaired,
           providerRows: sync.state_repair.provider_rows_to_repair,
           visibilityRows: sync.state_repair.visibility_rows_to_repair,
+          rolloutFiles: sync.state_repair.rollout_files_repaired,
         },
       )
     : t('codex.ssh.stateDatabaseMissing', '远端尚无状态库，无历史需要对齐');

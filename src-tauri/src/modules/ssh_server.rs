@@ -49,6 +49,12 @@ pub struct SshCodexSessionSnapshot {
     pub updated_at: Option<i64>,
 }
 
+#[derive(Debug, Default)]
+pub struct CodexSwitchSshSyncOutcome {
+    pub results: Vec<SshCodexSyncResult>,
+    pub reachable_server_ids: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct RemoteSessionRow {
     id: String,
@@ -589,15 +595,21 @@ pub async fn test_connection(server_id: &str) -> Result<String, String> {
         .find(|server| server.id == server_id)
         .cloned()
         .ok_or_else(|| format!("SSH server not found: {}", server_id))?;
+    probe_server_connection(&server).await?;
+    Ok("cockpit-tools-ssh-ok".to_string())
+}
+
+async fn probe_server_connection(server: &SshServer) -> Result<(), String> {
+    validate_server(server)?;
     let output = run_ssh(
-        &server,
+        server,
         TEST_COMMAND_TIMEOUT_SECS,
         &["printf", "cockpit-tools-ssh-ok"],
         None,
     )
     .await?;
     if output.trim() == "cockpit-tools-ssh-ok" {
-        Ok(output)
+        Ok(())
     } else {
         Err("ssh_connection_failed: unexpected SSH test output".to_string())
     }
@@ -1213,6 +1225,23 @@ fn result_from_status(server: &SshServer, status: SshCodexSyncStatus) -> SshCode
     }
 }
 
+fn initial_sync_status(account: &CodexAccount) -> SshCodexSyncStatus {
+    SshCodexSyncStatus {
+        account_id: account.id.clone(),
+        account_email: account.email.clone(),
+        token_generation: account.token_generation,
+        bundle_hash: String::new(),
+        bundle_verified: false,
+        model_provider: None,
+        model_provider_verified: false,
+        state_repair: None,
+        app_server_reload_status: None,
+        synced_at: now_timestamp(),
+        verified: false,
+        error: None,
+    }
+}
+
 fn persist_sync_status(
     server_id: &str,
     status: SshCodexSyncStatus,
@@ -1231,21 +1260,7 @@ fn persist_sync_status(
 }
 
 async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> SshCodexSyncResult {
-    let synced_at = now_timestamp();
-    let mut status = SshCodexSyncStatus {
-        account_id: account.id.clone(),
-        account_email: account.email.clone(),
-        token_generation: account.token_generation,
-        bundle_hash: String::new(),
-        bundle_verified: false,
-        model_provider: None,
-        model_provider_verified: false,
-        state_repair: None,
-        app_server_reload_status: None,
-        synced_at,
-        verified: false,
-        error: None,
-    };
+    let mut status = initial_sync_status(account);
     let sync_attempt = async {
         validate_server(&server)?;
         let existing_config = read_remote_config_toml(&server).await?;
@@ -1286,6 +1301,25 @@ async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> Ss
     }
 }
 
+fn persist_preflight_failure(
+    server: &SshServer,
+    account: &CodexAccount,
+    error: String,
+) -> SshCodexSyncResult {
+    let mut status = initial_sync_status(account);
+    status.error = Some(format!("ssh_preflight_failed: {}", sanitize_error(error)));
+    match persist_sync_status(&server.id, status.clone()) {
+        Ok(result) => result,
+        Err(persist_error) => {
+            logger::log_warn(&format!(
+                "[Codex SSH] 保存探活失败状态失败: server_id={}, error={}",
+                server.id, persist_error
+            ));
+            result_from_status(server, status)
+        }
+    }
+}
+
 pub async fn sync_current_account_to_server(
     server_id: Option<String>,
 ) -> Result<SshCodexSyncResult, String> {
@@ -1310,23 +1344,71 @@ pub async fn sync_current_account_to_server(
     Ok(sync_account_to_server(server, &account).await)
 }
 
-pub async fn sync_selected_server_after_codex_switch(
-    account: &CodexAccount,
-) -> Option<SshCodexSyncResult> {
+fn servers_enabled_for_codex_switch(store: SshServerStore) -> Vec<SshServer> {
+    let selected_id = store.selected_server_id;
+    let mut servers = store
+        .servers
+        .into_iter()
+        .filter(|server| server.sync_on_codex_switch)
+        .collect::<Vec<_>>();
+    servers.sort_by_key(|server| {
+        (
+            selected_id.as_deref() != Some(server.id.as_str()),
+            server.name.clone(),
+        )
+    });
+    servers
+}
+
+pub async fn sync_servers_after_codex_switch(account: &CodexAccount) -> CodexSwitchSshSyncOutcome {
     let store = match load_store() {
         Ok(store) => store,
         Err(error) => {
             logger::log_warn(&format!("[Codex SSH] 读取 SSH 服务器配置失败: {}", error));
-            return None;
+            return CodexSwitchSshSyncOutcome::default();
         }
     };
-    let Some(server) = selected_server_from_store(&store) else {
-        return None;
-    };
-    if !server.sync_on_codex_switch {
-        return None;
+
+    let servers = servers_enabled_for_codex_switch(store);
+    let mut preflight_results = Vec::with_capacity(servers.len());
+    let mut reachable_server_ids = Vec::with_capacity(servers.len());
+    for server in servers {
+        let preflight_error = match probe_server_connection(&server).await {
+            Ok(()) => {
+                logger::log_info(&format!(
+                    "[Codex SSH] 切号前探活成功: server_id={}, server_name={}",
+                    server.id, server.name
+                ));
+                reachable_server_ids.push(server.id.clone());
+                None
+            }
+            Err(error) => {
+                logger::log_warn(&format!(
+                    "[Codex SSH] 切号前探活失败: server_id={}, server_name={}, error={}",
+                    server.id,
+                    server.name,
+                    sanitize_error(&error)
+                ));
+                Some(error)
+            }
+        };
+        preflight_results.push((server, preflight_error));
     }
-    Some(sync_account_to_server(server, account).await)
+
+    // Keep probing separate from the heavier sync so launch context reflects reachability,
+    // even when a later auth/config/state verification step fails.
+    let mut results = Vec::with_capacity(preflight_results.len());
+    for (server, preflight_error) in preflight_results {
+        if let Some(error) = preflight_error {
+            results.push(persist_preflight_failure(&server, account, error));
+        } else {
+            results.push(sync_account_to_server(server, account).await);
+        }
+    }
+    CodexSwitchSshSyncOutcome {
+        results,
+        reachable_server_ids,
+    }
 }
 
 #[cfg(test)]
@@ -1390,6 +1472,34 @@ mod tests {
             path: String::new(),
         };
         assert!(validate_server(&server).is_err());
+    }
+
+    #[test]
+    fn codex_switch_includes_all_enabled_servers_with_selected_first() {
+        let mut server_a = valid_server();
+        server_a.id = "server-a".to_string();
+        server_a.name = "Alpha".to_string();
+
+        let mut server_b = valid_server();
+        server_b.id = "server-b".to_string();
+        server_b.name = "Beta".to_string();
+
+        let mut disabled = valid_server();
+        disabled.id = "server-disabled".to_string();
+        disabled.name = "Disabled".to_string();
+        disabled.sync_on_codex_switch = false;
+
+        let servers = servers_enabled_for_codex_switch(SshServerStore {
+            version: STORE_VERSION.to_string(),
+            selected_server_id: Some(server_b.id.clone()),
+            servers: vec![server_a, disabled, server_b],
+        });
+        let ids = servers
+            .iter()
+            .map(|server| server.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ids, vec!["server-b", "server-a"]);
     }
 
     #[test]

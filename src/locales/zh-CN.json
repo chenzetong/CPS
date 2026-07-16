@@ -3265,6 +3265,7 @@
         "tokenUsage": "Token使用"
       },
       "locationRunning": "（运行中）",
+      "locationSshReadOnly": "SSH 只读",
       "untitled": "未命名会话",
       "restoreModal": {
         "title": "废纸篓",

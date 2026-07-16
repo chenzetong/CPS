@@ -2530,6 +2530,7 @@
         "tokenUsage": "Zużycie tokenów"
       },
       "locationRunning": " (uruchomiona)",
+      "locationSshReadOnly": "SSH tylko do odczytu",
       "untitled": "Sesja bez tytułu",
       "restoreModal": {
         "title": "Kosz",

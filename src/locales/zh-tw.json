@@ -2661,6 +2661,7 @@
         "tokenUsage": "Token 使用"
       },
       "locationRunning": "（執行中）",
+      "locationSshReadOnly": "SSH 唯讀",
       "untitled": "未命名會話",
       "restoreModal": {
         "title": "垃圾桶",

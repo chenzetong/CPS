@@ -3265,6 +3265,7 @@
         "tokenUsage": "Token Usage"
       },
       "locationRunning": " (running)",
+      "locationSshReadOnly": "SSH read-only",
       "untitled": "Untitled session",
       "restoreModal": {
         "title": "Trash",

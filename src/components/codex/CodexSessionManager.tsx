@@ -105,6 +105,14 @@ function buildDefaultExpandedGroups(_groups: SessionGroup[]): string[] {
   return [];
 }
 
+function writableSessionLocations(session: CodexSessionRecord) {
+  return session.locations.filter((location) => location.readOnly !== true);
+}
+
+function isSessionWritable(session: CodexSessionRecord): boolean {
+  return writableSessionLocations(session).length > 0;
+}
+
 function formatRelativeTime(value: number | null | undefined, isZh: boolean): string {
   if (!value) return isZh ? '时间未知' : 'Unknown';
   const diffSeconds = Math.max(0, Math.floor(Date.now() / 1000) - value);
@@ -329,7 +337,11 @@ export function CodexSessionManager() {
   );
   const groupedSessions = useMemo(() => buildGroups(visibleSessions), [visibleSessions]);
   const allSessionIds = useMemo(
-    () => Array.from(new Set(visibleSessions.map((session) => session.sessionId))),
+    () => Array.from(new Set(
+      visibleSessions
+        .filter(isSessionWritable)
+        .map((session) => session.sessionId),
+    )),
     [visibleSessions],
   );
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -355,7 +367,11 @@ export function CodexSessionManager() {
     [selectedIdSet, visibleSessions],
   );
   useEffect(() => {
-    const visibleIds = new Set(visibleSessions.map((session) => session.sessionId));
+    const visibleIds = new Set(
+      visibleSessions
+        .filter(isSessionWritable)
+        .map((session) => session.sessionId),
+    );
     setSelectedIds((previous) => {
       const next = previous.filter((sessionId) => visibleIds.has(sessionId));
       return next.length === previous.length ? previous : next;
@@ -585,7 +601,11 @@ export function CodexSessionManager() {
       }
 
       const groupCwds = groups.map((group) => group.cwd);
-      const sessionIds = Array.from(new Set(groups.flatMap((group) => group.sessions.map((session) => session.sessionId))));
+      const sessionIds = Array.from(new Set(
+        groups.flatMap((group) => group.sessions
+          .filter(isSessionWritable)
+          .map((session) => session.sessionId)),
+      ));
       if (sessionIds.length === 0) {
         setLoadedTokenGroupCwds((prev) => Array.from(new Set([...prev, ...groupCwds])));
         return;
@@ -1405,14 +1425,15 @@ export function CodexSessionManager() {
   };
 
   const pickSessionInstanceId = (session: CodexSessionRecord): string | null => {
-    if (session.locations.length === 1) {
-      return session.locations[0]?.instanceId ?? null;
+    const locations = writableSessionLocations(session);
+    if (locations.length === 1) {
+      return locations[0]?.instanceId ?? null;
     }
-    if (session.locations.length > 1) {
+    if (locations.length > 1) {
       // Prefer default instance when present; otherwise first location.
       const preferred =
-        session.locations.find((loc) => loc.instanceId === '__default__') ??
-        session.locations[0];
+        locations.find((loc) => loc.instanceId === '__default__') ??
+        locations[0];
       return preferred?.instanceId ?? null;
     }
     return null;
@@ -1426,14 +1447,18 @@ export function CodexSessionManager() {
     event.stopPropagation();
     setMessage(null);
     try {
-      if (session.locations.length > 1) {
+      const locations = writableSessionLocations(session);
+      if (locations.length === 0) {
+        return;
+      }
+      if (locations.length > 1) {
         // Require explicit choice when ambiguous (#1510).
         const chosen = window.prompt(
           t(
             'codex.sessionManager.pickInstancePrompt',
             '该会话存在于多个实例，请输入实例 ID（可在位置列查看）：',
           ),
-          session.locations[0]?.instanceId ?? '',
+          locations[0]?.instanceId ?? '',
         );
         if (!chosen?.trim()) {
           return;
@@ -1458,14 +1483,18 @@ export function CodexSessionManager() {
     event.stopPropagation();
     setMessage(null);
     try {
+      const locations = writableSessionLocations(session);
+      if (locations.length === 0) {
+        return;
+      }
       let instanceId = pickSessionInstanceId(session);
-      if (session.locations.length > 1) {
+      if (locations.length > 1) {
         const chosen = window.prompt(
           t(
             'codex.sessionManager.pickInstancePrompt',
             '该会话存在于多个实例，请输入实例 ID（可在位置列查看）：',
           ),
-          session.locations[0]?.instanceId ?? '',
+          locations[0]?.instanceId ?? '',
         );
         if (!chosen?.trim()) {
           return;
@@ -1719,7 +1748,9 @@ export function CodexSessionManager() {
       {groupedSessions.length > 0 ? (
         <div className="codex-session-manager__list">
           {groupedSessions.map((group) => {
-            const groupSessionIds = group.sessions.map((item) => item.sessionId);
+            const groupSessionIds = group.sessions
+              .filter(isSessionWritable)
+              .map((item) => item.sessionId);
             const allSelected = groupSessionIds.every((id) => selectedIdSet.has(id));
             const isExpanded = expandedGroups.includes(group.cwd);
             const isTokenStatsLoading = loadingTokenGroupSet.has(group.cwd);
@@ -1744,6 +1775,7 @@ export function CodexSessionManager() {
                       type="checkbox"
                       checked={allSelected && groupSessionIds.length > 0}
                       onChange={() => toggleGroupSelection(groupSessionIds)}
+                      disabled={groupSessionIds.length === 0}
                     />
                     <Folder size={16} className="codex-session-folder__icon" />
                     <button
@@ -1762,7 +1794,10 @@ export function CodexSessionManager() {
                 {isExpanded ? (
                   <div className="codex-session-folder__children">
                     {group.sessions.map((session) => {
-                      const hasRunningLocation = session.locations.some((location) => location.running);
+                      const writable = isSessionWritable(session);
+                      const hasRunningLocation = session.locations.some(
+                        (location) => location.readOnly !== true && location.running,
+                      );
                       const tokenText = formatTokenStats(tokenStatsBySessionId[session.sessionId]);
                       return (
                         <div className="codex-session-row" key={session.sessionId}>
@@ -1772,13 +1807,18 @@ export function CodexSessionManager() {
                               type="checkbox"
                               checked={selectedIdSet.has(session.sessionId)}
                               onChange={() => toggleSession(session.sessionId)}
+                              disabled={!writable}
                             />
                             <div className="codex-session-row__content">
                               <span className="codex-session-row__title" title={session.title}>
                                 {session.title || t('codex.sessionManager.untitled', '未命名会话')}
                               </span>
                               <span className="codex-session-row__meta">
-                                {session.locations.map((location) => location.instanceName).join(' / ')}
+                                {session.locations.map((location) => (
+                                  location.readOnly
+                                    ? `${location.instanceName} (${t('codex.sessionManager.locationSshReadOnly', 'SSH 只读')})`
+                                    : location.instanceName
+                                )).join(' / ')}
                                 {hasRunningLocation
                                   ? t('codex.sessionManager.locationRunning', '（运行中）')
                                   : ''}
@@ -1798,24 +1838,28 @@ export function CodexSessionManager() {
                             >
                               {copiedSessionId === session.sessionId ? <Check size={14} /> : <Copy size={14} />}
                             </button>
-                            <button
-                              className="codex-session-row__copy-button"
-                              type="button"
-                              onClick={(event) => void handleOpenSessionLocation(event, session)}
-                              title={t('codex.sessionManager.actions.openLocation', '打开位置')}
-                              aria-label={t('codex.sessionManager.actions.openLocation', '打开位置')}
-                            >
-                              <FolderOpen size={14} />
-                            </button>
-                            <button
-                              className="codex-session-row__copy-button"
-                              type="button"
-                              onClick={(event) => void handleOpenSessionRollout(event, session)}
-                              title={t('codex.sessionManager.actions.openRollout', '打开会话文件')}
-                              aria-label={t('codex.sessionManager.actions.openRollout', '打开会话文件')}
-                            >
-                              <FileText size={14} />
-                            </button>
+                            {writable ? (
+                              <>
+                                <button
+                                  className="codex-session-row__copy-button"
+                                  type="button"
+                                  onClick={(event) => void handleOpenSessionLocation(event, session)}
+                                  title={t('codex.sessionManager.actions.openLocation', '打开位置')}
+                                  aria-label={t('codex.sessionManager.actions.openLocation', '打开位置')}
+                                >
+                                  <FolderOpen size={14} />
+                                </button>
+                                <button
+                                  className="codex-session-row__copy-button"
+                                  type="button"
+                                  onClick={(event) => void handleOpenSessionRollout(event, session)}
+                                  title={t('codex.sessionManager.actions.openRollout', '打开会话文件')}
+                                  aria-label={t('codex.sessionManager.actions.openRollout', '打开会话文件')}
+                                >
+                                  <FileText size={14} />
+                                </button>
+                              </>
+                            ) : null}
                             {tokenText ? (
                               <span className="codex-session-row__tokens" title={t('codex.sessionManager.labels.tokenUsage', 'Token使用')}>
                                 {tokenText}

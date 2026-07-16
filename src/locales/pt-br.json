@@ -2530,6 +2530,7 @@
         "tokenUsage": "Uso de tokens"
       },
       "locationRunning": " (em execução)",
+      "locationSshReadOnly": "SSH somente leitura",
       "untitled": "Sessão sem título",
       "restoreModal": {
         "title": "Lixeira",

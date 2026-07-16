@@ -3787,7 +3787,7 @@
       "stageBundle": "鉴权包哈希",
       "stageProvider": "Provider 配置",
       "stageState": "状态库",
-      "stateRepaired": "状态库已对齐 {{rows}} 行（provider {{providerRows}}，可见性 {{visibilityRows}}），备份已校验",
+      "stateRepaired": "状态库已对齐 {{rows}} 行（provider {{providerRows}}，可见性 {{visibilityRows}}），rollout 已修复 {{rolloutFiles}} 个，备份已校验",
       "stateDatabaseMissing": "远端尚无状态库，无历史需要对齐",
       "reloadStatus": {
         "daemon-restarted": "app-server daemon 已重启",

@@ -3787,7 +3787,7 @@
       "stageBundle": "auth bundle hashes",
       "stageProvider": "provider config",
       "stageState": "state DB",
-      "stateRepaired": "State DB aligned {{rows}} rows (provider {{providerRows}}, visibility {{visibilityRows}}); backup verified",
+      "stateRepaired": "State DB aligned {{rows}} rows (provider {{providerRows}}, visibility {{visibilityRows}}); repaired {{rolloutFiles}} rollouts; backup verified",
       "stateDatabaseMissing": "No remote state DB; no history to align",
       "reloadStatus": {
         "daemon-restarted": "app-server daemon restarted",

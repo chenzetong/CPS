@@ -7,11 +7,15 @@ export interface SshCodexStateRepairStatus {
   backup_path: string | null;
   provider_schema_supported: boolean;
   visibility_schema_supported: boolean;
+  rollout_schema_supported: boolean;
   provider_rows_to_repair: number;
   visibility_rows_to_repair: number;
+  rollout_files_to_repair: number;
   rows_repaired: number;
+  rollout_files_repaired: number;
   provider_rows_remaining: number;
   visibility_rows_remaining: number;
+  rollout_files_remaining: number;
   quick_check: string | null;
 }
 

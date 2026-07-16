@@ -45,11 +45,19 @@ pub struct SshCodexStateRepairStatus {
     pub backup_path: Option<String>,
     pub provider_schema_supported: bool,
     pub visibility_schema_supported: bool,
+    #[serde(default)]
+    pub rollout_schema_supported: bool,
     pub provider_rows_to_repair: u64,
     pub visibility_rows_to_repair: u64,
+    #[serde(default)]
+    pub rollout_files_to_repair: u64,
     pub rows_repaired: u64,
+    #[serde(default)]
+    pub rollout_files_repaired: u64,
     pub provider_rows_remaining: u64,
     pub visibility_rows_remaining: u64,
+    #[serde(default)]
+    pub rollout_files_remaining: u64,
     pub quick_check: Option<String>,
 }
 

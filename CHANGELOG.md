@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Fixed Codex multi-instance shared-directory creation failing under standard Windows permissions or cross-drive paths**: shared directories now use an in-process native NTFS junction API instead of PowerShell or `mklink`; if junction creation is unavailable, Cockpit safely falls back to copying the directory and refuses to overwrite a non-empty target.
 - **Fixed the main window briefly appearing and then moving off-screen during position restore**: minimized-window coordinates are no longer saved, and restored positions must overlap a current display or they are cleared and the window is centered.
 - **Fixed managed Codex instances from the Windows Store being able to open the default account by mistake**: when `CODEX_HOME` and the instance data directory cannot be passed reliably, Cockpit no longer falls back to Store AppUserModelID activation or an arbitrary default Codex process; launch is blocked with guidance to switch that instance to CLI mode.
 - **Fixed pending or incomplete OAuth accounts being able to enter the Codex API Service**: these accounts remain visible with an explanation in the member picker but cannot be selected until authorization completes; the backend pool applies the same eligibility rule so accounts that cannot serve API traffic are not persisted.

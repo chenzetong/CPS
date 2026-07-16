@@ -1,7 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-#[cfg(target_os = "windows")]
-use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
 use chrono::Utc;
@@ -27,8 +25,6 @@ const CODEX_SHARED_VENDOR_IMPORTS_SKILLS_DIR: &str = "vendor_imports/skills";
 const CODEX_WINDOWS_APP_DATA_DIR_NAME: &str = "codex-app-data";
 #[cfg(target_os = "macos")]
 const CODEX_MACOS_APP_DATA_DIR_NAME: &str = "codex-app-data";
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(target_os = "windows")]
 const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
 
@@ -288,85 +284,65 @@ fn create_directory_symlink(source: &Path, target: &Path) -> Result<(), String> 
 
 #[cfg(windows)]
 fn create_directory_symlink(source: &Path, target: &Path) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
+    create_directory_shared_link_or_copy(
+        source,
+        target,
+        |source, target| junction::create(source, target).map_err(|e| e.to_string()),
+        |source, target| instance_store::copy_dir_recursive(source, target),
+    )
+}
 
-    fn escape_powershell_single_quoted(value: &str) -> String {
-        value.replace('\'', "''")
+#[cfg(windows)]
+fn create_directory_shared_link_or_copy<J, C>(
+    source: &Path,
+    target: &Path,
+    create_junction: J,
+    copy_directory: C,
+) -> Result<(), String>
+where
+    J: FnOnce(&Path, &Path) -> Result<(), String>,
+    C: FnOnce(&Path, &Path) -> Result<(), String>,
+{
+    if let Err(junction_error) = create_junction(source, target) {
+        modules::logger::log_warn(&format!(
+            "Windows directory junction failed, copying shared directory instead: source={}, target={}, error={}",
+            display_abs_path(source),
+            display_abs_path(target),
+            junction_error
+        ));
+        prepare_directory_copy_fallback_target(target)?;
+        return copy_directory(source, target).map_err(|copy_error| {
+            format!(
+                "创建目录共享存储失败: junction_error={}, copy_error={}, source={}, target={}",
+                junction_error,
+                copy_error,
+                display_abs_path(source),
+                display_abs_path(target)
+            )
+        });
     }
+    Ok(())
+}
 
-    fn quote_cmd_arg(value: &Path) -> String {
-        format!("\"{}\"", value.to_string_lossy().replace('"', "\"\""))
-    }
-
-    fn output_detail(stdout: &[u8], stderr: &[u8]) -> String {
-        let stdout = String::from_utf8_lossy(stdout);
-        let stderr = String::from_utf8_lossy(stderr);
-        [stdout.trim(), stderr.trim()]
-            .into_iter()
-            .filter(|value| !value.is_empty())
-            .collect::<Vec<_>>()
-            .join("; ")
-    }
-
-    let source_text = source.to_string_lossy();
-    let target_text = target.to_string_lossy();
-    let script = format!(
-        "$ErrorActionPreference='Stop';\n\
-         [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);\n\
-         $target='{}';\n\
-         $source='{}';\n\
-         New-Item -ItemType Junction -Path $target -Target $source -ErrorAction Stop | Out-Null",
-        escape_powershell_single_quoted(&target_text),
-        escape_powershell_single_quoted(&source_text)
-    );
-    let output = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &script,
-        ])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("创建目录共享联接失败: {}", e))?;
-
-    if output.status.success() {
+#[cfg(windows)]
+fn prepare_directory_copy_fallback_target(target: &Path) -> Result<(), String> {
+    let Ok(metadata) = fs::symlink_metadata(target) else {
         return Ok(());
+    };
+    if is_shared_directory_link(&metadata) {
+        return remove_symlink(target);
     }
-    let powershell_status = output.status;
-    let powershell_detail = output_detail(&output.stdout, &output.stderr);
-
-    let mklink_command = format!(
-        "mklink /J {} {}",
-        quote_cmd_arg(target),
-        quote_cmd_arg(source)
-    );
-    let output = Command::new("cmd")
-        .args(["/D", "/C", &mklink_command])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("创建目录共享联接失败: {}", e))?;
-
-    if output.status.success() {
-        return Ok(());
+    if metadata.is_dir() && is_directory_empty(target)? {
+        return fs::remove_dir(target).map_err(|e| {
+            format!(
+                "清理目录联接创建后残留的空目录失败 ({}): {}",
+                display_abs_path(target),
+                e
+            )
+        });
     }
-
-    let mklink_detail = output_detail(&output.stdout, &output.stderr);
     Err(format!(
-        "创建目录共享联接失败: powershell_status={}, powershell_detail={}, mklink_status={}, mklink_detail={}, source={}, target={}",
-        powershell_status,
-        powershell_detail,
-        output.status,
-        mklink_detail,
-        display_abs_path(source),
+        "目录联接创建失败后目标路径已存在且非空，拒绝覆盖: {}",
         display_abs_path(target)
     ))
 }

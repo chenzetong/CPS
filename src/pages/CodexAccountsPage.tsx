@@ -192,6 +192,7 @@ import {
   isCodexAdditionalQuotaVisibleByDefault,
   isCodexCodeReviewQuotaVisibleByDefault,
 } from "../utils/codexPreferences";
+import { splitCodexImportPayloads } from "../utils/codexJsonImportProgress";
 import { emitAccountsChanged } from "../utils/accountSyncEvents";
 import {
   CODEX_OVERVIEW_FILTER_FIELDS,
@@ -1405,6 +1406,7 @@ export function CodexAccountsPage() {
     tokenInput,
     setTokenInput,
     importing,
+    setImporting,
     openAddModal,
     closeAddModal,
     externalImportProgress,
@@ -1479,6 +1481,10 @@ export function CodexAccountsPage() {
   );
   const [batchImportCheckQuota, setBatchImportCheckQuota] = useState(false);
   const [batchImportTagsInput, setBatchImportTagsInput] = useState("");
+  const [tokenImportProgress, setTokenImportProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [batchDeleteJob, setBatchDeleteJob] =
     useState<CodexBatchDeleteJobStatus | null>(null);
   const [batchDeleteBusy, setBatchDeleteBusy] = useState(false);
@@ -1520,6 +1526,10 @@ export function CodexAccountsPage() {
     await fetchCodexAccounts({ allowEmpty: allowEmptyAccounts });
     await fetchCodexCurrentAccount({ allowEmpty: allowEmptyCurrent });
     await reloadCodexGroups();
+    await emitAccountsChanged({
+      platformId: "codex",
+      reason: "delete",
+    });
   }, [
     fetchCodexAccounts,
     fetchCodexCurrentAccount,
@@ -1583,17 +1593,16 @@ export function CodexAccountsPage() {
     let disposed = false;
     const clearCompletedJob = async () => {
       try {
-        await invoke("clear_codex_batch_delete_job", {
-          jobId: batchDeleteJob.jobId,
-        });
+        await codexService.clearCodexBatchDelete(batchDeleteJob.jobId);
       } catch {
         // ignore cleanup failures
       }
       if (disposed) return;
+      await refreshAccountsAfterBatchDelete();
+      if (disposed) return;
       batchDeleteRemoveIdsRef.current = new Set();
       batchDeleteRefreshedCompletedRef.current = 0;
       setBatchDeleteJob(null);
-      await refreshAccountsAfterBatchDelete();
     };
     void clearCompletedJob();
     return () => {
@@ -1775,6 +1784,7 @@ export function CodexAccountsPage() {
   );
 
   const closeCodexAddModal = useCallback(() => {
+    if (importing) return;
     setReauthTargetAccount(null);
     setCodexAddTargetGroupId(null);
     setReauthEmailCopied(false);
@@ -1783,7 +1793,7 @@ export function CodexAccountsPage() {
     setPendingOAuthFieldErrors({});
     setPendingOAuthNoteModalOpen(false);
     closeAddModal();
-  }, [closeAddModal]);
+  }, [closeAddModal, importing]);
 
   // Keep the shared modal independent from the currently visible Codex page.
   useEffect(() => {
@@ -6420,10 +6430,42 @@ export function CodexAccountsPage() {
       );
       return;
     }
+    const payloads = splitCodexImportPayloads(trimmed);
+    if (payloads.length === 0) {
+      page.setAddStatus("error");
+      page.setAddMessage(t("common.shared.token.empty", "请输入 Token 或 JSON"));
+      return;
+    }
+
+    setImporting(true);
+    setTokenImportProgress({ current: 0, total: payloads.length });
     page.setAddStatus("loading");
-    page.setAddMessage(t("common.shared.token.importing", "正在导入..."));
     try {
-      const imported = await codexService.importCodexFromJson(trimmed);
+      const imported: CodexAccount[] = [];
+      const failures: string[] = [];
+      for (let index = 0; index < payloads.length; index += 1) {
+        const current = index + 1;
+        setTokenImportProgress({ current, total: payloads.length });
+        page.setAddMessage(
+          t("common.shared.externalImport.statusImporting", {
+            current,
+            total: payloads.length,
+            defaultValue: "正在导入第 {{current}} / {{total}} 个账号",
+          }),
+        );
+        try {
+          imported.push(
+            ...(await codexService.importCodexFromJson(payloads[index])),
+          );
+        } catch (error) {
+          failures.push(
+            `${current}: ${String(error).replace(/^Error:\s*/, "")}`,
+          );
+        }
+      }
+      if (imported.length === 0) {
+        throw new Error(failures.join("; ") || "无法解析导入内容");
+      }
       // 待授权账号若带 2FA 秘钥，同步写入本地 MFA 速查
       for (const account of imported) {
         const secret = account.two_factor_secret?.trim();
@@ -6444,16 +6486,29 @@ export function CodexAccountsPage() {
           reason: "import",
         });
       }
-      page.setAddStatus("success");
-      page.setAddMessage(
-        t(
-          "common.shared.token.importSuccessMsg",
-          "成功导入 {{count}} 个账号",
-        ).replace("{{count}}", String(imported.length)),
-      );
       try {
         const syncResult = await syncImportedAccountsToApiService(
           imported.map((account) => account.id),
+        );
+        if (failures.length > 0) {
+          page.setAddStatus("error");
+          page.setAddMessage(
+            t("codex.token.importPartial", {
+              success: imported.length,
+              failed: failures.length,
+              errors: failures.slice(0, 3).join("; "),
+              defaultValue:
+                "导入完成：成功 {{success}} 个，失败 {{failed}} 个。{{errors}}",
+            }),
+          );
+          return;
+        }
+        page.setAddStatus("success");
+        page.setAddMessage(
+          t(
+            "common.shared.token.importSuccessMsg",
+            "成功导入 {{count}} 个账号",
+          ).replace("{{count}}", String(imported.length)),
         );
         if (syncResult && syncResult.syncedAccountIds.length > 0) {
           closeAddModal();
@@ -6479,6 +6534,9 @@ export function CodexAccountsPage() {
           String(e).replace(/^Error:\s*/, ""),
         ),
       );
+    } finally {
+      setImporting(false);
+      setTokenImportProgress(null);
     }
   };
 
@@ -9569,6 +9627,7 @@ export function CodexAccountsPage() {
         tone: "success",
       });
     } catch (error) {
+      batchDeleteRemoveIdsRef.current = new Set();
       setBatchDeleteModalError(
         t("messages.actionFailed", {
           action: t("common.delete"),
@@ -9592,9 +9651,9 @@ export function CodexAccountsPage() {
     if (!batchDeleteJob?.jobId || batchDeleteBusy) return;
     setBatchDeleteBusy(true);
     try {
-      setBatchDeleteJob(
-        await codexService.pauseCodexBatchDelete(batchDeleteJob.jobId),
-      );
+      const job = await codexService.pauseCodexBatchDelete(batchDeleteJob.jobId);
+      setBatchDeleteJob(job);
+      await refreshAccountsAfterBatchDelete();
     } catch (error) {
       setMessage({
         text: t("codex.batchDelete.actionFailed", {
@@ -9605,7 +9664,13 @@ export function CodexAccountsPage() {
     } finally {
       setBatchDeleteBusy(false);
     }
-  }, [batchDeleteBusy, batchDeleteJob?.jobId, setMessage, t]);
+  }, [
+    batchDeleteBusy,
+    batchDeleteJob?.jobId,
+    refreshAccountsAfterBatchDelete,
+    setMessage,
+    t,
+  ]);
 
   const handleResumeBatchDelete = useCallback(async () => {
     if (!batchDeleteJob?.jobId || batchDeleteBusy) return;
@@ -9652,10 +9717,10 @@ export function CodexAccountsPage() {
     setBatchDeleteBusy(true);
     try {
       await codexService.clearCodexBatchDelete(batchDeleteJob.jobId);
+      await refreshAccountsAfterBatchDelete();
+      batchDeleteRemoveIdsRef.current = new Set();
       batchDeleteRefreshedCompletedRef.current = 0;
       setBatchDeleteJob(null);
-      await store.fetchAccounts();
-      await reloadCodexGroups();
     } catch (error) {
       setMessage({
         text: t("codex.batchDelete.actionFailed", {
@@ -9669,9 +9734,8 @@ export function CodexAccountsPage() {
   }, [
     batchDeleteBusy,
     batchDeleteJob?.jobId,
-    reloadCodexGroups,
+    refreshAccountsAfterBatchDelete,
     setMessage,
-    store,
     t,
   ]);
 
@@ -14211,6 +14275,7 @@ export function CodexAccountsPage() {
                   <button
                     className="modal-close"
                     onClick={closeCodexAddModal}
+                    disabled={importing}
                     aria-label={t("common.close", "关闭")}
                   >
                     <X />
@@ -14220,6 +14285,7 @@ export function CodexAccountsPage() {
                   <button
                     className={`modal-tab ${addTab === "oauth" ? "active" : ""}`}
                     onClick={() => openCodexAddModal("oauth")}
+                    disabled={importing}
                   >
                     <Globe size={14} />
                     <span className="modal-tab-label">
@@ -14229,6 +14295,7 @@ export function CodexAccountsPage() {
                   <button
                     className={`modal-tab ${addTab === "token" ? "active" : ""}`}
                     onClick={() => openCodexAddModal("token")}
+                    disabled={importing}
                   >
                     <FileText size={14} />
                     <span className="modal-tab-label">
@@ -14238,6 +14305,7 @@ export function CodexAccountsPage() {
                   <button
                     className={`modal-tab ${addTab === "apikey" ? "active" : ""}`}
                     onClick={() => openCodexAddModal("apikey")}
+                    disabled={importing}
                   >
                     <KeyRound size={14} />
                     <span className="modal-tab-label">
@@ -14247,6 +14315,7 @@ export function CodexAccountsPage() {
                   <button
                     className={`modal-tab ${addTab === "import" ? "active" : ""}`}
                     onClick={() => openCodexAddModal("import")}
+                    disabled={importing}
                   >
                     <Database size={14} />
                     <span className="modal-tab-label">
@@ -15051,6 +15120,7 @@ export function CodexAccountsPage() {
                         className="token-input"
                         value={tokenInput}
                         onChange={(e) => setTokenInput(e.target.value)}
+                        disabled={importing}
                         placeholder={t(
                           "codex.token.placeholder",
                           '示例：session JSON、accessToken、at-… 个人访问令牌、Sub2API JSON，或 {"personal_access_token":"at-..."}',
@@ -15093,7 +15163,9 @@ export function CodexAccountsPage() {
                         ) : (
                           <Download size={16} />
                         )}
-                        {t("common.shared.token.import", "Import")}
+                        {tokenImportProgress
+                          ? `${tokenImportProgress.current}/${tokenImportProgress.total}`
+                          : t("common.shared.token.import", "Import")}
                       </button>
                     </div>
                   )}

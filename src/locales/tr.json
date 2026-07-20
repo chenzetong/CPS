@@ -226,7 +226,7 @@
       "desc": "Bu alan tüm sayfalarda sağ üstte sabitlenir ve kampanya ya da marka reklamları için uygundur.",
       "action": "Ayrıntıları görüntüle"
     },
-    "appName": "Cockpit Tools​",
+    "appName": "CPS​",
     "collapse": "Daralt",
     "confirmDelete": "Silmeyi Onayla",
     "confirmDeleteTag": "Etiket Silmeyi Onayla",
@@ -278,12 +278,12 @@
   },
   "sponsors": {
     "pageTitle": "Sponsorlar",
-    "pageDesc": "Cockpit Tools'u destekleyen sponsorlara teşekkür ederiz.",
+    "pageDesc": "CPS'u destekleyen sponsorlara teşekkür ederiz.",
     "loading": "Sponsorlar yükleniyor...",
     "emptyTitle": "Henüz sponsor yok",
     "emptyDesc": "Uzak sponsor modülü şu anda devre dışı.",
     "listAriaLabel": "Sponsor listesi",
-    "defaultDescription": "Cockpit Tools'u desteklediğiniz için teşekkürler.",
+    "defaultDescription": "CPS'u desteklediğiniz için teşekkürler.",
     "openSponsor": "Aç"
   },
   "platformLayout": {
@@ -572,7 +572,7 @@
   },
   "settings": {
     "title": "Uygulama Ayarları",
-    "subtitle": "Cockpit Tools deneyiminizi özelleştirin.",
+    "subtitle": "CPS deneyiminizi özelleştirin.",
     "tabs": {
       "general": "Genel",
       "network": "Ağ",
@@ -654,7 +654,7 @@
       "codexSyncWsl": "Codex'i WSL ile eşitle",
       "codexSyncWslDesc": "Varsayılan Codex hesabı değiştirildikten sonra auth.json ve config.toml WSL içindeki Codex dizinine de yazılır.",
       "codexAppUiInjection": "API hizmeti kotası",
-      "codexAppUiInjectionDesc": "Codex örneği yeniden başlatıldıktan sonra Cockpit Tools API hizmetinin hesap sayısını, haftalık ve 5 saatlik kotasını oluşturucunun altında gösterir. Cockpit Tools arka planda çalışmaya devam etmelidir; uygulama tamamen kapatıldığında veya ağ kullanılamadığında güncellemeler durur.",
+      "codexAppUiInjectionDesc": "Codex örneği yeniden başlatıldıktan sonra CPS API hizmetinin hesap sayısını, haftalık ve 5 saatlik kotasını oluşturucunun altında gösterir. CPS arka planda çalışmaya devam etmelidir; uygulama tamamen kapatıldığında veya ağ kullanılamadığında güncellemeler durur.",
       "codexAppUiInjectionPoolLabel": "Hesaplar",
       "codexAppUiInjectionWeeklyLabel": "Hafta",
       "codexAppUiInjectionFiveHourLabel": "5 sa",
@@ -744,7 +744,7 @@
       "sideNavLayoutClassic": "Klasik Düzen",
       "antigravityDualSwitchNoRestart": "Yeniden başlatmadan çift geçiş",
       "antigravityDualSwitchNoRestartDesc": "Hesap değiştirirken yerel hesap verisi yazımı ve eklentinin kesintisiz geçişi tek akışta yürütülür; Antigravity IDE yeniden başlatılmaz.",
-      "appAutoLaunch": "Oturum açıldığında Cockpit Tools'u başlat",
+      "appAutoLaunch": "Oturum açıldığında CPS'u başlat",
       "appAutoLaunchDesc": "Sistem oturumundan sonra uygulamayı otomatik başlat",
       "startupWakeupDisabled": "Devre dışı",
       "startupWakeupImmediate": "Hemen uyandır",
@@ -888,7 +888,7 @@
       "proxyUrlRequired": "Genel proxy etkin olduğunda proxy URL boş olamaz."
     },
     "about": {
-      "appName": "Cockpit Tools​",
+      "appName": "CPS​",
       "slogan": "Profesyonel Hesap Yönetimi Çözümü",
       "author": "Yazar",
       "wechat": "WeChat​",
@@ -1831,7 +1831,7 @@
     },
     "exportFormat": {
       "label": "Dışa aktarma biçimi",
-      "cockpitTools": "Cockpit Tools​",
+      "cockpitTools": "CPS​",
       "sub2api": "sub2api biçimi",
       "cpa": "cpa biçimi",
       "downloadAll": "Tümünü indir",
@@ -1913,8 +1913,8 @@
       "testAuthFailed": "Hizmete erişiliyor ancak kimlik doğrulama başarısız: {{detail}}. API hizmeti anahtarını veya hesap oturum durumunu kontrol edin.",
       "testServiceUnavailable": "Hizmete erişiliyor ancak şu anda kullanılamıyor: {{detail}}. Hizmetin etkin olup olmadığını, hesap koleksiyonunun boş olup olmadığını veya hesapların kullanılabilirliğini kontrol edin.",
       "gatewayErrors": {
-        "authUnavailable": "Şu anda yönlendirilebilir hesap yok. Hesap beklemede, yetkisiz veya kota sınırlı olabilir. Cockpit Tools API hizmetinde durumunu kontrol edin.",
-        "authNotFound": "Hesap havuzunda kullanılabilir hesap yapılandırılmamış. Cockpit Tools API hizmetinde hesap ekleyin veya etkinleştirin."
+        "authUnavailable": "Şu anda yönlendirilebilir hesap yok. Hesap beklemede, yetkisiz veya kota sınırlı olabilir. CPS API hizmetinde durumunu kontrol edin.",
+        "authNotFound": "Hesap havuzunda kullanılabilir hesap yapılandırılmamış. CPS API hizmetinde hesap ekleyin veya etkinleştirin."
       },
       "testRateLimited": "Hizmete erişiliyor ancak upstream hız sınırında veya kota tükendi: {{detail}}.",
       "testHttpFailed": "Hizmete erişiliyor ancak istek HTTP {{status}} döndürdü: {{detail}}.",
@@ -3642,6 +3642,19 @@
       "syncNow": "Şimdi senkronize et",
       "connectionOk": "Bağlı",
       "syncVerified": "SSH senkronizasyonu doğrulandı",
+      "syncVerifiedDetail": "Sağlayıcı {{provider}} doğrulandı · {{state}} · {{reload}}",
+      "syncPartialFailure": "{{error}} · Tamamlanan: {{stages}}",
+      "stageBundle": "kimlik doğrulama paketi karmaları",
+      "stageProvider": "sağlayıcı yapılandırması",
+      "stageState": "durum veritabanı",
+      "stateRepaired": "Durum veritabanında {{rows}} satır hizalandı (sağlayıcı {{providerRows}}, görünürlük {{visibilityRows}}); {{rolloutFiles}} rollout onarıldı; yedek doğrulandı",
+      "stateDatabaseMissing": "Uzak durum veritabanı yok; hizalanacak geçmiş yok",
+      "reloadStatus": {
+        "daemon-restarted": "app-server hizmeti yeniden başlatıldı",
+        "app-server-terminated": "app-server yeniden bağlanmak için durduruldu",
+        "no-app-server": "çalışan app-server yok",
+        "unknown": "app-server durumu bilinmiyor"
+      },
       "syncFailed": "SSH senkronizasyonu başarısız oldu",
       "syncedAs": "Senkronize {{email}} · {{time}}",
       "neverSynced": "Henüz senkronize edilmedi",
@@ -5013,7 +5026,7 @@
       "backToCurrent": "Geri",
       "switchToThisAccount": "Geç",
       "openDetails": "Ayrıntıları aç",
-      "openCockpitTools": "Cockpit Tools'u aç"
+      "openCockpitTools": "CPS'u aç"
     },
     "empty": {
       "title": "Hesap yok",
@@ -5137,7 +5150,7 @@
   },
   "relay": {
     "pageTitle": "Özel aktarım",
-    "pageDesc": "Cockpit Tools kullanıcıları için Codex API Key hesaplarıyla kullanılabilen iş ortaklığı API servisi.",
+    "pageDesc": "CPS kullanıcıları için Codex API Key hesaplarıyla kullanılabilen iş ortaklığı API servisi.",
     "loading": "Aktarım yükleniyor...",
     "emptyTitle": "Aktarım kapalı",
     "emptyDesc": "Uzak yapılandırma özel aktarımı etkinleştirmedi.",

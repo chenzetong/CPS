@@ -226,7 +226,7 @@
       "desc": "تُثبَّت هذه المنطقة في أعلى يمين جميع الصفحات لعرض الحملات أو إعلانات العلامة التجارية.",
       "action": "عرض التفاصيل"
     },
-    "appName": "Cockpit Tools​",
+    "appName": "CPS​",
     "collapse": "طي",
     "confirmDelete": "تأكيد الحذف",
     "confirmDeleteTag": "تأكيد حذف الوسم",
@@ -257,7 +257,7 @@
       "backToCurrent": "رجوع",
       "switchToThisAccount": "تبديل",
       "openDetails": "فتح التفاصيل",
-      "openCockpitTools": "فتح Cockpit Tools"
+      "openCockpitTools": "فتح CPS"
     },
     "empty": {
       "title": "لا توجد حسابات",
@@ -325,12 +325,12 @@
   },
   "sponsors": {
     "pageTitle": "الرعاة",
-    "pageDesc": "شكرًا للرعاة التاليين على دعم Cockpit Tools.",
+    "pageDesc": "شكرًا للرعاة التاليين على دعم CPS.",
     "loading": "جارٍ تحميل الرعاة...",
     "emptyTitle": "لا يوجد رعاة حاليًا",
     "emptyDesc": "وحدة الرعاة البعيدة معطّلة حاليًا.",
     "listAriaLabel": "قائمة الرعاة",
-    "defaultDescription": "شكرًا لدعم Cockpit Tools.",
+    "defaultDescription": "شكرًا لدعم CPS.",
     "openSponsor": "فتح"
   },
   "platformLayout": {
@@ -619,7 +619,7 @@
   },
   "settings": {
     "title": "إعدادات التطبيق",
-    "subtitle": "قم بتخصيص تجربة Antigravity Cockpit Tools الخاصة بك.",
+    "subtitle": "قم بتخصيص تجربة Antigravity CPS الخاصة بك.",
     "tabs": {
       "general": "عام",
       "network": "خدمات الشبكة",
@@ -698,7 +698,7 @@
       "codexSyncWsl": "مزامنة Codex مع WSL",
       "codexSyncWslDesc": "بعد تبديل حساب Codex الافتراضي، تتم كتابة auth.json و config.toml أيضًا إلى مجلد إعدادات Codex في WSL.",
       "codexAppUiInjection": "عرض حصة خدمة API",
-      "codexAppUiInjectionDesc": "بعد إعادة تشغيل مثيل Codex، اعرض عدد حسابات خدمة API في Cockpit Tools وحصتي الأسبوع و5 ساعات أسفل منطقة الكتابة. يجب إبقاء Cockpit Tools قيد التشغيل في الخلفية؛ يتوقف التحديث عند إغلاقه تمامًا أو عند عدم توفر الشبكة.",
+      "codexAppUiInjectionDesc": "بعد إعادة تشغيل مثيل Codex، اعرض عدد حسابات خدمة API في CPS وحصتي الأسبوع و5 ساعات أسفل منطقة الكتابة. يجب إبقاء CPS قيد التشغيل في الخلفية؛ يتوقف التحديث عند إغلاقه تمامًا أو عند عدم توفر الشبكة.",
       "codexAppUiInjectionPoolLabel": "الحسابات",
       "codexAppUiInjectionWeeklyLabel": "أسبوع",
       "codexAppUiInjectionFiveHourLabel": "5 س",
@@ -788,7 +788,7 @@
       "sideNavLayoutClassic": "التخطيط الكلاسيكي",
       "antigravityDualSwitchNoRestart": "تبديل ثنائي بدون إعادة تشغيل",
       "antigravityDualSwitchNoRestartDesc": "عند تبديل الحساب، يتم تنفيذ كتابة بيانات الحساب محليًا والتبديل السلس عبر الإضافة في تدفق واحد، دون إعادة تشغيل Antigravity IDE.",
-      "appAutoLaunch": "تشغيل Cockpit Tools عند تسجيل الدخول",
+      "appAutoLaunch": "تشغيل CPS عند تسجيل الدخول",
       "appAutoLaunchDesc": "تشغيل التطبيق تلقائيًا بعد تسجيل الدخول إلى النظام",
       "startupWakeupDisabled": "معطل",
       "startupWakeupImmediate": "تنبيه فوري",
@@ -935,7 +935,7 @@
       "proxyUrlRequired": "لا يمكن أن يكون عنوان الوكيل فارغًا عند تفعيل الوكيل العام."
     },
     "about": {
-      "appName": "Cockpit Tools​",
+      "appName": "CPS​",
       "slogan": "حل احترافي لإدارة الحسابات",
       "author": "المؤلف الرئيسي",
       "wechat": "حساب WeChat الرسمي",
@@ -1878,7 +1878,7 @@
     },
     "exportFormat": {
       "label": "تنسيق التصدير",
-      "cockpitTools": "Cockpit Tools​",
+      "cockpitTools": "CPS​",
       "sub2api": "تنسيق sub2api",
       "cpa": "تنسيق cpa",
       "downloadAll": "تنزيل الكل",
@@ -1960,8 +1960,8 @@
       "testAuthFailed": "الخدمة قابلة للوصول، لكن المصادقة فشلت: {{detail}}. تحقق من مفتاح خدمة API أو حالة تسجيل الدخول للحساب.",
       "testServiceUnavailable": "الخدمة قابلة للوصول، لكنها غير متاحة حاليًا: {{detail}}. تحقق من تفعيل الخدمة، أو من أن مجموعة الحسابات ليست فارغة، أو من صلاحية الحسابات.",
       "gatewayErrors": {
-        "authUnavailable": "لا يوجد حاليًا حساب قابل للتوجيه. قد يكون الحساب في فترة تهدئة أو بلا مصادقة أو مقيّدًا بالحصّة. تحقّق من حالته في خدمة API داخل Cockpit Tools.",
-        "authNotFound": "لا يوجد حساب صالح مُعدّ في مجموعة الحسابات. أضف حسابًا أو فعّله في خدمة API داخل Cockpit Tools."
+        "authUnavailable": "لا يوجد حاليًا حساب قابل للتوجيه. قد يكون الحساب في فترة تهدئة أو بلا مصادقة أو مقيّدًا بالحصّة. تحقّق من حالته في خدمة API داخل CPS.",
+        "authNotFound": "لا يوجد حساب صالح مُعدّ في مجموعة الحسابات. أضف حسابًا أو فعّله في خدمة API داخل CPS."
       },
       "testRateLimited": "الخدمة قابلة للوصول، لكن upstream مقيّد أو الحصة نفدت: {{detail}}.",
       "testHttpFailed": "الخدمة قابلة للوصول، لكن الطلب أعاد HTTP {{status}}: {{detail}}.",
@@ -3689,6 +3689,19 @@
       "syncNow": "مزامنة الآن",
       "connectionOk": "متصل",
       "syncVerified": "تم التحقق من مزامنة SSH",
+      "syncVerifiedDetail": "تم التحقق من الموفر {{provider}} · {{state}} · {{reload}}",
+      "syncPartialFailure": "{{error}} · المكتمل: {{stages}}",
+      "stageBundle": "تجزئات حزمة المصادقة",
+      "stageProvider": "إعدادات الموفر",
+      "stageState": "قاعدة بيانات الحالة",
+      "stateRepaired": "تمت محاذاة {{rows}} صفًا في قاعدة الحالة (الموفر {{providerRows}}، الظهور {{visibilityRows}})؛ تم إصلاح {{rolloutFiles}} ملفات طرح؛ تم التحقق من النسخة الاحتياطية",
+      "stateDatabaseMissing": "لا توجد قاعدة حالة بعيدة؛ لا يوجد سجل للمحاذاة",
+      "reloadStatus": {
+        "daemon-restarted": "أُعيد تشغيل خدمة app-server",
+        "app-server-terminated": "توقف app-server لإعادة الاتصال",
+        "no-app-server": "لا توجد خدمة app-server قيد التشغيل",
+        "unknown": "حالة app-server غير معروفة"
+      },
       "syncFailed": "فشلت مزامنة SSH",
       "syncedAs": "تمت المزامنة {{email}} · {{time}}",
       "neverSynced": "لم تتم المزامنة بعد",
@@ -5137,7 +5150,7 @@
   },
   "relay": {
     "pageTitle": "ترحيل حصري",
-    "pageDesc": "خدمة API شريكة لمستخدمي Cockpit Tools ويمكن استخدامها مع حسابات Codex API Key.",
+    "pageDesc": "خدمة API شريكة لمستخدمي CPS ويمكن استخدامها مع حسابات Codex API Key.",
     "loading": "جارٍ تحميل الترحيل...",
     "emptyTitle": "الترحيل غير مفعّل",
     "emptyDesc": "لم تفعّل الإعدادات البعيدة خدمة الترحيل الحصرية.",

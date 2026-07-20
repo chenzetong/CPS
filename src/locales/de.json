@@ -226,7 +226,7 @@
       "desc": "Dieser Bereich ist auf allen Seiten oben rechts fixiert und eignet sich für Kampagnen oder Markenanzeigen.",
       "action": "Details ansehen"
     },
-    "appName": "Cockpit Tools​",
+    "appName": "CPS​",
     "collapse": "Einklappen",
     "confirmDelete": "Löschen bestätigen",
     "confirmDeleteTag": "Tag-Löschung bestätigen",
@@ -278,12 +278,12 @@
   },
   "sponsors": {
     "pageTitle": "Sponsoren",
-    "pageDesc": "Vielen Dank an diese Sponsoren für die Unterstützung von Cockpit Tools.",
+    "pageDesc": "Vielen Dank an diese Sponsoren für die Unterstützung von CPS.",
     "loading": "Sponsoren werden geladen...",
     "emptyTitle": "Noch keine Sponsoren",
     "emptyDesc": "Das Remote-Sponsorenmodul ist derzeit deaktiviert.",
     "listAriaLabel": "Sponsorenliste",
-    "defaultDescription": "Danke für die Unterstützung von Cockpit Tools.",
+    "defaultDescription": "Danke für die Unterstützung von CPS.",
     "openSponsor": "Öffnen"
   },
   "platformLayout": {
@@ -572,7 +572,7 @@
   },
   "settings": {
     "title": "App-Einstellungen",
-    "subtitle": "Passen Sie Ihre Cockpit Tools Erfahrung an.",
+    "subtitle": "Passen Sie Ihre CPS Erfahrung an.",
     "tabs": {
       "general": "Allgemein",
       "network": "Netzwerk",
@@ -654,7 +654,7 @@
       "codexSyncWsl": "Codex mit WSL synchronisieren",
       "codexSyncWslDesc": "Nach dem Wechsel des Standard-Codex-Kontos werden auth.json und config.toml auch in das Codex-Verzeichnis in WSL geschrieben.",
       "codexAppUiInjection": "API-Dienst-Kontingent",
-      "codexAppUiInjectionDesc": "Nach dem Neustart einer Codex-Instanz Kontenanzahl sowie Wochen- und 5-Stunden-Kontingent des Cockpit Tools API-Dienstes unter dem Composer anzeigen. Cockpit Tools muss im Hintergrund laufen; nach vollständigem Beenden oder ohne Netzwerk werden die Werte nicht weiter aktualisiert.",
+      "codexAppUiInjectionDesc": "Nach dem Neustart einer Codex-Instanz Kontenanzahl sowie Wochen- und 5-Stunden-Kontingent des CPS API-Dienstes unter dem Composer anzeigen. CPS muss im Hintergrund laufen; nach vollständigem Beenden oder ohne Netzwerk werden die Werte nicht weiter aktualisiert.",
       "codexAppUiInjectionPoolLabel": "Konten",
       "codexAppUiInjectionWeeklyLabel": "Woche",
       "codexAppUiInjectionFiveHourLabel": "5 Std.",
@@ -744,7 +744,7 @@
       "sideNavLayoutClassic": "Klassisches Layout",
       "antigravityDualSwitchNoRestart": "Nahtloser Doppelwechsel (ohne Neustart)",
       "antigravityDualSwitchNoRestartDesc": "Beim Kontowechsel werden lokale Kontodaten geschrieben und der nahtlose Erweiterungswechsel in einem Ablauf ausgeführt, ohne Antigravity IDE neu zu starten.",
-      "appAutoLaunch": "Cockpit Tools beim Anmelden starten",
+      "appAutoLaunch": "CPS beim Anmelden starten",
       "appAutoLaunchDesc": "App nach der Systemanmeldung automatisch starten",
       "startupWakeupDisabled": "Deaktiviert",
       "startupWakeupImmediate": "Sofort aufwecken",
@@ -888,7 +888,7 @@
       "proxyUrlRequired": "Die Proxy-URL darf nicht leer sein, wenn der globale Proxy aktiviert ist."
     },
     "about": {
-      "appName": "Cockpit Tools​",
+      "appName": "CPS​",
       "slogan": "Professionelle Lösung zur Kontoverwaltung",
       "author": "Autor",
       "wechat": "WeChat​",
@@ -1831,7 +1831,7 @@
     },
     "exportFormat": {
       "label": "Exportformat",
-      "cockpitTools": "Cockpit Tools​",
+      "cockpitTools": "CPS​",
       "sub2api": "sub2api-Format",
       "cpa": "cpa-Format",
       "downloadAll": "Alle herunterladen",
@@ -1913,8 +1913,8 @@
       "testAuthFailed": "Dienst erreichbar, aber Authentifizierung fehlgeschlagen: {{detail}}. Prüfen Sie API-Dienstschlüssel oder Kontoanmeldung.",
       "testServiceUnavailable": "Dienst erreichbar, aber derzeit nicht verfügbar: {{detail}}. Prüfen Sie, ob der Dienst aktiv ist, die Kontosammlung leer ist oder Konten nutzbar sind.",
       "gatewayErrors": {
-        "authUnavailable": "Derzeit ist kein Konto im Kontenpool einsetzbar. Das Konto kann abkühlen, nicht autorisiert oder durch ein Kontingent begrenzt sein. Prüfen Sie den Kontostatus im API-Service von Cockpit Tools.",
-        "authNotFound": "Im Kontenpool ist kein nutzbares Konto konfiguriert. Fügen Sie im API-Service von Cockpit Tools ein Konto hinzu oder aktivieren Sie eines."
+        "authUnavailable": "Derzeit ist kein Konto im Kontenpool einsetzbar. Das Konto kann abkühlen, nicht autorisiert oder durch ein Kontingent begrenzt sein. Prüfen Sie den Kontostatus im API-Service von CPS.",
+        "authNotFound": "Im Kontenpool ist kein nutzbares Konto konfiguriert. Fügen Sie im API-Service von CPS ein Konto hinzu oder aktivieren Sie eines."
       },
       "testRateLimited": "Dienst erreichbar, aber Upstream ist limitiert oder das Kontingent ist erschöpft: {{detail}}.",
       "testHttpFailed": "Dienst erreichbar, aber die Anfrage gab HTTP {{status}} zurück: {{detail}}.",
@@ -3642,6 +3642,19 @@
       "syncNow": "Jetzt synchronisieren",
       "connectionOk": "Verbunden",
       "syncVerified": "SSH-Synchronisierung überprüft",
+      "syncVerifiedDetail": "Anbieter {{provider}} verifiziert · {{state}} · {{reload}}",
+      "syncPartialFailure": "{{error}} · Abgeschlossen: {{stages}}",
+      "stageBundle": "Prüfsummen des Authentifizierungspakets",
+      "stageProvider": "Anbieterkonfiguration",
+      "stageState": "Statusdatenbank",
+      "stateRepaired": "Statusdatenbank: {{rows}} Zeilen abgeglichen (Anbieter {{providerRows}}, Sichtbarkeit {{visibilityRows}}); {{rolloutFiles}} Rollouts repariert; Sicherung verifiziert",
+      "stateDatabaseMissing": "Keine entfernte Statusdatenbank; kein Verlauf abzugleichen",
+      "reloadStatus": {
+        "daemon-restarted": "app-server-Dienst neu gestartet",
+        "app-server-terminated": "app-server für erneute Verbindung beendet",
+        "no-app-server": "kein laufender app-server",
+        "unknown": "app-server-Status unbekannt"
+      },
       "syncFailed": "Die SSH-Synchronisierung ist fehlgeschlagen",
       "syncedAs": "Synchronisiert {{email}} · {{time}}",
       "neverSynced": "Noch nicht synchronisiert",
@@ -5013,7 +5026,7 @@
       "backToCurrent": "Zurück",
       "switchToThisAccount": "Wechseln",
       "openDetails": "Details öffnen",
-      "openCockpitTools": "Cockpit Tools öffnen"
+      "openCockpitTools": "CPS öffnen"
     },
     "empty": {
       "title": "Keine Konten",
@@ -5137,7 +5150,7 @@
   },
   "relay": {
     "pageTitle": "Exklusives Relay",
-    "pageDesc": "Partner-API-Dienst für Cockpit Tools Nutzer, verwendbar mit Codex API-Key-Konten.",
+    "pageDesc": "Partner-API-Dienst für CPS Nutzer, verwendbar mit Codex API-Key-Konten.",
     "loading": "Relay wird geladen...",
     "emptyTitle": "Relay deaktiviert",
     "emptyDesc": "Die Remote-Konfiguration hat das exklusive Relay nicht aktiviert.",

@@ -7,6 +7,23 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.11] - 2026-07-21
+
+### Added
+
+- **Remote SSH Codex history is visible in the session manager**: CPS reads visible user conversations from configured SSH hosts in read-only mode and groups them by remote working directory.
+- **SSH account synchronization repairs remote Codex session state**: provider metadata, user-event visibility, and rollout metadata are backed up, repaired, and verified before the remote app-server is reloaded.
+
+### Changed
+
+- **The fork is branded as CPS**: the macOS bundle, application windows, runtime labels, updater endpoints, and release assets now use the CPS identity and the `chenzetong/CPS` repository.
+- **The fork is synchronized with upstream v1.3.10** while retaining the SSH session repair feature set.
+
+### Fixed
+
+- **Remote projects survive Codex restarts**: restart recovery now restores the authoritative `selected-project` state together with the legacy remote project field and reachable-host auto-connect settings.
+
+---
 ## [1.3.10] - 2026-07-19
 
 ### Added

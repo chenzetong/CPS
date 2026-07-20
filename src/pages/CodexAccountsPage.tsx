@@ -1955,7 +1955,7 @@ export function CodexAccountsPage() {
     () => [
       {
         value: "cockpit_tools",
-        label: t("codex.exportFormat.cockpitTools", "Cockpit Tools"),
+        label: t("codex.exportFormat.cockpitTools", "CPS"),
       },
       {
         value: "sub2api",

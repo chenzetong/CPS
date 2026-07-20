@@ -1,4 +1,4 @@
-//! Codex/ChatGPT renderer 的 Cockpit Tools API 服务可选额度显示注入。
+//! Codex/ChatGPT renderer 的 CPS API 服务可选额度显示注入。
 //!
 //! 该模块只连接实例自己的 loopback CDP 端口，不修改官方 app.asar，
 //! 也不修改官方额度或速度逻辑。额度以独立的小字段显示在 composer 操作栏下方。

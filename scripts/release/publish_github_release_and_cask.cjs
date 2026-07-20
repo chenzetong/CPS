@@ -5,10 +5,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
-const DEFAULT_REPO = 'jlcodes99/cockpit-tools';
+const DEFAULT_REPO = 'chenzetong/CPS';
 const DEFAULT_CASK_PATH = 'Casks/cockpit-tools.rb';
 const DEFAULT_TARGET = 'universal-apple-darwin';
-const DEFAULT_RELEASE_ASSET_PREFIX = 'Cockpit.Tools';
+const DEFAULT_RELEASE_ASSET_PREFIX = 'CPS';
 
 function printHelp() {
   console.log('Usage: node scripts/release/publish_github_release_and_cask.cjs [options]');
@@ -24,7 +24,7 @@ function printHelp() {
   console.log('  --generate-notes        Use GitHub generated release notes when creating release');
   console.log('  --notes-file <path>     Pass release notes file to gh release create');
   console.log('  --tag <tag>             Override release tag (default: v<package.json.version>)');
-  console.log('  --repo <owner/repo>     GitHub repo for release (default: jlcodes99/cockpit-tools)');
+  console.log('  --repo <owner/repo>     GitHub repo for release (default: chenzetong/CPS)');
   console.log('  --cask <path>           Homebrew cask file path (default: Casks/cockpit-tools.rb)');
   console.log('  --asset-path <path>     Use an existing universal .dmg instead of default output path');
   console.log('  -h, --help              Show this help');
@@ -194,7 +194,7 @@ function resolveSourceDmgPath(version, options) {
     'release',
     'bundle',
     'dmg',
-    `Cockpit Tools_${version}_universal.dmg`
+    `CPS_${version}_universal.dmg`
   );
 
   ensureFileExists(defaultPath, 'Universal DMG');
@@ -372,7 +372,7 @@ function main() {
   const version = readPackageVersion();
   const tag = options.tag || `v${version}`;
 
-  console.log('Cockpit Tools GitHub Release + Homebrew cask publisher');
+  console.log('CPS GitHub Release + Homebrew cask publisher');
   console.log(`version: ${version}`);
   console.log(`tag: ${tag}`);
   console.log(`repo: ${options.repo}`);

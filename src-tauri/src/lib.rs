@@ -249,7 +249,7 @@ pub fn run() {
             }
         }))
         .setup(|app| {
-            info!("Cockpit Tools 启动...");
+            info!("CPS 启动...");
             let current_exe = std::env::current_exe()
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|err| format!("unknown: {}", err));

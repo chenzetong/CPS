@@ -9673,7 +9673,7 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
         let args = build_codex_app_launch_args(extra_args);
 
         // 通过 LaunchServices 启动 GUI 应用，避免直接执行 ChatGPT 主程序时
-        // 被 macOS 以 Cockpit Tools 为 responsible process，导致偶发长时间停在
+        // 被 macOS 以 CPS 为 responsible process，导致偶发长时间停在
         // dyld/AppKit 初始化阶段。当前 macOS 的 `open` 支持 --env，因此
         // CODEX_HOME 与独立 Electron user-data-dir 都可以随启动请求传入。
         if !codex_home_trimmed.is_empty() {
@@ -13025,7 +13025,7 @@ mod legacy_platform_adapter_cleanup_tests {
     #[test]
     fn ignores_current_sidecar_and_official_apps() {
         let sidecar =
-            " 64680 1805 /Applications/Cockpit Tools.app/Contents/MacOS/cockpit-cliproxy --parent-pid 1805";
+            " 64680 1805 /Applications/CPS.app/Contents/MacOS/cockpit-cliproxy --parent-pid 1805";
         assert_eq!(
             orphaned_legacy_platform_adapter_pid_from_ps_line(sidecar, 99999),
             None

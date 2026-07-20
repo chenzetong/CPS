@@ -7482,19 +7482,19 @@ export function SettingsPage() {
               </button>
               
               
-              <button className="credit-item" onClick={() => openLink('https://github.com/jlcodes99/cockpit-tools')}>
+              <button className="credit-item" onClick={() => openLink('https://github.com/chenzetong/CPS')}>
                 <div className="credit-icon" style={{ color: '#0f172a' }}><Github size={24} /></div>
                 <h3>{t('settings.about.github')}</h3>
                 <p>cockpit-tools</p>
               </button>
 
-              <button className="credit-item" onClick={() => openLink('https://github.com/jlcodes99/cockpit-tools/blob/main/docs/DONATE.md')}>
+              <button className="credit-item" onClick={() => openLink('https://github.com/chenzetong/CPS/blob/main/docs/DONATE.md')}>
                 <div className="credit-icon" style={{ color: '#ef4444' }}><Heart size={24} /></div>
                 <h3>{t('settings.about.sponsor')}</h3>
                 <p>{t('settings.about.sponsorDesc', 'Donate')}</p>
               </button>
 
-              <button className="credit-item" onClick={() => openLink('https://github.com/jlcodes99/cockpit-tools/issues')}>
+              <button className="credit-item" onClick={() => openLink('https://github.com/chenzetong/CPS/issues')}>
                 <div className="credit-icon" style={{ color: '#3b82f6' }}><MessageSquare size={24} /></div>
                 <h3>{t('settings.about.feedback', '意见反馈')}</h3>
                 <p>{t('settings.about.feedbackDesc', 'Issues')}</p>

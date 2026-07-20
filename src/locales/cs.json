@@ -226,7 +226,7 @@
       "desc": "Tato oblast je pevně umístěná vpravo nahoře na všech stránkách pro kampaně nebo brandové reklamy.",
       "action": "Zobrazit podrobnosti"
     },
-    "appName": "Cockpit Tools​",
+    "appName": "CPS​",
     "collapse": "Sbalit",
     "confirmDelete": "Potvrdit smazání",
     "confirmDeleteTag": "Potvrdit smazání štítku",
@@ -278,12 +278,12 @@
   },
   "sponsors": {
     "pageTitle": "Sponzoři",
-    "pageDesc": "Děkujeme těmto sponzorům za podporu Cockpit Tools.",
+    "pageDesc": "Děkujeme těmto sponzorům za podporu CPS.",
     "loading": "Načítání sponzorů...",
     "emptyTitle": "Zatím žádní sponzoři",
     "emptyDesc": "Vzdálený modul sponzorů je aktuálně vypnutý.",
     "listAriaLabel": "Seznam sponzorů",
-    "defaultDescription": "Děkujeme za podporu Cockpit Tools.",
+    "defaultDescription": "Děkujeme za podporu CPS.",
     "openSponsor": "Otevřít"
   },
   "platformLayout": {
@@ -572,7 +572,7 @@
   },
   "settings": {
     "title": "Nastavení aplikace",
-    "subtitle": "Přizpůsobte si prostředí Cockpit Tools.",
+    "subtitle": "Přizpůsobte si prostředí CPS.",
     "tabs": {
       "general": "Obecné",
       "network": "Síť",
@@ -651,7 +651,7 @@
       "codexSyncWsl": "Synchronizovat Codex do WSL",
       "codexSyncWslDesc": "Po přepnutí výchozího účtu Codex se auth.json a config.toml zapíší také do adresáře Codex ve WSL.",
       "codexAppUiInjection": "Kvóta API služby",
-      "codexAppUiInjectionDesc": "Po restartování instance Codex zobrazí pod kompozitorem počet účtů API služby Cockpit Tools a kvóty za týden a 5 hodin. Cockpit Tools musí běžet na pozadí; po úplném ukončení nebo bez sítě se údaje neobnovují.",
+      "codexAppUiInjectionDesc": "Po restartování instance Codex zobrazí pod kompozitorem počet účtů API služby CPS a kvóty za týden a 5 hodin. CPS musí běžet na pozadí; po úplném ukončení nebo bez sítě se údaje neobnovují.",
       "codexAppUiInjectionPoolLabel": "Účty",
       "codexAppUiInjectionWeeklyLabel": "Týden",
       "codexAppUiInjectionFiveHourLabel": "5 h",
@@ -741,7 +741,7 @@
       "sideNavLayoutClassic": "Klasické rozložení",
       "antigravityDualSwitchNoRestart": "Duální přepnutí bez restartu",
       "antigravityDualSwitchNoRestartDesc": "Při přepnutí účtu se v jednom kroku zapíší lokální data účtu a provede plynulé přepnutí rozšíření bez restartu Antigravity IDE.",
-      "appAutoLaunch": "Spustit Cockpit Tools po přihlášení",
+      "appAutoLaunch": "Spustit CPS po přihlášení",
       "appAutoLaunchDesc": "Po přihlášení do systému spustit aplikaci automaticky",
       "startupWakeupDisabled": "Vypnuto",
       "startupWakeupImmediate": "Probudit okamžitě",
@@ -888,7 +888,7 @@
       "proxyUrlRequired": "Když je globální proxy zapnutá, URL proxy nesmí být prázdná."
     },
     "about": {
-      "appName": "Cockpit Tools​",
+      "appName": "CPS​",
       "slogan": "Profesionální řešení pro správu účtů",
       "author": "Autor",
       "wechat": "WeChat​",
@@ -1831,7 +1831,7 @@
     },
     "exportFormat": {
       "label": "Formát exportu",
-      "cockpitTools": "Cockpit Tools​",
+      "cockpitTools": "CPS​",
       "sub2api": "sub2api formát",
       "cpa": "cpa formát",
       "downloadAll": "Stáhnout vše",
@@ -1913,8 +1913,8 @@
       "testAuthFailed": "Služba je dosažitelná, ale ověření selhalo: {{detail}}. Zkontrolujte klíč API služby nebo stav přihlášení účtu.",
       "testServiceUnavailable": "Služba je dosažitelná, ale momentálně není dostupná: {{detail}}. Zkontrolujte, zda je služba zapnutá, kolekce účtů není prázdná a účty jsou použitelné.",
       "gatewayErrors": {
-        "authUnavailable": "Momentálně není k dispozici žádný účet pro směrování. Účet může být v čekací lhůtě, bez ověření nebo omezený kvótou. Zkontrolujte jeho stav v API službě Cockpit Tools.",
-        "authNotFound": "V kolekci účtů není nastaven žádný použitelný účet. Přidejte nebo aktivujte účet v API službě Cockpit Tools."
+        "authUnavailable": "Momentálně není k dispozici žádný účet pro směrování. Účet může být v čekací lhůtě, bez ověření nebo omezený kvótou. Zkontrolujte jeho stav v API službě CPS.",
+        "authNotFound": "V kolekci účtů není nastaven žádný použitelný účet. Přidejte nebo aktivujte účet v API službě CPS."
       },
       "testRateLimited": "Služba je dosažitelná, ale upstream je omezen nebo kvóta vyčerpána: {{detail}}.",
       "testHttpFailed": "Služba je dosažitelná, ale požadavek vrátil HTTP {{status}}: {{detail}}.",
@@ -2530,6 +2530,7 @@
         "tokenUsage": "Využití tokenů"
       },
       "locationRunning": " (spuštěno)",
+      "locationSshReadOnly": "SSH jen pro čtení",
       "untitled": "Nepojmenovaná relace",
       "restoreModal": {
         "title": "Koš",
@@ -3641,6 +3642,19 @@
       "syncNow": "Synchronizovat nyní",
       "connectionOk": "Připojeno",
       "syncVerified": "Synchronizace SSH ověřena",
+      "syncVerifiedDetail": "Poskytovatel {{provider}} ověřen · {{state}} · {{reload}}",
+      "syncPartialFailure": "{{error}} · Dokončeno: {{stages}}",
+      "stageBundle": "otisky ověřovacího balíčku",
+      "stageProvider": "konfigurace poskytovatele",
+      "stageState": "stavová databáze",
+      "stateRepaired": "Ve stavové databázi zarovnáno {{rows}} řádků (poskytovatel {{providerRows}}, viditelnost {{visibilityRows}}); opraveno {{rolloutFiles}} rolloutů; záloha ověřena",
+      "stateDatabaseMissing": "Vzdálená stavová databáze neexistuje; není co zarovnat",
+      "reloadStatus": {
+        "daemon-restarted": "služba app-server restartována",
+        "app-server-terminated": "app-server zastaven kvůli opětovnému připojení",
+        "no-app-server": "app-server není spuštěn",
+        "unknown": "stav app-server není znám"
+      },
       "syncFailed": "Synchronizace SSH se nezdařila",
       "syncedAs": "Synchronizováno {{email}} · {{time}}",
       "neverSynced": "Dosud nesynchronizováno",
@@ -5012,7 +5026,7 @@
       "backToCurrent": "Zpět",
       "switchToThisAccount": "Přepnout",
       "openDetails": "Otevřít detail",
-      "openCockpitTools": "Otevřít Cockpit Tools"
+      "openCockpitTools": "Otevřít CPS"
     },
     "empty": {
       "title": "Žádné účty",
@@ -5136,7 +5150,7 @@
   },
   "relay": {
     "pageTitle": "Exkluzivní relay",
-    "pageDesc": "Partnerská API služba pro uživatele Cockpit Tools použitelná s účty Codex API Key.",
+    "pageDesc": "Partnerská API služba pro uživatele CPS použitelná s účty Codex API Key.",
     "loading": "Načítání relay...",
     "emptyTitle": "Relay vypnutý",
     "emptyDesc": "Vzdálená konfigurace exkluzivní relay nepovolila.",

@@ -1,6 +1,7 @@
 use crate::models::codex::CodexAccount;
 use crate::models::ssh_server::{
-    SshAuthConfig, SshCodexSyncResult, SshCodexSyncStatus, SshServer, SshServerStore,
+    SshAuthConfig, SshCodexStateRepairStatus, SshCodexSyncResult, SshCodexSyncStatus, SshServer,
+    SshServerStore,
 };
 use crate::modules::{account, atomic_write, codex_account, logger};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -10,6 +11,7 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tokio::task::JoinSet;
 use tokio::time::timeout;
 use uuid::Uuid;
 
@@ -21,13 +23,44 @@ const CONNECTION_TIMEOUT_SECS: u64 = 12;
 const TEST_COMMAND_TIMEOUT_SECS: u64 = 20;
 /// 读写同步脚本墙钟超时
 const SYNC_TIMEOUT_SECS: u64 = 45;
-/// 远端 app-server reload 墙钟超时（略放宽；失败不阻断已校验写入）
+/// 远端 SQLite 在线备份可能明显慢于凭据写入。
+const STATE_REPAIR_TIMEOUT_SECS: u64 = 120;
+/// 远端 app-server reload 墙钟超时。
 const APP_SERVER_RELOAD_TIMEOUT_SECS: u64 = 20;
+/// 只读列出远端会话的墙钟超时。
+const SESSION_LIST_TIMEOUT_SECS: u64 = 20;
+const DEFAULT_MODEL_PROVIDER_ID: &str = "openai";
+const STATE_REPAIR_OUTPUT_PREFIX: &str = "__COCKPIT_CODEX_STATE_REPAIR__";
+const SESSION_LIST_OUTPUT_PREFIX: &str = "__COCKPIT_CODEX_SESSION_LIST__";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SshServerList {
     pub selected_server_id: Option<String>,
     pub servers: Vec<SshServer>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SshCodexSessionSnapshot {
+    pub server_id: String,
+    pub server_name: String,
+    pub session_id: String,
+    pub title: String,
+    pub cwd: String,
+    pub updated_at: Option<i64>,
+}
+
+#[derive(Debug, Default)]
+pub struct CodexSwitchSshSyncOutcome {
+    pub results: Vec<SshCodexSyncResult>,
+    pub reachable_server_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteSessionRow {
+    id: String,
+    title: String,
+    cwd: String,
+    updated_at: Option<i64>,
 }
 
 fn now_timestamp() -> i64 {
@@ -378,6 +411,182 @@ async fn run_ssh(
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+fn remote_session_list_script() -> &'static str {
+    r#"set -eu
+codex_home_encoded="$1"
+python_bin=""
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    python_bin="$candidate"
+    break
+  fi
+done
+if [ -z "$python_bin" ]; then
+  printf '__COCKPIT_CODEX_SESSION_LIST__[]\n'
+  exit 0
+fi
+
+"$python_bin" - "$codex_home_encoded" <<'__COCKPIT_CODEX_SESSION_LIST_PY__'
+import base64
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+OUTPUT_PREFIX = "__COCKPIT_CODEX_SESSION_LIST__"
+root = Path(base64.b64decode(sys.argv[1]).decode("utf-8")).expanduser()
+db_path = root / "state_5.sqlite"
+if not db_path.exists():
+    print(OUTPUT_PREFIX + "[]")
+    raise SystemExit(0)
+
+connection = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(threads)")}
+if not {"id", "cwd"}.issubset(columns):
+    print(OUTPUT_PREFIX + "[]")
+    raise SystemExit(0)
+
+title_terms = []
+for column in ("title", "first_user_message", "preview"):
+    if column in columns:
+        title_terms.append("NULLIF(" + column + ", '')")
+title_terms.append("id")
+title_expr = "COALESCE(" + ", ".join(title_terms) + ")"
+
+updated_terms = []
+for column in ("updated_at", "recency_at", "created_at"):
+    if column in columns:
+        updated_terms.append(column)
+for column in ("updated_at_ms", "recency_at_ms", "created_at_ms"):
+    if column in columns:
+        updated_terms.append("CAST(" + column + " / 1000 AS INTEGER)")
+if not updated_terms:
+    updated_expr = "NULL"
+elif len(updated_terms) == 1:
+    updated_expr = updated_terms[0]
+else:
+    updated_expr = "COALESCE(" + ", ".join(updated_terms) + ")"
+
+where_terms = []
+if "archived" in columns:
+    where_terms.append("COALESCE(archived, 0) = 0")
+if "has_user_event" in columns:
+    where_terms.append("COALESCE(has_user_event, 0) = 1")
+if "first_user_message" in columns:
+    where_terms.append("COALESCE(first_user_message, '') <> ''")
+if "thread_source" in columns:
+    where_terms.append("COALESCE(thread_source, 'user') = 'user'")
+where_sql = " WHERE " + " AND ".join(where_terms) if where_terms else ""
+
+query = (
+    "SELECT id, " + title_expr + " AS title, cwd, " + updated_expr
+    + " AS updated_at FROM threads" + where_sql + " ORDER BY updated_at DESC"
+)
+rows = [
+    {
+        "id": str(row[0] or ""),
+        "title": str(row[1] or row[0] or ""),
+        "cwd": str(row[2] or ""),
+        "updated_at": int(row[3]) if row[3] is not None else None,
+    }
+    for row in connection.execute(query)
+]
+connection.close()
+print(OUTPUT_PREFIX + json.dumps(rows, separators=(",", ":"), ensure_ascii=True))
+__COCKPIT_CODEX_SESSION_LIST_PY__
+"#
+}
+
+fn parse_remote_session_list_output(
+    server: &SshServer,
+    output: &str,
+) -> Result<Vec<SshCodexSessionSnapshot>, String> {
+    let payload = output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(SESSION_LIST_OUTPUT_PREFIX))
+        .ok_or_else(|| "ssh_remote_session_list_failed: missing session list result".to_string())?;
+    let rows: Vec<RemoteSessionRow> = serde_json::from_str(payload).map_err(|error| {
+        format!(
+            "ssh_remote_session_list_failed: invalid session list result: {}",
+            sanitize_error(error)
+        )
+    })?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let session_id = row.id.trim().to_string();
+            if session_id.is_empty() {
+                return None;
+            }
+            let title = if row.title.trim().is_empty() {
+                session_id.clone()
+            } else {
+                row.title.trim().to_string()
+            };
+            let cwd = if row.cwd.trim().is_empty() {
+                server.codex_home.clone()
+            } else {
+                row.cwd.trim().to_string()
+            };
+            Some(SshCodexSessionSnapshot {
+                server_id: server.id.clone(),
+                server_name: server.name.clone(),
+                session_id,
+                title,
+                cwd,
+                updated_at: row.updated_at,
+            })
+        })
+        .collect())
+}
+
+async fn list_sessions_from_server(
+    server: &SshServer,
+) -> Result<Vec<SshCodexSessionSnapshot>, String> {
+    let codex_home_encoded = STANDARD.encode(server.codex_home.as_bytes());
+    let output = run_ssh(
+        server,
+        SESSION_LIST_TIMEOUT_SECS,
+        &["sh", "-s", "--", &codex_home_encoded],
+        Some(remote_session_list_script().to_string()),
+    )
+    .await
+    .map_err(|error| format!("ssh_remote_session_list_failed: {}", sanitize_error(error)))?;
+    parse_remote_session_list_output(server, &output)
+}
+
+pub async fn list_codex_sessions_from_servers() -> Result<Vec<SshCodexSessionSnapshot>, String> {
+    let store = load_store()?;
+    let mut tasks = JoinSet::new();
+    for server in store.servers {
+        tasks.spawn(async move {
+            let result = list_sessions_from_server(&server).await;
+            (server.name.clone(), result)
+        });
+    }
+
+    let mut sessions = Vec::new();
+    while let Some(result) = tasks.join_next().await {
+        match result {
+            Ok((_, Ok(mut remote_sessions))) => sessions.append(&mut remote_sessions),
+            Ok((server_name, Err(error))) => {
+                eprintln!(
+                    "[SSH Session List] skipped unavailable server {}: {}",
+                    server_name,
+                    sanitize_error(error)
+                );
+            }
+            Err(error) => {
+                eprintln!(
+                    "[SSH Session List] worker failed: {}",
+                    sanitize_error(error)
+                );
+            }
+        }
+    }
+    Ok(sessions)
+}
+
 pub async fn test_connection(server_id: &str) -> Result<String, String> {
     let store = load_store()?;
     let server = store
@@ -386,15 +595,21 @@ pub async fn test_connection(server_id: &str) -> Result<String, String> {
         .find(|server| server.id == server_id)
         .cloned()
         .ok_or_else(|| format!("SSH server not found: {}", server_id))?;
+    probe_server_connection(&server).await?;
+    Ok("cockpit-tools-ssh-ok".to_string())
+}
+
+async fn probe_server_connection(server: &SshServer) -> Result<(), String> {
+    validate_server(server)?;
     let output = run_ssh(
-        &server,
+        server,
         TEST_COMMAND_TIMEOUT_SECS,
         &["printf", "cockpit-tools-ssh-ok"],
         None,
     )
     .await?;
     if output.trim() == "cockpit-tools-ssh-ok" {
-        Ok(output)
+        Ok(())
     } else {
         Err("ssh_connection_failed: unexpected SSH test output".to_string())
     }
@@ -405,7 +620,7 @@ async fn read_remote_config_toml(server: &SshServer) -> Result<Option<String>, S
 codex_home=$1
 case "$codex_home" in
   "~") codex_home="$HOME" ;;
-  "~/"*) codex_home="$HOME/${{codex_home#~/}}" ;;
+  "~/"*) codex_home="$HOME/${codex_home#~/}" ;;
 esac
 target="$codex_home/config.toml"
 if [ -f "$target" ]; then
@@ -433,6 +648,45 @@ fi
         return Ok(None);
     }
     Err("ssh_remote_read_failed: unexpected remote read response".to_string())
+}
+
+fn validate_model_provider_config(config_toml: Option<&str>) -> Result<String, String> {
+    let content = config_toml.unwrap_or_default();
+    let doc = crate::modules::codex_config_format::read_codex_config_doc_from_str(content)
+        .map_err(|error| {
+            format!(
+                "ssh_remote_model_provider_invalid: config.toml parse failed: {}",
+                sanitize_error(error)
+            )
+        })?;
+    let provider = match doc.get("model_provider") {
+        Some(item) => item
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                "ssh_remote_model_provider_invalid: model_provider must be a non-empty string"
+                    .to_string()
+            })?,
+        None => DEFAULT_MODEL_PROVIDER_ID,
+    };
+    let provider_is_defined = provider == DEFAULT_MODEL_PROVIDER_ID
+        || doc
+            .get("model_providers")
+            .and_then(|item| item.as_table())
+            .is_some_and(|providers| providers.contains_key(provider));
+    if !provider_is_defined {
+        return Err(format!(
+            "ssh_remote_model_provider_invalid: Model provider {} not found",
+            provider
+        ));
+    }
+    Ok(provider.to_string())
+}
+
+async fn validate_remote_model_provider(server: &SshServer) -> Result<String, String> {
+    let config_toml = read_remote_config_toml(server).await?;
+    validate_model_provider_config(config_toml.as_deref())
 }
 
 async fn upload_and_verify_bundle(
@@ -510,6 +764,379 @@ done
     Ok(())
 }
 
+fn remote_state_repair_script() -> &'static str {
+    r#"set -eu
+codex_home=$1
+provider_encoded=$2
+case "$codex_home" in
+  "~") codex_home="$HOME" ;;
+  "~/"*) codex_home="$HOME/${codex_home#~/}" ;;
+esac
+db="$codex_home/state_5.sqlite"
+if [ ! -f "$db" ]; then
+  printf '%s\n' '__COCKPIT_CODEX_STATE_REPAIR__{"database_found":false,"backup_path":null,"provider_schema_supported":false,"visibility_schema_supported":false,"rollout_schema_supported":false,"provider_rows_to_repair":0,"visibility_rows_to_repair":0,"rollout_files_to_repair":0,"rows_repaired":0,"rollout_files_repaired":0,"provider_rows_remaining":0,"visibility_rows_remaining":0,"rollout_files_remaining":0,"quick_check":null}'
+  exit 0
+fi
+
+python_bin=''
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    python_bin=$candidate
+    break
+  fi
+done
+if [ -z "$python_bin" ]; then
+  printf 'python3 or python is required to safely back up and repair %s\n' "$db" >&2
+  exit 6
+fi
+if ! model_provider="$(printf '%s' "$provider_encoded" | base64 -d 2>/dev/null)"; then
+  model_provider="$(printf '%s' "$provider_encoded" | base64 -D)"
+fi
+
+"$python_bin" - "$codex_home" "$model_provider" <<'__COCKPIT_CODEX_STATE_PY__'
+import datetime
+import json
+import os
+import shutil
+import sqlite3
+import sys
+from pathlib import Path
+
+OUTPUT_PREFIX = "__COCKPIT_CODEX_STATE_REPAIR__"
+root = Path(sys.argv[1]).expanduser().resolve()
+model_provider = sys.argv[2]
+db_path = root / "state_5.sqlite"
+
+
+def quick_check(connection):
+    return "; ".join(str(row[0]) for row in connection.execute("PRAGMA quick_check"))
+
+
+def resolve_managed_rollout(raw_path):
+    path = Path(str(raw_path))
+    if not path.is_absolute():
+        path = root / path
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return None
+    return resolved
+
+
+def prepare_rollout_rewrite(path):
+    content = path.read_bytes()
+    newline_index = content.find(b"\n")
+    if newline_index < 0:
+        first_line = content
+        separator = b""
+        rest = b""
+    else:
+        first_line = content[:newline_index]
+        if first_line.endswith(b"\r"):
+            first_line = first_line[:-1]
+            separator = b"\r\n"
+        else:
+            separator = b"\n"
+        rest = content[newline_index + 1:]
+    try:
+        record = json.loads(first_line.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(record, dict)
+        or record.get("type") != "session_meta"
+        or not isinstance(record.get("payload"), dict)
+    ):
+        return None
+    payload = record["payload"]
+    if payload.get("model_provider") == model_provider:
+        return None
+    payload["model_provider"] = model_provider
+    updated_first_line = json.dumps(
+        record, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return updated_first_line + separator + rest
+
+
+def read_rollout_provider(path):
+    with path.open("rb") as source:
+        first_line = source.readline().rstrip(b"\r\n")
+    try:
+        record = json.loads(first_line.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(record, dict)
+        or record.get("type") != "session_meta"
+        or not isinstance(record.get("payload"), dict)
+    ):
+        return None
+    return record["payload"].get("model_provider")
+
+
+def write_atomic(path, content, metadata_path):
+    metadata = metadata_path.stat()
+    temporary = path.parent / (
+        "." + path.name + ".cockpit-ssh-sync-" + str(os.getpid()) + ".tmp"
+    )
+    try:
+        with temporary.open("xb") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, metadata.st_mode & 0o7777)
+        os.utime(
+            temporary,
+            ns=(metadata.st_atime_ns, metadata.st_mtime_ns),
+            follow_symlinks=False,
+        )
+        os.replace(temporary, path)
+        directory_fd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+connection = sqlite3.connect(str(db_path), timeout=10.0, isolation_level=None)
+connection.execute("PRAGMA busy_timeout = 10000")
+initial_check = quick_check(connection)
+if initial_check != "ok":
+    raise RuntimeError("state_5.sqlite quick_check failed before repair: " + initial_check)
+
+stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+backup_dir = root / ("recovery-backup-" + stamp + "-ssh-sync")
+backup_dir.mkdir(mode=0o700, parents=False, exist_ok=False)
+os.chmod(backup_dir, 0o700)
+backup_path = backup_dir / "state_5.sqlite"
+backup_connection = sqlite3.connect(str(backup_path))
+try:
+    connection.backup(backup_connection)
+finally:
+    backup_connection.close()
+os.chmod(backup_path, 0o600)
+
+columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(threads)")}
+provider_supported = "model_provider" in columns
+visibility_supported = {"first_user_message", "has_user_event"}.issubset(columns)
+rollout_supported = "rollout_path" in columns
+has_thread_source = "thread_source" in columns
+if not provider_supported or not visibility_supported:
+    raise RuntimeError(
+        "unsupported threads schema: model_provider={}, visibility={}".format(
+            provider_supported, visibility_supported
+        )
+    )
+
+provider_where = "COALESCE(model_provider, '') <> ?"
+visibility_terms = ["COALESCE(has_user_event, 0) <> 1"]
+if has_thread_source:
+    visibility_terms.append("COALESCE(thread_source, '') = ''")
+visibility_where = (
+    "COALESCE(first_user_message, '') <> '' AND ("
+    + " OR ".join(visibility_terms)
+    + ")"
+)
+
+provider_rows_to_repair = connection.execute(
+    "SELECT COUNT(*) FROM threads WHERE " + provider_where,
+    (model_provider,),
+).fetchone()[0]
+visibility_rows_to_repair = connection.execute(
+    "SELECT COUNT(*) FROM threads WHERE " + visibility_where
+).fetchone()[0]
+
+rollout_changes = []
+seen_rollouts = set()
+if rollout_supported:
+    referenced_rollouts = connection.execute(
+        "SELECT rollout_path FROM threads "
+        "WHERE rollout_path IS NOT NULL AND rollout_path <> ''"
+    ).fetchall()
+    for (raw_path,) in referenced_rollouts:
+        rollout_path = resolve_managed_rollout(raw_path)
+        if (
+            rollout_path is None
+            or rollout_path in seen_rollouts
+            or not rollout_path.is_file()
+        ):
+            continue
+        seen_rollouts.add(rollout_path)
+        updated_content = prepare_rollout_rewrite(rollout_path)
+        if updated_content is None:
+            continue
+        relative_path = rollout_path.relative_to(root)
+        rollout_backup_path = backup_dir / "rollouts" / relative_path
+        rollout_changes.append(
+            (rollout_path, rollout_backup_path, updated_content)
+        )
+
+rollout_files_to_repair = len(rollout_changes)
+for rollout_path, rollout_backup_path, _ in rollout_changes:
+    rollout_backup_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    shutil.copy2(rollout_path, rollout_backup_path)
+
+assignments = [
+    "model_provider = ?",
+    "has_user_event = CASE WHEN COALESCE(first_user_message, '') <> '' "
+    "THEN 1 ELSE has_user_event END",
+]
+if has_thread_source:
+    assignments.append(
+        "thread_source = CASE WHEN COALESCE(thread_source, '') = '' "
+        "AND COALESCE(first_user_message, '') <> '' THEN 'user' ELSE thread_source END"
+    )
+parameters = [model_provider, model_provider]
+
+changed_rollouts = []
+try:
+    for rollout_path, rollout_backup_path, updated_content in rollout_changes:
+        changed_rollouts.append((rollout_path, rollout_backup_path))
+        write_atomic(rollout_path, updated_content, rollout_backup_path)
+
+    rollout_files_remaining = 0
+    for rollout_path, _, _ in rollout_changes:
+        if read_rollout_provider(rollout_path) != model_provider:
+            rollout_files_remaining += 1
+    if rollout_files_remaining != 0:
+        raise RuntimeError(
+            "rollout verification failed: remaining={}".format(
+                rollout_files_remaining
+            )
+        )
+
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        cursor = connection.execute(
+            "UPDATE threads SET "
+            + ", ".join(assignments)
+            + " WHERE "
+            + provider_where
+            + " OR ("
+            + visibility_where
+            + ")",
+            tuple(parameters),
+        )
+        rows_repaired = max(cursor.rowcount, 0)
+        provider_rows_remaining = connection.execute(
+            "SELECT COUNT(*) FROM threads WHERE " + provider_where,
+            (model_provider,),
+        ).fetchone()[0]
+        visibility_rows_remaining = connection.execute(
+            "SELECT COUNT(*) FROM threads WHERE " + visibility_where
+        ).fetchone()[0]
+        final_check = quick_check(connection)
+        if provider_rows_remaining != 0 or visibility_rows_remaining != 0:
+            raise RuntimeError(
+                "row verification failed: provider_remaining={}, visibility_remaining={}".format(
+                    provider_rows_remaining, visibility_rows_remaining
+                )
+            )
+        if final_check != "ok":
+            raise RuntimeError(
+                "state_5.sqlite quick_check failed after repair: " + final_check
+            )
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
+except Exception:
+    for rollout_path, rollout_backup_path in reversed(changed_rollouts):
+        write_atomic(rollout_path, rollout_backup_path.read_bytes(), rollout_backup_path)
+    raise
+finally:
+    connection.close()
+
+result = {
+    "database_found": True,
+    "backup_path": str(backup_path),
+    "provider_schema_supported": provider_supported,
+    "visibility_schema_supported": visibility_supported,
+    "rollout_schema_supported": rollout_supported,
+    "provider_rows_to_repair": provider_rows_to_repair,
+    "visibility_rows_to_repair": visibility_rows_to_repair,
+    "rollout_files_to_repair": rollout_files_to_repair,
+    "rows_repaired": rows_repaired,
+    "rollout_files_repaired": len(changed_rollouts),
+    "provider_rows_remaining": provider_rows_remaining,
+    "visibility_rows_remaining": visibility_rows_remaining,
+    "rollout_files_remaining": rollout_files_remaining,
+    "quick_check": final_check,
+}
+print(OUTPUT_PREFIX + json.dumps(result, separators=(",", ":"), ensure_ascii=True))
+__COCKPIT_CODEX_STATE_PY__
+"#
+}
+
+fn parse_remote_state_repair_output(output: &str) -> Result<SshCodexStateRepairStatus, String> {
+    let payload = output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(STATE_REPAIR_OUTPUT_PREFIX))
+        .ok_or_else(|| "ssh_remote_state_repair_failed: missing state repair result".to_string())?;
+    let result: SshCodexStateRepairStatus = serde_json::from_str(payload).map_err(|error| {
+        format!(
+            "ssh_remote_state_repair_failed: invalid state repair result: {}",
+            error
+        )
+    })?;
+    if result.database_found {
+        if result.backup_path.as_deref().is_none_or(str::is_empty) {
+            return Err(
+                "ssh_remote_state_repair_failed: state database backup was not reported"
+                    .to_string(),
+            );
+        }
+        if !result.provider_schema_supported || !result.visibility_schema_supported {
+            return Err(
+                "ssh_remote_state_repair_failed: unsupported remote threads schema".to_string(),
+            );
+        }
+        if result.provider_rows_remaining != 0 || result.visibility_rows_remaining != 0 {
+            return Err(format!(
+                "ssh_remote_state_repair_failed: row verification failed: provider_remaining={}, visibility_remaining={}",
+                result.provider_rows_remaining, result.visibility_rows_remaining
+            ));
+        }
+        if result.rollout_files_remaining != 0
+            || result.rollout_files_repaired != result.rollout_files_to_repair
+        {
+            return Err(format!(
+                "ssh_remote_state_repair_failed: rollout verification failed: repaired={}, expected={}, remaining={}",
+                result.rollout_files_repaired,
+                result.rollout_files_to_repair,
+                result.rollout_files_remaining
+            ));
+        }
+        if result.quick_check.as_deref() != Some("ok") {
+            return Err(format!(
+                "ssh_remote_state_repair_failed: quick_check returned {}",
+                result.quick_check.as_deref().unwrap_or("no result")
+            ));
+        }
+    }
+    Ok(result)
+}
+
+async fn repair_remote_state_database(
+    server: &SshServer,
+    model_provider: &str,
+) -> Result<SshCodexStateRepairStatus, String> {
+    let provider_encoded = STANDARD.encode(model_provider.as_bytes());
+    let output = run_ssh(
+        server,
+        STATE_REPAIR_TIMEOUT_SECS,
+        &["sh", "-s", "--", &server.codex_home, &provider_encoded],
+        Some(remote_state_repair_script().to_string()),
+    )
+    .await
+    .map_err(|error| format!("ssh_remote_state_repair_failed: {}", sanitize_error(error)))?;
+    parse_remote_state_repair_output(&output)
+}
+
 /// 远端刷新 Codex app-server：daemon restart 必须有硬超时，避免整段 SSH 被挂死。
 fn reload_app_server_script() -> &'static str {
     r#"set +e
@@ -551,7 +1178,7 @@ exit 0
 "#
 }
 
-async fn reload_remote_codex_app_server(server: &SshServer) -> Result<(), String> {
+async fn reload_remote_codex_app_server(server: &SshServer) -> Result<String, String> {
     let output = run_ssh(
         server,
         APP_SERVER_RELOAD_TIMEOUT_SECS,
@@ -570,7 +1197,7 @@ async fn reload_remote_codex_app_server(server: &SshServer) -> Result<(), String
         status,
         "daemon-restarted" | "app-server-terminated" | "no-app-server"
     ) {
-        Ok(())
+        Ok(status.to_string())
     } else {
         Err(format!(
             "ssh_remote_app_server_reload_failed: unexpected reload response: {}",
@@ -587,9 +1214,31 @@ fn result_from_status(server: &SshServer, status: SshCodexSyncStatus) -> SshCode
         account_email: status.account_email,
         token_generation: status.token_generation,
         bundle_hash: status.bundle_hash,
+        bundle_verified: status.bundle_verified,
+        model_provider: status.model_provider,
+        model_provider_verified: status.model_provider_verified,
+        state_repair: status.state_repair,
+        app_server_reload_status: status.app_server_reload_status,
         verified: status.verified,
         error: status.error,
         synced_at: status.synced_at,
+    }
+}
+
+fn initial_sync_status(account: &CodexAccount) -> SshCodexSyncStatus {
+    SshCodexSyncStatus {
+        account_id: account.id.clone(),
+        account_email: account.email.clone(),
+        token_generation: account.token_generation,
+        bundle_hash: String::new(),
+        bundle_verified: false,
+        model_provider: None,
+        model_provider_verified: false,
+        state_repair: None,
+        app_server_reload_status: None,
+        synced_at: now_timestamp(),
+        verified: false,
+        error: None,
     }
 }
 
@@ -611,46 +1260,34 @@ fn persist_sync_status(
 }
 
 async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> SshCodexSyncResult {
-    let synced_at = now_timestamp();
+    let mut status = initial_sync_status(account);
     let sync_attempt = async {
         validate_server(&server)?;
         let existing_config = read_remote_config_toml(&server).await?;
         let bundle =
             codex_account::build_projection_bundle_for_remote(account, existing_config.as_deref())
                 .map_err(|e| format!("codex_bundle_failed: {}", sanitize_error(e)))?;
-        // 鉴权落盘 + 校验是硬条件
+        status.account_id = bundle.account_id.clone();
+        status.account_email = bundle.account_email.clone();
+        status.token_generation = bundle.token_generation;
+        status.bundle_hash = bundle.bundle_hash.clone();
+
         upload_and_verify_bundle(&server, &bundle).await?;
-        // reload 是软条件：远端没 codex / 进程卡死 / 超时不应把已成功写入判失败
-        if let Err(reload_error) = reload_remote_codex_app_server(&server).await {
-            logger::log_warn(&format!(
-                "[Codex SSH] 远端 app-server 刷新失败（鉴权已写入）: server_id={}, error={}",
-                server.id, reload_error
-            ));
-        }
-        Ok::<_, String>(bundle)
+        status.bundle_verified = true;
+        let model_provider = validate_remote_model_provider(&server).await?;
+        status.model_provider = Some(model_provider.clone());
+        status.model_provider_verified = true;
+
+        status.state_repair = Some(repair_remote_state_database(&server, &model_provider).await?);
+        status.app_server_reload_status = Some(reload_remote_codex_app_server(&server).await?);
+        Ok::<(), String>(())
     }
     .await;
 
-    let status = match sync_attempt {
-        Ok(bundle) => SshCodexSyncStatus {
-            account_id: bundle.account_id,
-            account_email: bundle.account_email,
-            token_generation: bundle.token_generation,
-            bundle_hash: bundle.bundle_hash,
-            synced_at,
-            verified: true,
-            error: None,
-        },
-        Err(error) => SshCodexSyncStatus {
-            account_id: account.id.clone(),
-            account_email: account.email.clone(),
-            token_generation: account.token_generation,
-            bundle_hash: String::new(),
-            synced_at,
-            verified: false,
-            error: Some(sanitize_error(error)),
-        },
-    };
+    match sync_attempt {
+        Ok(()) => status.verified = true,
+        Err(error) => status.error = Some(sanitize_error(error)),
+    }
 
     match persist_sync_status(&server.id, status.clone()) {
         Ok(result) => result,
@@ -660,6 +1297,25 @@ async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> Ss
                 server.id, error
             ));
             result_from_status(&server, status)
+        }
+    }
+}
+
+fn persist_preflight_failure(
+    server: &SshServer,
+    account: &CodexAccount,
+    error: String,
+) -> SshCodexSyncResult {
+    let mut status = initial_sync_status(account);
+    status.error = Some(format!("ssh_preflight_failed: {}", sanitize_error(error)));
+    match persist_sync_status(&server.id, status.clone()) {
+        Ok(result) => result,
+        Err(persist_error) => {
+            logger::log_warn(&format!(
+                "[Codex SSH] 保存探活失败状态失败: server_id={}, error={}",
+                server.id, persist_error
+            ));
+            result_from_status(server, status)
         }
     }
 }
@@ -688,23 +1344,71 @@ pub async fn sync_current_account_to_server(
     Ok(sync_account_to_server(server, &account).await)
 }
 
-pub async fn sync_selected_server_after_codex_switch(
-    account: &CodexAccount,
-) -> Option<SshCodexSyncResult> {
+fn servers_enabled_for_codex_switch(store: SshServerStore) -> Vec<SshServer> {
+    let selected_id = store.selected_server_id;
+    let mut servers = store
+        .servers
+        .into_iter()
+        .filter(|server| server.sync_on_codex_switch)
+        .collect::<Vec<_>>();
+    servers.sort_by_key(|server| {
+        (
+            selected_id.as_deref() != Some(server.id.as_str()),
+            server.name.clone(),
+        )
+    });
+    servers
+}
+
+pub async fn sync_servers_after_codex_switch(account: &CodexAccount) -> CodexSwitchSshSyncOutcome {
     let store = match load_store() {
         Ok(store) => store,
         Err(error) => {
             logger::log_warn(&format!("[Codex SSH] 读取 SSH 服务器配置失败: {}", error));
-            return None;
+            return CodexSwitchSshSyncOutcome::default();
         }
     };
-    let Some(server) = selected_server_from_store(&store) else {
-        return None;
-    };
-    if !server.sync_on_codex_switch {
-        return None;
+
+    let servers = servers_enabled_for_codex_switch(store);
+    let mut preflight_results = Vec::with_capacity(servers.len());
+    let mut reachable_server_ids = Vec::with_capacity(servers.len());
+    for server in servers {
+        let preflight_error = match probe_server_connection(&server).await {
+            Ok(()) => {
+                logger::log_info(&format!(
+                    "[Codex SSH] 切号前探活成功: server_id={}, server_name={}",
+                    server.id, server.name
+                ));
+                reachable_server_ids.push(server.id.clone());
+                None
+            }
+            Err(error) => {
+                logger::log_warn(&format!(
+                    "[Codex SSH] 切号前探活失败: server_id={}, server_name={}, error={}",
+                    server.id,
+                    server.name,
+                    sanitize_error(&error)
+                ));
+                Some(error)
+            }
+        };
+        preflight_results.push((server, preflight_error));
     }
-    Some(sync_account_to_server(server, account).await)
+
+    // Keep probing separate from the heavier sync so launch context reflects reachability,
+    // even when a later auth/config/state verification step fails.
+    let mut results = Vec::with_capacity(preflight_results.len());
+    for (server, preflight_error) in preflight_results {
+        if let Some(error) = preflight_error {
+            results.push(persist_preflight_failure(&server, account, error));
+        } else {
+            results.push(sync_account_to_server(server, account).await);
+        }
+    }
+    CodexSwitchSshSyncOutcome {
+        results,
+        reachable_server_ids,
+    }
 }
 
 #[cfg(test)]
@@ -771,6 +1475,34 @@ mod tests {
     }
 
     #[test]
+    fn codex_switch_includes_all_enabled_servers_with_selected_first() {
+        let mut server_a = valid_server();
+        server_a.id = "server-a".to_string();
+        server_a.name = "Alpha".to_string();
+
+        let mut server_b = valid_server();
+        server_b.id = "server-b".to_string();
+        server_b.name = "Beta".to_string();
+
+        let mut disabled = valid_server();
+        disabled.id = "server-disabled".to_string();
+        disabled.name = "Disabled".to_string();
+        disabled.sync_on_codex_switch = false;
+
+        let servers = servers_enabled_for_codex_switch(SshServerStore {
+            version: STORE_VERSION.to_string(),
+            selected_server_id: Some(server_b.id.clone()),
+            servers: vec![server_a, disabled, server_b],
+        });
+        let ids = servers
+            .iter()
+            .map(|server| server.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ids, vec!["server-b", "server-a"]);
+    }
+
+    #[test]
     fn ssh_args_include_batch_mode_without_disabling_host_key_checks() {
         let server = valid_server();
         let args = build_ssh_args(&server, 10);
@@ -810,6 +1542,303 @@ mod tests {
     }
 
     #[test]
+    fn model_provider_validation_accepts_default_and_defined_provider() {
+        assert_eq!(
+            validate_model_provider_config(None).expect("default provider"),
+            DEFAULT_MODEL_PROVIDER_ID
+        );
+        let config = r#"model_provider = "relay"
+
+[model_providers.relay]
+name = "Relay"
+base_url = "https://example.com/v1"
+"#;
+        assert_eq!(
+            validate_model_provider_config(Some(config)).expect("defined provider"),
+            "relay"
+        );
+    }
+
+    #[test]
+    fn model_provider_validation_rejects_missing_definition() {
+        let error =
+            validate_model_provider_config(Some(r#"model_provider = "codex_local_access""#))
+                .expect_err("missing provider definition must fail");
+        assert!(error.contains("Model provider codex_local_access not found"));
+    }
+
+    #[test]
+    fn state_repair_output_requires_verified_rows_and_integrity() {
+        let valid = format!(
+            "noise\n{}{}",
+            STATE_REPAIR_OUTPUT_PREFIX,
+            r#"{"database_found":true,"backup_path":"/tmp/backup/state_5.sqlite","provider_schema_supported":true,"visibility_schema_supported":true,"rollout_schema_supported":true,"provider_rows_to_repair":2,"visibility_rows_to_repair":1,"rollout_files_to_repair":2,"rows_repaired":2,"rollout_files_repaired":2,"provider_rows_remaining":0,"visibility_rows_remaining":0,"rollout_files_remaining":0,"quick_check":"ok"}"#
+        );
+        let parsed = parse_remote_state_repair_output(&valid).expect("valid repair output");
+        assert_eq!(parsed.rows_repaired, 2);
+
+        let invalid = valid.replace(
+            "\"visibility_rows_remaining\":0",
+            "\"visibility_rows_remaining\":1",
+        );
+        assert!(parse_remote_state_repair_output(&invalid)
+            .expect_err("remaining rows must fail")
+            .contains("row verification failed"));
+
+        let invalid_rollout = valid.replace(
+            "\"rollout_files_remaining\":0",
+            "\"rollout_files_remaining\":1",
+        );
+        assert!(parse_remote_state_repair_output(&invalid_rollout)
+            .expect_err("remaining rollout must fail")
+            .contains("rollout verification failed"));
+    }
+
+    #[test]
+    fn state_repair_script_uses_online_backup_and_transaction() {
+        let script = remote_state_repair_script();
+        assert!(script.contains("connection.backup(backup_connection)"));
+        assert!(script.contains("BEGIN IMMEDIATE"));
+        assert!(script.contains("PRAGMA quick_check"));
+        assert!(script.contains("shutil.copy2(rollout_path, rollout_backup_path)"));
+        assert!(script.contains("os.replace(temporary, path)"));
+        assert!(!script.contains("cp \"$db\""));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn session_list_script_returns_only_visible_user_threads() {
+        use rusqlite::Connection;
+        use std::io::Write;
+        use std::process::{Command as StdCommand, Stdio as StdStdio};
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "cockpit ssh session list {}; metacharacters",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_dir).expect("create temporary Codex home");
+        let connection =
+            Connection::open(temp_dir.join("state_5.sqlite")).expect("create state database");
+        connection
+            .execute_batch(
+                r#"
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    cwd TEXT,
+                    updated_at INTEGER,
+                    archived INTEGER,
+                    first_user_message TEXT,
+                    has_user_event INTEGER,
+                    thread_source TEXT
+                );
+                INSERT INTO threads VALUES ('visible', 'Visible task', '/repo', 42, 0, 'hello', 1, 'user');
+                INSERT INTO threads VALUES ('archived', 'Archived task', '/repo', 41, 1, 'hello', 1, 'user');
+                INSERT INTO threads VALUES ('subagent', 'Child task', '/repo', 40, 0, '', 0, 'subagent');
+                "#,
+            )
+            .expect("seed state database");
+
+        let temp_dir_encoded =
+            STANDARD.encode(temp_dir.to_str().expect("utf-8 temporary path").as_bytes());
+        let mut child = StdCommand::new("sh")
+            .args(["-s", "--", &temp_dir_encoded])
+            .stdin(StdStdio::piped())
+            .stdout(StdStdio::piped())
+            .stderr(StdStdio::piped())
+            .spawn()
+            .expect("spawn session list script");
+        child
+            .stdin
+            .as_mut()
+            .expect("session list script stdin")
+            .write_all(remote_session_list_script().as_bytes())
+            .expect("write session list script");
+        let output = child
+            .wait_with_output()
+            .expect("wait for session list script");
+        assert!(
+            output.status.success(),
+            "session list failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("utf-8 session list output");
+        let sessions =
+            parse_remote_session_list_output(&valid_server(), &stdout).expect("parse sessions");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "visible");
+        assert_eq!(sessions[0].title, "Visible task");
+        assert_eq!(sessions[0].cwd, "/repo");
+        assert_eq!(sessions[0].updated_at, Some(42));
+        assert_eq!(sessions[0].server_name, "Dev");
+        assert!(remote_session_list_script().contains("?mode=ro"));
+        assert!(remote_session_list_script().contains("uri=True"));
+
+        drop(connection);
+        std::fs::remove_dir_all(&temp_dir).expect("remove temporary Codex home");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn state_repair_script_aligns_database_and_rollout_providers() {
+        use rusqlite::Connection;
+        use std::io::Write;
+        use std::process::{Command as StdCommand, Stdio as StdStdio};
+
+        let temp_dir =
+            std::env::temp_dir().join(format!("cockpit-ssh-state-repair-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).expect("create temporary Codex home");
+        let rollout_dir = temp_dir.join("sessions").join("2026").join("07").join("16");
+        std::fs::create_dir_all(&rollout_dir).expect("create rollout directory");
+        let user_rollout = rollout_dir.join("rollout-user-needs-repair.jsonl");
+        let child_rollout = rollout_dir.join("rollout-child-thread.jsonl");
+        let ok_rollout = rollout_dir.join("rollout-user-ok.jsonl");
+        std::fs::write(
+            &user_rollout,
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"user-needs-repair\",\"model_provider\":\"old\"}}\n{\"type\":\"event_msg\",\"payload\":{}}\n",
+        )
+        .expect("write user rollout");
+        std::fs::write(
+            &child_rollout,
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"child-thread\",\"model_provider\":\"old\"}}\n",
+        )
+        .expect("write child rollout");
+        std::fs::write(
+            &ok_rollout,
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"user-ok\",\"model_provider\":\"openai\"}}\n",
+        )
+        .expect("write matching rollout");
+        let relative_rollout = |path: &std::path::Path| {
+            path.strip_prefix(&temp_dir)
+                .expect("rollout is inside Codex home")
+                .to_string_lossy()
+                .to_string()
+        };
+        let db_path = temp_dir.join("state_5.sqlite");
+        let connection = Connection::open(&db_path).expect("create state database");
+        connection
+            .execute_batch(
+                r#"
+                PRAGMA journal_mode = WAL;
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    rollout_path TEXT,
+                    model_provider TEXT,
+                    first_user_message TEXT,
+                    has_user_event INTEGER,
+                    thread_source TEXT
+                );
+                "#,
+            )
+            .expect("create state database schema");
+        connection
+            .execute(
+                "INSERT INTO threads VALUES ('user-needs-repair', ?1, 'old', 'hello', 0, '')",
+                [relative_rollout(&user_rollout)],
+            )
+            .expect("insert user thread");
+        connection
+            .execute(
+                "INSERT INTO threads VALUES ('child-thread', ?1, 'old', '', 0, 'subagent')",
+                [relative_rollout(&child_rollout)],
+            )
+            .expect("insert child thread");
+        connection
+            .execute(
+                "INSERT INTO threads VALUES ('user-ok', ?1, 'openai', 'ready', 1, 'user')",
+                [relative_rollout(&ok_rollout)],
+            )
+            .expect("insert matching thread");
+
+        let mut child = StdCommand::new("sh")
+            .args([
+                "-s",
+                "--",
+                temp_dir.to_str().expect("utf-8 temporary path"),
+                &STANDARD.encode(DEFAULT_MODEL_PROVIDER_ID.as_bytes()),
+            ])
+            .stdin(StdStdio::piped())
+            .stdout(StdStdio::piped())
+            .stderr(StdStdio::piped())
+            .spawn()
+            .expect("spawn repair script");
+        child
+            .stdin
+            .as_mut()
+            .expect("repair script stdin")
+            .write_all(remote_state_repair_script().as_bytes())
+            .expect("write repair script");
+        let output = child.wait_with_output().expect("wait for repair script");
+        assert!(
+            output.status.success(),
+            "repair failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("utf-8 repair output");
+        let result = parse_remote_state_repair_output(&stdout).expect("parse repair result");
+        assert_eq!(result.provider_rows_to_repair, 2);
+        assert_eq!(result.visibility_rows_to_repair, 1);
+        assert!(result.rollout_schema_supported);
+        assert_eq!(result.rollout_files_to_repair, 2);
+        assert_eq!(result.rollout_files_repaired, 2);
+        assert_eq!(result.rollout_files_remaining, 0);
+        assert_eq!(result.rows_repaired, 2);
+        assert_eq!(result.quick_check.as_deref(), Some("ok"));
+
+        assert!(std::fs::read_to_string(&user_rollout)
+            .expect("read repaired user rollout")
+            .contains("\"model_provider\":\"openai\""));
+        assert!(std::fs::read_to_string(&child_rollout)
+            .expect("read repaired child rollout")
+            .contains("\"model_provider\":\"openai\""));
+        assert!(std::fs::read_to_string(&ok_rollout)
+            .expect("read matching rollout")
+            .contains("\"model_provider\":\"openai\""));
+
+        let repaired: (String, i64, String) = connection
+            .query_row(
+                "SELECT model_provider, has_user_event, thread_source FROM threads WHERE id = 'user-needs-repair'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read repaired user thread");
+        assert_eq!(repaired, ("openai".to_string(), 1, "user".to_string()));
+        let child_thread: (String, i64, String) = connection
+            .query_row(
+                "SELECT model_provider, has_user_event, thread_source FROM threads WHERE id = 'child-thread'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read child thread");
+        assert_eq!(
+            child_thread,
+            ("openai".to_string(), 0, "subagent".to_string())
+        );
+
+        let backup_path = std::path::PathBuf::from(result.backup_path.expect("backup path"));
+        let backup_root = backup_path.parent().expect("backup directory");
+        let user_rollout_backup = backup_root
+            .join("rollouts")
+            .join(relative_rollout(&user_rollout));
+        assert!(std::fs::read_to_string(user_rollout_backup)
+            .expect("read rollout backup")
+            .contains("\"model_provider\":\"old\""));
+        let backup = Connection::open(backup_path).expect("open online backup");
+        let backup_state: (String, i64, String) = backup
+            .query_row(
+                "SELECT model_provider, has_user_event, thread_source FROM threads WHERE id = 'user-needs-repair'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read backup state");
+        assert_eq!(backup_state, ("old".to_string(), 0, String::new()));
+
+        drop(backup);
+        drop(connection);
+        std::fs::remove_dir_all(&temp_dir).expect("remove temporary Codex home");
+    }
+
+    #[test]
     fn sanitize_error_redacts_secret_values() {
         let error = r#"access_token=abc123 refresh_token: 'def456' {"id_token":"ghi789","OPENAI_API_KEY":"sk-test"}"#;
         let sanitized = sanitize_error(error);
@@ -821,6 +1850,64 @@ mod tests {
         assert!(!sanitized.contains("def456"));
         assert!(!sanitized.contains("ghi789"));
         assert!(!sanitized.contains("sk-test"));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_ssh_lists_configured_sessions() {
+        if std::env::var("COCKPIT_LIVE_SSH_SESSION_LIST")
+            .ok()
+            .as_deref()
+            != Some("1")
+        {
+            eprintln!("set COCKPIT_LIVE_SSH_SESSION_LIST=1 to run the live SSH session list test");
+            return;
+        }
+
+        let sessions = list_codex_sessions_from_servers()
+            .await
+            .expect("configured SSH session list should load");
+        assert!(
+            sessions
+                .iter()
+                .any(|session| session.session_id == "019f63fa-d011-7ba2-9001-ded71f7c7598"),
+            "expected the chenj_la test usage session in the remote list"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_ssh_syncs_selected_configured_server() {
+        if std::env::var("COCKPIT_LIVE_SSH_CONFIGURED_SYNC")
+            .ok()
+            .as_deref()
+            != Some("1")
+        {
+            eprintln!(
+                "set COCKPIT_LIVE_SSH_CONFIGURED_SYNC=1 to sync the selected configured server"
+            );
+            return;
+        }
+
+        let result = sync_current_account_to_server(None)
+            .await
+            .expect("configured SSH sync should return a result");
+        assert!(
+            result.verified,
+            "configured SSH sync should verify remote state: {:?}",
+            result.error
+        );
+        let repair = result
+            .state_repair
+            .expect("configured SSH sync should report state repair");
+        assert_eq!(repair.provider_rows_remaining, 0);
+        assert_eq!(repair.visibility_rows_remaining, 0);
+        assert_eq!(repair.rollout_files_remaining, 0);
+        assert_eq!(
+            repair.rollout_files_repaired,
+            repair.rollout_files_to_repair
+        );
+        assert_eq!(repair.quick_check.as_deref(), Some("ok"));
     }
 
     #[tokio::test]

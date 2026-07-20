@@ -1203,6 +1203,15 @@ fn remote_project_matches(
             .is_none_or(|expected| project.get("id").and_then(JsonValue::as_str) == Some(expected))
 }
 
+fn selected_remote_project_id(object: &serde_json::Map<String, JsonValue>) -> Option<&str> {
+    object
+        .get("selected-project")
+        .and_then(JsonValue::as_object)
+        .filter(|selected| selected.get("type").and_then(JsonValue::as_str) == Some("remote"))
+        .and_then(|selected| selected.get("projectId"))
+        .and_then(JsonValue::as_str)
+}
+
 pub fn capture_remote_launch_context(
     root_dir: &Path,
     candidates: &[CodexRemoteLaunchCandidate],
@@ -1242,21 +1251,33 @@ pub fn capture_remote_launch_context(
         return Ok(None);
     }
 
-    let selected_host = object
-        .get("selected-remote-host-id")
-        .and_then(JsonValue::as_str)
-        .filter(|host_id| reachable_host_ids.iter().any(|value| value == host_id))
-        .map(str::to_string)
-        .unwrap_or_else(|| reachable_host_ids[0].clone());
     let remote_projects = object
         .get("remote-projects")
         .and_then(JsonValue::as_array)
         .cloned()
         .unwrap_or_default();
+    let selected_project = selected_remote_project_id(object);
+    let selected_project_host = selected_project.and_then(|project_id| {
+        remote_projects.iter().find_map(|project| {
+            let project = project.as_object()?;
+            let host_id = project.get("hostId").and_then(JsonValue::as_str)?;
+            (project.get("id").and_then(JsonValue::as_str) == Some(project_id)
+                && reachable_host_ids.iter().any(|value| value == host_id))
+            .then(|| host_id.to_string())
+        })
+    });
+    let selected_host = selected_project_host.unwrap_or_else(|| {
+        object
+            .get("selected-remote-host-id")
+            .and_then(JsonValue::as_str)
+            .filter(|host_id| reachable_host_ids.iter().any(|value| value == host_id))
+            .map(str::to_string)
+            .unwrap_or_else(|| reachable_host_ids[0].clone())
+    });
     let active_project = object
         .get("active-remote-project-id")
         .and_then(JsonValue::as_str);
-    let project_id = active_project
+    let project_id = selected_project
         .filter(|project_id| {
             remote_projects.iter().any(|project| {
                 project.as_object().is_some_and(|project| {
@@ -1265,6 +1286,17 @@ pub fn capture_remote_launch_context(
             })
         })
         .map(str::to_string)
+        .or_else(|| {
+            active_project
+                .filter(|project_id| {
+                    remote_projects.iter().any(|project| {
+                        project.as_object().is_some_and(|project| {
+                            remote_project_matches(project, &selected_host, Some(project_id))
+                        })
+                    })
+                })
+                .map(str::to_string)
+        })
         .or_else(|| {
             remote_projects.iter().find_map(|project| {
                 let project = project.as_object()?;
@@ -1313,6 +1345,12 @@ pub fn restore_remote_launch_context(
                 })
             });
         if project_is_valid {
+            let selected_project = json!({
+                "type": "remote",
+                "projectId": project_id,
+            });
+            changed |= object.get("selected-project") != Some(&selected_project);
+            object.insert("selected-project".to_string(), selected_project);
             changed |= object
                 .get("active-remote-project-id")
                 .and_then(JsonValue::as_str)
@@ -1718,6 +1756,10 @@ mod tests {
             serde_json::to_string_pretty(&json!({
                 "selected-remote-host-id": "remote-ssh-discovered:server-b",
                 "active-remote-project-id": null,
+                "selected-project": {
+                    "type": "local",
+                    "projectId": "local-project"
+                },
                 "codex-managed-remote-connections": [
                     {
                         "alias": "server-a",
@@ -1775,6 +1817,8 @@ mod tests {
             "remote-ssh-discovered:server-b"
         );
         assert_eq!(restored["active-remote-project-id"], "project-b");
+        assert_eq!(restored["selected-project"]["type"], "remote");
+        assert_eq!(restored["selected-project"]["projectId"], "project-b");
         assert_eq!(
             restored["remote-connection-auto-connect-by-host-id"]["remote-ssh-discovered:server-a"],
             true
@@ -1784,6 +1828,64 @@ mod tests {
             true
         );
         assert_eq!(restored["unrelated"], "preserved");
+        fs::remove_dir_all(&temp_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn remote_launch_context_prefers_selected_remote_project_host() {
+        let temp_dir = make_temp_dir("codex-selected-remote-project-context-test");
+        fs::write(
+            temp_dir.join(GLOBAL_STATE_FILE),
+            serde_json::to_string(&json!({
+                "selected-remote-host-id": "remote-ssh-discovered:server-a",
+                "selected-project": {
+                    "type": "remote",
+                    "projectId": "project-b"
+                },
+                "active-remote-project-id": "project-a",
+                "codex-managed-remote-connections": [
+                    {
+                        "alias": "server-a",
+                        "hostId": "remote-ssh-discovered:server-a"
+                    },
+                    {
+                        "alias": "server-b",
+                        "hostId": "remote-ssh-discovered:server-b"
+                    }
+                ],
+                "remote-projects": [
+                    {
+                        "id": "project-a",
+                        "hostId": "remote-ssh-discovered:server-a",
+                        "remotePath": "/srv/a"
+                    },
+                    {
+                        "id": "project-b",
+                        "hostId": "remote-ssh-discovered:server-b",
+                        "remotePath": "/srv/b"
+                    }
+                ]
+            }))
+            .expect("serialize state"),
+        )
+        .expect("write state");
+
+        let context = capture_remote_launch_context(
+            &temp_dir,
+            &[
+                CodexRemoteLaunchCandidate {
+                    identifiers: vec!["server-a".to_string()],
+                },
+                CodexRemoteLaunchCandidate {
+                    identifiers: vec!["server-b".to_string()],
+                },
+            ],
+        )
+        .expect("capture context")
+        .expect("remote context");
+
+        assert_eq!(context.host_id, "remote-ssh-discovered:server-b");
+        assert_eq!(context.project_id.as_deref(), Some("project-b"));
         fs::remove_dir_all(&temp_dir).expect("cleanup temp dir");
     }
 

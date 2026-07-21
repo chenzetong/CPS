@@ -99,6 +99,8 @@ export const useSshServerStore = create<SshServerState>((set, get) => ({
                 model_provider_verified: result.model_provider_verified,
                 state_repair: result.state_repair,
                 app_server_reload_status: result.app_server_reload_status,
+                app_server_quiesce_status: result.app_server_quiesce_status,
+                app_server_restore_status: result.app_server_restore_status,
                 synced_at: result.synced_at,
                 verified: result.verified,
                 error: result.error,

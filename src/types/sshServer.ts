@@ -3,6 +3,9 @@ export type SshAuthConfig =
   | { kind: 'private_key_file'; path: string };
 
 export interface SshCodexStateRepairStatus {
+  success: boolean;
+  error_stage: string | null;
+  error: string | null;
   database_found: boolean;
   backup_path: string | null;
   provider_schema_supported: boolean;
@@ -17,6 +20,13 @@ export interface SshCodexStateRepairStatus {
   visibility_rows_remaining: number;
   rollout_files_remaining: number;
   quick_check: string | null;
+  rollback_performed: boolean;
+  rollback_verified: boolean;
+  orphan_rollouts_found: number;
+  orphan_threads_recovered: number;
+  rollout_paths_repaired: number;
+  user_events_recovered: number;
+  cwd_rows_repaired: number;
 }
 
 export interface SshCodexSyncStatus {
@@ -29,6 +39,8 @@ export interface SshCodexSyncStatus {
   model_provider_verified: boolean;
   state_repair: SshCodexStateRepairStatus | null;
   app_server_reload_status: string | null;
+  app_server_quiesce_status: string | null;
+  app_server_restore_status: string | null;
   synced_at: number;
   verified: boolean;
   error: string | null;

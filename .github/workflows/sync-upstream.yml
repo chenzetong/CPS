@@ -184,3 +184,4 @@ jobs:
             echo "Dispatched Release for ${TAG}."
           else
             echo "${TAG} already has complete updater metadata; no release dispatch needed."
+          fi

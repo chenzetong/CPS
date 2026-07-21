@@ -102,7 +102,7 @@ function describeSyncStatus(t: TFunction, sync: SshCodexSyncStatus) {
   }
   const provider = sync.model_provider ?? 'openai';
   const state = sync.state_repair?.database_found
-    ? t(
+    ? `${t(
         'codex.ssh.stateRepaired',
         '状态库已对齐 {{rows}} 行（provider {{providerRows}}，可见性 {{visibilityRows}}），rollout 已修复 {{rolloutFiles}} 个，备份已校验',
         {
@@ -110,17 +110,34 @@ function describeSyncStatus(t: TFunction, sync: SshCodexSyncStatus) {
           providerRows: sync.state_repair.provider_rows_to_repair,
           visibilityRows: sync.state_repair.visibility_rows_to_repair,
           rolloutFiles: sync.state_repair.rollout_files_repaired,
+          rolloutPaths: sync.state_repair.rollout_paths_repaired,
+          userEvents: sync.state_repair.user_events_recovered,
+          cwdRows: sync.state_repair.cwd_rows_repaired,
+          orphanRollouts: sync.state_repair.orphan_rollouts_found,
         },
-      )
+      )} · ${t(
+        'codex.ssh.reconciliationSummary',
+        '路径 {{rolloutPaths}} · 用户事件 {{userEvents}} · 工作目录 {{cwdRows}} · 孤立 rollout {{orphanRollouts}}',
+        {
+          rolloutPaths: sync.state_repair.rollout_paths_repaired,
+          userEvents: sync.state_repair.user_events_recovered,
+          cwdRows: sync.state_repair.cwd_rows_repaired,
+          orphanRollouts: sync.state_repair.orphan_rollouts_found,
+        },
+      )}`
     : t('codex.ssh.stateDatabaseMissing', '远端尚无状态库，无历史需要对齐');
-  const reload = t(
-    `codex.ssh.reloadStatus.${sync.app_server_reload_status ?? 'unknown'}`,
-    sync.app_server_reload_status ?? 'unknown',
+  const quiesce = t(
+    `codex.ssh.reloadStatus.${sync.app_server_quiesce_status ?? 'unknown'}`,
+    sync.app_server_quiesce_status ?? 'unknown',
+  );
+  const restore = t(
+    `codex.ssh.reloadStatus.${sync.app_server_restore_status ?? 'unknown'}`,
+    sync.app_server_restore_status ?? 'unknown',
   );
   return t(
     'codex.ssh.syncVerifiedDetail',
-    'Provider {{provider}} 已校验 · {{state}} · {{reload}}',
-    { provider, state, reload },
+    'Provider {{provider}} 已校验 · {{state}} · {{quiesce}} / {{restore}}',
+    { provider, state, quiesce, restore },
   );
 }
 

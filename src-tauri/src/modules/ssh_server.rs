@@ -30,7 +30,10 @@ const APP_SERVER_RELOAD_TIMEOUT_SECS: u64 = 20;
 /// 只读列出远端会话的墙钟超时。
 const SESSION_LIST_TIMEOUT_SECS: u64 = 20;
 const DEFAULT_MODEL_PROVIDER_ID: &str = "openai";
+#[cfg(test)]
 const STATE_REPAIR_OUTPUT_PREFIX: &str = "__COCKPIT_CODEX_STATE_REPAIR__";
+const SYNC_TRANSACTION_OUTPUT_PREFIX: &str = "__CPS_CODEX_SYNC_TRANSACTION__";
+const STAGING_OUTPUT_PREFIX: &str = "__CPS_CODEX_SYNC_STAGING__";
 const SESSION_LIST_OUTPUT_PREFIX: &str = "__COCKPIT_CODEX_SESSION_LIST__";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -684,15 +687,24 @@ fn validate_model_provider_config(config_toml: Option<&str>) -> Result<String, S
     Ok(provider.to_string())
 }
 
-async fn validate_remote_model_provider(server: &SshServer) -> Result<String, String> {
-    let config_toml = read_remote_config_toml(server).await?;
-    validate_model_provider_config(config_toml.as_deref())
+fn projection_bundle_model_provider(
+    bundle: &codex_account::CodexAccountProjectionBundle,
+) -> Result<String, String> {
+    let config = bundle
+        .files
+        .iter()
+        .find(|file| file.relative_path == "config.toml")
+        .ok_or_else(|| {
+            "ssh_remote_model_provider_invalid: staged config.toml is missing".to_string()
+        })?;
+    validate_model_provider_config(Some(&config.content))
 }
 
-async fn upload_and_verify_bundle(
+async fn stage_remote_bundle(
     server: &SshServer,
     bundle: &codex_account::CodexAccountProjectionBundle,
-) -> Result<(), String> {
+    run_id: &str,
+) -> Result<String, String> {
     let mut payload = String::new();
     for file in &bundle.files {
         payload.push_str(&format!(
@@ -703,19 +715,43 @@ async fn upload_and_verify_bundle(
             STANDARD.encode(file.content.as_bytes())
         ));
     }
+    let manifest = serde_json::json!({
+        "version": 1,
+        "run_id": run_id,
+        "files": bundle.files.iter().map(|file| serde_json::json!({
+            "relative_path": file.relative_path,
+            "mode": file.mode,
+            "sha256": file.sha256,
+        })).collect::<Vec<_>>(),
+    });
+    let manifest_encoded =
+        STANDARD.encode(serde_json::to_vec(&manifest).map_err(|error| {
+            format!("codex_bundle_failed: serialize staging manifest: {}", error)
+        })?);
+    let staging_prefix = STAGING_OUTPUT_PREFIX;
     let script = format!(
         r#"set -eu
 codex_home=$1
+run_id=$2
+manifest_encoded=$3
 case "$codex_home" in
   "~") codex_home="$HOME" ;;
   "~/"*) codex_home="$HOME/${{codex_home#~/}}" ;;
 esac
+case "$run_id" in
+  *[!A-Za-z0-9-]*) printf 'invalid staging run id\n' >&2; exit 4 ;;
+esac
 mkdir -p "$codex_home"
 chmod 700 "$codex_home" 2>/dev/null || true
-tmp_dir="$codex_home/.cockpit-codex-sync.$$"
-rm -rf "$tmp_dir"
-mkdir -p "$tmp_dir"
-cleanup() {{ rm -rf "$tmp_dir"; }}
+staging_root="$codex_home/.cps-codex-sync/staging"
+staging_dir="$staging_root/$run_id"
+mkdir -p "$staging_root"
+chmod 700 "$codex_home/.cps-codex-sync" "$staging_root" 2>/dev/null || true
+[ ! -e "$staging_dir" ] || {{ printf 'staging directory already exists\n' >&2; exit 5; }}
+mkdir "$staging_dir"
+chmod 700 "$staging_dir" 2>/dev/null || true
+complete=0
+cleanup() {{ [ "$complete" -eq 1 ] || rm -rf "$staging_dir"; }}
 trap cleanup EXIT INT TERM
 cat <<'__COCKPIT_CODEX_PAYLOAD__' | while IFS='	' read -r rel mode expected encoded; do
 {payload}__COCKPIT_CODEX_PAYLOAD__
@@ -724,13 +760,10 @@ cat <<'__COCKPIT_CODEX_PAYLOAD__' | while IFS='	' read -r rel mode expected enco
     auth.json|config.toml|.cockpit_codex_auth.json) ;;
     *) printf 'invalid relative path: %s\n' "$rel" >&2; exit 4 ;;
   esac
-  tmp="$tmp_dir/$rel"
-  target="$codex_home/$rel"
-  if ! printf '%s' "$encoded" | base64 -d > "$tmp" 2>/dev/null; then
-    printf '%s' "$encoded" | base64 -D > "$tmp"
+  target="$staging_dir/$rel"
+  if ! printf '%s' "$encoded" | base64 -d > "$target" 2>/dev/null; then
+    printf '%s' "$encoded" | base64 -D > "$target"
   fi
-  chmod "$mode" "$tmp" 2>/dev/null || true
-  mv "$tmp" "$target"
   chmod "$mode" "$target" 2>/dev/null || true
   actual="$(sha256sum "$target" 2>/dev/null | awk '{{print $1}}' || shasum -a 256 "$target" | awk '{{print $1}}')"
   if [ "$actual" != "$expected" ]; then
@@ -739,12 +772,25 @@ cat <<'__COCKPIT_CODEX_PAYLOAD__' | while IFS='	' read -r rel mode expected enco
   fi
   printf '%s\t%s\n' "$rel" "$actual"
 done
+if ! printf '%s' "$manifest_encoded" | base64 -d > "$staging_dir/manifest.json" 2>/dev/null; then
+  printf '%s' "$manifest_encoded" | base64 -D > "$staging_dir/manifest.json"
+fi
+chmod 600 "$staging_dir/manifest.json" 2>/dev/null || true
+complete=1
+printf '%s%s\n' '{staging_prefix}' "$staging_dir"
 "#
     );
     let output = run_ssh(
         server,
         SYNC_TIMEOUT_SECS,
-        &["sh", "-s", "--", &server.codex_home],
+        &[
+            "sh",
+            "-s",
+            "--",
+            &server.codex_home,
+            run_id,
+            &manifest_encoded,
+        ],
         Some(script),
     )
     .await
@@ -761,9 +807,15 @@ done
             ));
         }
     }
-    Ok(())
+    output
+        .lines()
+        .find_map(|line| line.strip_prefix(STAGING_OUTPUT_PREFIX))
+        .map(str::to_string)
+        .filter(|path| !path.is_empty())
+        .ok_or_else(|| "ssh_remote_verify_failed: missing staging path".to_string())
 }
 
+#[cfg(test)]
 fn remote_state_repair_script() -> &'static str {
     r#"set -eu
 codex_home=$1
@@ -1072,6 +1124,7 @@ __COCKPIT_CODEX_STATE_PY__
 "#
 }
 
+#[cfg(test)]
 fn parse_remote_state_repair_output(output: &str) -> Result<SshCodexStateRepairStatus, String> {
     let payload = output
         .lines()
@@ -1121,23 +1174,213 @@ fn parse_remote_state_repair_output(output: &str) -> Result<SshCodexStateRepairS
     Ok(result)
 }
 
-async fn repair_remote_state_database(
+fn remote_sync_transaction_script() -> String {
+    let mut script = r#"set -eu
+codex_home=$1
+staging_dir=$2
+provider_encoded=$3
+case "$codex_home" in
+  "~") codex_home="$HOME" ;;
+  "~/"*) codex_home="$HOME/${codex_home#~/}" ;;
+esac
+python_bin=''
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    python_bin=$candidate
+    break
+  fi
+done
+if [ -z "$python_bin" ]; then
+  printf 'python3 or python is required for transactional Codex sync\n' >&2
+  exit 6
+fi
+if ! model_provider="$(printf '%s' "$provider_encoded" | base64 -d 2>/dev/null)"; then
+  model_provider="$(printf '%s' "$provider_encoded" | base64 -D)"
+fi
+"$python_bin" - "$codex_home" "$staging_dir" "$model_provider" <<'__CPS_CODEX_SYNC_PY__'
+"#
+    .to_string();
+    script.push_str(include_str!("../../scripts/codex_ssh_sync.py"));
+    script.push_str("\n__CPS_CODEX_SYNC_PY__\n");
+    script
+}
+
+fn parse_remote_sync_transaction_output(output: &str) -> Result<SshCodexStateRepairStatus, String> {
+    let payload = output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(SYNC_TRANSACTION_OUTPUT_PREFIX))
+        .ok_or_else(|| "ssh_remote_transaction_failed: missing transaction result".to_string())?;
+    serde_json::from_str(payload).map_err(|error| {
+        format!(
+            "ssh_remote_transaction_failed: invalid transaction result: {}",
+            sanitize_error(error)
+        )
+    })
+}
+
+async fn execute_remote_sync_transaction(
     server: &SshServer,
+    staging_dir: &str,
     model_provider: &str,
 ) -> Result<SshCodexStateRepairStatus, String> {
     let provider_encoded = STANDARD.encode(model_provider.as_bytes());
     let output = run_ssh(
         server,
         STATE_REPAIR_TIMEOUT_SECS,
-        &["sh", "-s", "--", &server.codex_home, &provider_encoded],
-        Some(remote_state_repair_script().to_string()),
+        &[
+            "sh",
+            "-s",
+            "--",
+            &server.codex_home,
+            staging_dir,
+            &provider_encoded,
+        ],
+        Some(remote_sync_transaction_script()),
     )
     .await
-    .map_err(|error| format!("ssh_remote_state_repair_failed: {}", sanitize_error(error)))?;
-    parse_remote_state_repair_output(&output)
+    .map_err(|error| format!("ssh_remote_transaction_failed: {}", sanitize_error(error)))?;
+    parse_remote_sync_transaction_output(&output)
+}
+
+async fn cleanup_remote_staging(server: &SshServer, staging_dir: &str) {
+    let script = r#"set -eu
+codex_home=$1
+staging_dir=$2
+case "$codex_home" in
+  "~") codex_home="$HOME" ;;
+  "~/"*) codex_home="$HOME/${codex_home#~/}" ;;
+esac
+staging_root="$codex_home/.cps-codex-sync/staging"
+case "$staging_dir" in
+  "$staging_root"/*) rm -rf "$staging_dir" ;;
+esac
+"#;
+    if let Err(error) = run_ssh(
+        server,
+        SYNC_TIMEOUT_SECS,
+        &["sh", "-s", "--", &server.codex_home, staging_dir],
+        Some(script.to_string()),
+    )
+    .await
+    {
+        logger::log_warn(&format!(
+            "[Codex SSH] 清理远端暂存目录失败: server_id={}, error={}",
+            server.id,
+            sanitize_error(error)
+        ));
+    }
+}
+
+fn quiesce_app_server_script() -> &'static str {
+    r#"set +e
+pids="$(ps -u "$(id -u)" -o pid= -o args= 2>/dev/null | awk '
+/codex app-server --listen/ || /codex app-server proxy/ { print $1 }
+' || true)"
+pids="$(printf '%s\n' "$pids" | tr -s '[:space:]' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+if [ -z "$pids" ]; then
+  printf 'no-app-server\n'
+  exit 0
+fi
+# shellcheck disable=SC2086
+kill -TERM $pids 2>/dev/null || true
+tries=0
+while [ "$tries" -lt 20 ]; do
+  alive=''
+  for pid in $pids; do
+    if kill -0 "$pid" 2>/dev/null; then alive="$alive $pid"; fi
+  done
+  [ -n "$alive" ] || break
+  sleep 0.1
+  tries=$((tries + 1))
+done
+for pid in $pids; do
+  if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null || true; fi
+done
+printf 'app-server-terminated\n'
+"#
+}
+
+async fn quiesce_remote_codex_app_server(server: &SshServer) -> Result<String, String> {
+    let output = run_ssh(
+        server,
+        APP_SERVER_RELOAD_TIMEOUT_SECS,
+        &["sh", "-s"],
+        Some(quiesce_app_server_script().to_string()),
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "ssh_remote_app_server_quiesce_failed: {}",
+            sanitize_error(error)
+        )
+    })?;
+    let status = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if matches!(status, "app-server-terminated" | "no-app-server") {
+        Ok(status.to_string())
+    } else {
+        Err(format!(
+            "ssh_remote_app_server_quiesce_failed: unexpected response: {}",
+            sanitize_error(status)
+        ))
+    }
+}
+
+fn restore_app_server_script() -> &'static str {
+    r#"set +e
+if ! command -v codex >/dev/null 2>&1; then
+  printf 'restore-unavailable\n'
+  exit 0
+fi
+if command -v timeout >/dev/null 2>&1; then
+  timeout 8 codex app-server daemon restart >/dev/null 2>&1
+  rc=$?
+else
+  codex app-server daemon restart >/dev/null 2>&1
+  rc=$?
+fi
+if [ "$rc" -eq 0 ]; then
+  printf 'daemon-restarted\n'
+else
+  printf 'restore-failed\n'
+fi
+"#
+}
+
+async fn restore_remote_codex_app_server(server: &SshServer) -> Result<String, String> {
+    let output = run_ssh(
+        server,
+        APP_SERVER_RELOAD_TIMEOUT_SECS,
+        &["sh", "-s"],
+        Some(restore_app_server_script().to_string()),
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "ssh_remote_app_server_restore_failed: {}",
+            sanitize_error(error)
+        )
+    })?;
+    let status = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if status == "daemon-restarted" {
+        Ok(status.to_string())
+    } else {
+        Err(format!(
+            "ssh_remote_app_server_restore_failed: {}",
+            sanitize_error(status)
+        ))
+    }
 }
 
 /// 远端刷新 Codex app-server：daemon restart 必须有硬超时，避免整段 SSH 被挂死。
+#[cfg(test)]
 fn reload_app_server_script() -> &'static str {
     r#"set +e
 # 1) 优先 daemon restart，但限制 5s，防止 codex CLI 卡住拖垮同步
@@ -1178,34 +1421,6 @@ exit 0
 "#
 }
 
-async fn reload_remote_codex_app_server(server: &SshServer) -> Result<String, String> {
-    let output = run_ssh(
-        server,
-        APP_SERVER_RELOAD_TIMEOUT_SECS,
-        &["sh", "-s"],
-        Some(reload_app_server_script().to_string()),
-    )
-    .await
-    .map_err(|e| format!("ssh_remote_app_server_reload_failed: {}", sanitize_error(e)))?;
-
-    let status = output
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or("");
-    if matches!(
-        status,
-        "daemon-restarted" | "app-server-terminated" | "no-app-server"
-    ) {
-        Ok(status.to_string())
-    } else {
-        Err(format!(
-            "ssh_remote_app_server_reload_failed: unexpected reload response: {}",
-            sanitize_error(status)
-        ))
-    }
-}
-
 fn result_from_status(server: &SshServer, status: SshCodexSyncStatus) -> SshCodexSyncResult {
     SshCodexSyncResult {
         server_id: server.id.clone(),
@@ -1219,6 +1434,8 @@ fn result_from_status(server: &SshServer, status: SshCodexSyncStatus) -> SshCode
         model_provider_verified: status.model_provider_verified,
         state_repair: status.state_repair,
         app_server_reload_status: status.app_server_reload_status,
+        app_server_quiesce_status: status.app_server_quiesce_status,
+        app_server_restore_status: status.app_server_restore_status,
         verified: status.verified,
         error: status.error,
         synced_at: status.synced_at,
@@ -1236,6 +1453,8 @@ fn initial_sync_status(account: &CodexAccount) -> SshCodexSyncStatus {
         model_provider_verified: false,
         state_repair: None,
         app_server_reload_status: None,
+        app_server_quiesce_status: None,
+        app_server_restore_status: None,
         synced_at: now_timestamp(),
         verified: false,
         error: None,
@@ -1272,14 +1491,70 @@ async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> Ss
         status.token_generation = bundle.token_generation;
         status.bundle_hash = bundle.bundle_hash.clone();
 
-        upload_and_verify_bundle(&server, &bundle).await?;
-        status.bundle_verified = true;
-        let model_provider = validate_remote_model_provider(&server).await?;
+        let model_provider = projection_bundle_model_provider(&bundle)?;
         status.model_provider = Some(model_provider.clone());
-        status.model_provider_verified = true;
+        let run_id = Uuid::new_v4().to_string();
+        let staging_dir = stage_remote_bundle(&server, &bundle, &run_id).await?;
 
-        status.state_repair = Some(repair_remote_state_database(&server, &model_provider).await?);
-        status.app_server_reload_status = Some(reload_remote_codex_app_server(&server).await?);
+        let quiesce_status = match quiesce_remote_codex_app_server(&server).await {
+            Ok(value) => value,
+            Err(error) => {
+                cleanup_remote_staging(&server, &staging_dir).await;
+                return Err(error);
+            }
+        };
+        status.app_server_quiesce_status = Some(quiesce_status.clone());
+
+        let transaction =
+            execute_remote_sync_transaction(&server, &staging_dir, &model_provider).await;
+        cleanup_remote_staging(&server, &staging_dir).await;
+
+        let restore = if quiesce_status == "app-server-terminated" {
+            restore_remote_codex_app_server(&server).await
+        } else {
+            Ok("not-required".to_string())
+        };
+        match &restore {
+            Ok(value) => {
+                status.app_server_restore_status = Some(value.clone());
+                status.app_server_reload_status = Some(value.clone());
+            }
+            Err(error) => {
+                status.app_server_restore_status = Some("restore-failed".to_string());
+                status.app_server_reload_status = Some("restore-failed".to_string());
+                logger::log_warn(&format!(
+                    "[Codex SSH] 恢复远端 app-server 失败: server_id={}, error={}",
+                    server.id,
+                    sanitize_error(error)
+                ));
+            }
+        }
+
+        let transaction = transaction?;
+        let transaction_success = transaction.success;
+        let transaction_error = transaction.error.clone();
+        let transaction_error_stage = transaction.error_stage.clone();
+        status.state_repair = Some(transaction);
+        if !transaction_success {
+            let mut error = format!(
+                "ssh_remote_transaction_failed at {}: {}",
+                transaction_error_stage.as_deref().unwrap_or("unknown"),
+                transaction_error
+                    .as_deref()
+                    .unwrap_or("unknown transaction error")
+            );
+            if let Err(restore_error) = restore {
+                error.push_str("; ");
+                error.push_str(&restore_error);
+            }
+            return Err(error);
+        }
+        if let Err(restore_error) = restore {
+            return Err(restore_error);
+        }
+
+        status.bundle_verified = true;
+        status.model_provider_verified = true;
         Ok::<(), String>(())
     }
     .await;
@@ -1531,7 +1806,18 @@ mod tests {
     }
 
     #[test]
-    fn app_server_reload_script_restarts_or_terminates_codex_app_server() {
+    fn app_server_scripts_quiesce_and_restore_only_when_needed() {
+        let quiesce = quiesce_app_server_script();
+        assert!(quiesce.contains("kill -TERM"));
+        assert!(quiesce.contains("app-server-terminated"));
+        assert!(quiesce.contains("no-app-server"));
+        assert!(!quiesce.contains("daemon restart"));
+
+        let restore = restore_app_server_script();
+        assert!(restore.contains("codex app-server daemon restart"));
+        assert!(restore.contains("daemon-restarted"));
+        assert!(restore.contains("restore-failed"));
+
         let script = reload_app_server_script();
         assert!(script.contains("codex app-server daemon restart"));
         assert!(script.contains("timeout 5 codex app-server daemon restart"));
@@ -1539,6 +1825,18 @@ mod tests {
         assert!(script.contains("codex app-server proxy"));
         assert!(script.contains("no-app-server"));
         assert!(!script.contains("pkill"));
+    }
+
+    #[test]
+    fn transaction_script_embeds_reconciliation_and_rollback_guards() {
+        let script = remote_sync_transaction_script();
+        assert!(script.contains("archived_sessions"));
+        assert!(script.contains("rollout_paths_repaired"));
+        assert!(script.contains("user_events_recovered"));
+        assert!(script.contains("verify_rollout_fingerprints"));
+        assert!(script.contains("restore_backup"));
+        assert!(script.contains("connection.backup(backup_connection)"));
+        assert!(script.contains(SYNC_TRANSACTION_OUTPUT_PREFIX));
     }
 
     #[test]

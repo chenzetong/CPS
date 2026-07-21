@@ -41,6 +41,12 @@ pub enum SshAuthConfig {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SshCodexStateRepairStatus {
+    #[serde(default)]
+    pub success: bool,
+    #[serde(default)]
+    pub error_stage: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
     pub database_found: bool,
     pub backup_path: Option<String>,
     pub provider_schema_supported: bool,
@@ -59,6 +65,18 @@ pub struct SshCodexStateRepairStatus {
     #[serde(default)]
     pub rollout_files_remaining: u64,
     pub quick_check: Option<String>,
+    #[serde(default)]
+    pub rollback_performed: bool,
+    #[serde(default)]
+    pub rollback_verified: bool,
+    #[serde(default)]
+    pub orphan_rollouts_found: u64,
+    #[serde(default)]
+    pub rollout_paths_repaired: u64,
+    #[serde(default)]
+    pub user_events_recovered: u64,
+    #[serde(default)]
+    pub cwd_rows_repaired: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +95,10 @@ pub struct SshCodexSyncStatus {
     pub state_repair: Option<SshCodexStateRepairStatus>,
     #[serde(default)]
     pub app_server_reload_status: Option<String>,
+    #[serde(default)]
+    pub app_server_quiesce_status: Option<String>,
+    #[serde(default)]
+    pub app_server_restore_status: Option<String>,
     pub synced_at: i64,
     pub verified: bool,
     pub error: Option<String>,
@@ -95,6 +117,8 @@ pub struct SshCodexSyncResult {
     pub model_provider_verified: bool,
     pub state_repair: Option<SshCodexStateRepairStatus>,
     pub app_server_reload_status: Option<String>,
+    pub app_server_quiesce_status: Option<String>,
+    pub app_server_restore_status: Option<String>,
     pub verified: bool,
     pub error: Option<String>,
     pub synced_at: i64,

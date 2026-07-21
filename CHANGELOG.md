@@ -7,6 +7,25 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.26.6] - 2026-07-21
+
+### Added
+
+- **Transactional Codex account synchronization over SSH**: CPS uploads the complete account projection to a verified remote staging directory, pauses a running app-server, and applies the bundle, session database, and rollout repairs as one recoverable operation.
+- **Remote rollout reconciliation**: active and archived rollout trees are scanned to recover stale or missing `rollout_path`, `has_user_event`, and `cwd` fields from actual session content; rollouts without a database row are reported without inventing thread records.
+
+### Changed
+
+- **Unified recovery backups** now include a manifest with hashes, modes, timestamps, planned operations, the SQLite online backup, previous projection files, and every rollout scheduled for replacement.
+- **Release numbering returns to the upstream-compatible `0.x` line**. CPS `0.26.6` is based on upstream `v1.3.10` and includes the CPS history-recovery changes previously carried in `1.3.11`.
+
+### Fixed
+
+- **Partial SSH synchronization can no longer leave mixed credentials**: failures restore all previously existing projection files and remove newly created ones, with restored hashes verified before the failure is reported.
+- **Concurrent rollout appends are protected by optimistic fingerprints**: CPS replans once when a rollout changes and aborts before replacement if it changes again.
+- **Remote conversations with real user events remain visible after restart** even when `first_user_message` is empty or the SQLite rollout path is stale.
+
+---
 ## [1.3.11] - 2026-07-21
 
 ### Added

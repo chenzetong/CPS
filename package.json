@@ -6,10 +6,13 @@
   "scripts": {
     "dev": "vite",
     "test:codex-api-key-scope": "node --test src/utils/codexApiKeyAccountScope.test.ts",
+    "test:sync-upstream-version": "node --test scripts/sync-upstream-version.test.cjs",
     "typecheck": "tsc --noEmit",
     "prebuild": "npm run typecheck",
     "build": "npm run sync-version && tsc && vite build",
     "release:preflight": "node scripts/release/preflight.cjs",
+    "security:scan": "node scripts/security/scan-sensitive.cjs",
+    "sync-upstream-version": "node scripts/sync-upstream-version.cjs",
     "preview": "vite preview",
     "pretauri:dev": "npm run typecheck",
     "tauri:dev": "node scripts/tauri-dev.cjs",

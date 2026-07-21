@@ -2,7 +2,7 @@
 
 简体中文 · [English](CHANGELOG.md)
 
-本文件记录 Cockpit Tools 的所有重要变更。
+本文件记录 CPS 的所有重要变更。
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
@@ -70,6 +70,12 @@
 
 ---
 ## [1.3.10] - 2026-07-19
+
+### CPS 分支维护
+
+- **CPS 版本号现在与上游 Cockpit Tools 完全一致**：定时工作流获取 `jlcodes99/cockpit-tools`，执行常规 merge，通过源码检查后才推送 `main`、创建同版本标签并触发 Release 工作流。
+- **CPS 使用本 fork 自有的更新签名并从 `chenzetong/CPS` 下载更新**：Release 工作流会在桌面安装包之外生成已签名的更新清单，使 CPS 安装版本后续跟随 CPS Release，而不是原仓库的发布通道。
+- **现有 CPS 0.26.8 用户需要手动完成一次过渡安装**：该版本内置的是旧更新公钥，无法校验首个 CPS 自签名更新。手动安装首个 `1.3.10` CPS 版本后，后续版本即可自动更新。
 
 ### 新增
 

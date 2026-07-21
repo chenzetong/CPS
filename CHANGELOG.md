@@ -2,7 +2,7 @@
 
 English · [简体中文](CHANGELOG.zh-CN.md)
 
-All notable changes to Cockpit Tools will be documented in this file.
+All notable changes to CPS will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
@@ -70,6 +70,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 ## [1.3.10] - 2026-07-19
+
+### CPS fork maintenance
+
+- **CPS versions now follow the upstream Cockpit Tools version exactly**: a scheduled workflow fetches `jlcodes99/cockpit-tools`, performs a normal merge, runs source checks, and only then pushes `main`, creates the matching tag, and dispatches the Release workflow.
+- **CPS updates are signed with a fork-owned updater key and downloaded from `chenzetong/CPS`**: the release workflow produces signed updater manifests together with desktop installers, allowing CPS installations to follow future CPS releases instead of the upstream release channel.
+- **One manual bridge installation is required for existing CPS 0.26.8 installations**: that build contains the former updater public key and therefore cannot verify the first CPS-signed update. After installing the first `1.3.10` CPS build manually, later releases can update automatically.
 
 ### Added
 

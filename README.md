@@ -1,11 +1,13 @@
-# Cockpit Tools
+# CPS
 
 [English](README.en.md) · [Portuguese (BR)](README.pt-br.md) · 简体中文
 
-[![GitHub stars](https://img.shields.io/github/stars/jlcodes99/cockpit-tools?style=flat&color=gold)](https://github.com/jlcodes99/cockpit-tools)
-[![GitHub downloads](https://img.shields.io/github/downloads/jlcodes99/cockpit-tools/total?style=flat&color=blue)](https://github.com/jlcodes99/cockpit-tools/releases)
-[![GitHub release](https://img.shields.io/github/v/release/jlcodes99/cockpit-tools?style=flat)](https://github.com/jlcodes99/cockpit-tools/releases)
-[![GitHub issues](https://img.shields.io/github/issues/jlcodes99/cockpit-tools)](https://github.com/jlcodes99/cockpit-tools/issues)
+[![GitHub stars](https://img.shields.io/github/stars/chenzetong/CPS?style=flat&color=gold)](https://github.com/chenzetong/CPS)
+[![GitHub downloads](https://img.shields.io/github/downloads/chenzetong/CPS/total?style=flat&color=blue)](https://github.com/chenzetong/CPS/releases)
+[![GitHub release](https://img.shields.io/github/v/release/chenzetong/CPS?style=flat)](https://github.com/chenzetong/CPS/releases)
+[![GitHub issues](https://img.shields.io/github/issues/chenzetong/CPS)](https://github.com/chenzetong/CPS/issues)
+
+> CPS 是 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) 的社区维护分支，保留上游能力并增加 Codex SSH 历史会话同步、恢复与 app-server 一致性修复。CPS 自动跟随上游版本号；同步、冲突策略和自动发布链见 [上游同步与发布说明](docs/UPSTREAM_SYNC.md)。
 
 一款**通用的 AI IDE 账号管理工具**，目前支持 **Antigravity IDE**、**Codex**、**GitHub Copilot**、**Windsurf**、**Kiro**、**Cursor**、**Grok CLI**、**CodeBuddy**、**CodeBuddy CN**、**Qoder**、**Trae**、**TRAE SOLO**、**Trae CN**、**TRAE SOLO CN**、**Zed** 和 **ZCode**，并支持多账号多实例并行运行。
 
@@ -344,7 +346,7 @@ Grok CLI 默认实例直接沿用官方 `~/.grok` 目录，启动时不设置 `G
 
 ### 选项 A: 手动下载 (推荐)
 
-前往 [GitHub Releases](https://github.com/jlcodes99/cockpit-tools/releases) 下载对应系统的安装包：
+前往 [CPS Releases](https://github.com/chenzetong/CPS/releases) 下载对应系统的安装包：
 
 *   **macOS**: `.dmg` (Apple Silicon & Intel)
 *   **Windows**: `.msi` (推荐) 或 `.exe`
@@ -355,7 +357,7 @@ Grok CLI 默认实例直接沿用官方 `~/.grok` 目录，启动时不设置 `G
 > 需要先安装 Homebrew。
 
 ```bash
-brew tap jlcodes99/cockpit-tools https://github.com/jlcodes99/cockpit-tools
+brew tap chenzetong/cps https://github.com/chenzetong/CPS
 brew install --cask cockpit-tools
 ```
 
@@ -365,10 +367,10 @@ brew install --cask cockpit-tools
 brew install --cask --no-quarantine cockpit-tools
 ```
 
-如果提示已存在应用（例如：`already an App at '/Applications/Cockpit Tools.app'`），请先删除旧版本再安装：
+如果提示已存在应用（例如：`already an App at '/Applications/CPS.app'`），请先删除旧版本再安装：
 
 ```bash
-rm -rf "/Applications/Cockpit Tools.app"
+rm -rf "/Applications/CPS.app"
 brew install --cask cockpit-tools
 ```
 
@@ -386,7 +388,7 @@ brew install --cask --force cockpit-tools
 1.  **命令行修复** (推荐):
     打开终端，执行以下命令：
     ```bash
-    sudo xattr -rd com.apple.quarantine "/Applications/Cockpit Tools.app"
+    sudo xattr -rd com.apple.quarantine "/Applications/CPS.app"
     ```
     > **注意**: 如果您修改了应用名称，请在命令中相应调整路径。
 
@@ -424,7 +426,7 @@ npm run tauri build
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=jlcodes99/cockpit-tools&type=Date)](https://star-history.com/#jlcodes99/cockpit-tools&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=chenzetong/CPS&type=Date)](https://star-history.com/#chenzetong/CPS&Date)
 
 ---
 
@@ -450,6 +452,8 @@ QQ 交流群、微信群或新建的 Telegram 畅聊群都可以加入。
 
 ## 致谢
 
+- CPS 基于 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) 持续维护，并尽量通过纯源码 PR 将通用修复回馈上游；感谢原作者和所有贡献者建立并维护完整的跨平台基础。
+- Codex 账号切换与记录同步方案调研参考了 [angusdevgo/OC-Codex](https://github.com/angusdevgo/OC-Codex)。CPS 在此基础上结合自身 SSH 场景实现了事务化文件投影、SQLite/rollout 对齐、孤立会话恢复和 app-server 重载；感谢其公开实现提供思路。
 - Antigravity 账号切号逻辑参考：[Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
 - Codex API 服务集成 CLIProxyAPI，Grok CLI 账号与 OAuth 实现方向亦参考其开源实现：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（MIT）
 - Grok 图标造型参考：[LobeHub/lobe-icons](https://github.com/lobehub/lobe-icons)（MIT）

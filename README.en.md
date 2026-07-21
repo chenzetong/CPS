@@ -1,11 +1,13 @@
-# Cockpit Tools
+# CPS
 
 English · [Portuguese (BR)](README.pt-br.md) · [简体中文](README.md)
 
-[![GitHub stars](https://img.shields.io/github/stars/jlcodes99/cockpit-tools?style=flat&color=gold)](https://github.com/jlcodes99/cockpit-tools)
-[![GitHub downloads](https://img.shields.io/github/downloads/jlcodes99/cockpit-tools/total?style=flat&color=blue)](https://github.com/jlcodes99/cockpit-tools/releases)
-[![GitHub release](https://img.shields.io/github/v/release/jlcodes99/cockpit-tools?style=flat)](https://github.com/jlcodes99/cockpit-tools/releases)
-[![GitHub issues](https://img.shields.io/github/issues/jlcodes99/cockpit-tools)](https://github.com/jlcodes99/cockpit-tools/issues)
+[![GitHub stars](https://img.shields.io/github/stars/chenzetong/CPS?style=flat&color=gold)](https://github.com/chenzetong/CPS)
+[![GitHub downloads](https://img.shields.io/github/downloads/chenzetong/CPS/total?style=flat&color=blue)](https://github.com/chenzetong/CPS/releases)
+[![GitHub release](https://img.shields.io/github/v/release/chenzetong/CPS?style=flat)](https://github.com/chenzetong/CPS/releases)
+[![GitHub issues](https://img.shields.io/github/issues/chenzetong/CPS)](https://github.com/chenzetong/CPS/issues)
+
+> CPS is a community-maintained fork of [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools). It keeps upstream features while adding reliable Codex SSH history synchronization, recovery, and app-server consistency repairs. CPS follows upstream version numbers; see [Upstream Sync and Release](docs/UPSTREAM_SYNC.md) for the merge, conflict, and release policy.
 
 A **universal AI IDE account management tool**, currently supporting **Antigravity IDE**, **Codex**, **GitHub Copilot**, **Windsurf**, **Kiro**, **Cursor**, **Grok CLI**, **CodeBuddy**, **CodeBuddy CN**, **Qoder**, **Trae**, **TRAE SOLO**, **Trae CN**, **TRAE SOLO CN**, **Zed**, and **ZCode**, with multi-instance parallel workflows.
 
@@ -347,7 +349,7 @@ Notes:
 
 ### Option A: Manual Download (Recommended)
 
-Go to [GitHub Releases](https://github.com/jlcodes99/cockpit-tools/releases) to download the package for your system:
+Go to [CPS Releases](https://github.com/chenzetong/CPS/releases) to download the package for your system:
 
 *   **macOS**: `.dmg` (Apple Silicon & Intel)
 *   **Windows**: `.msi` (Recommended) or `.exe`
@@ -358,7 +360,7 @@ Go to [GitHub Releases](https://github.com/jlcodes99/cockpit-tools/releases) to 
 > Homebrew is required.
 
 ```bash
-brew tap jlcodes99/cockpit-tools https://github.com/jlcodes99/cockpit-tools
+brew tap chenzetong/cps https://github.com/chenzetong/CPS
 brew install --cask cockpit-tools
 ```
 
@@ -368,10 +370,10 @@ If you hit the macOS "App is damaged" warning, you can also install with `--no-q
 brew install --cask --no-quarantine cockpit-tools
 ```
 
-If Homebrew says the app already exists (e.g. `already an App at '/Applications/Cockpit Tools.app'`), remove the old app and install again:
+If Homebrew says the app already exists (e.g. `already an App at '/Applications/CPS.app'`), remove the old app and install again:
 
 ```bash
-rm -rf "/Applications/Cockpit Tools.app"
+rm -rf "/Applications/CPS.app"
 brew install --cask cockpit-tools
 ```
 
@@ -389,7 +391,7 @@ Due to macOS security mechanisms, apps not downloaded from the App Store may tri
 1.  **Command Line Fix** (Recommended):
     Open Terminal and run the following command:
     ```bash
-    sudo xattr -rd com.apple.quarantine "/Applications/Cockpit Tools.app"
+    sudo xattr -rd com.apple.quarantine "/Applications/CPS.app"
     ```
     > **Note**: If you changed the app name, please adjust the path in the command accordingly.
 
@@ -427,7 +429,7 @@ npm run tauri build
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=jlcodes99/cockpit-tools&type=Date)](https://star-history.com/#jlcodes99/cockpit-tools&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=chenzetong/CPS&type=Date)](https://star-history.com/#chenzetong/CPS&Date)
 
 ---
 
@@ -447,6 +449,8 @@ Every bit of support helps sustain open-source development. Thank you!
 
 ## Acknowledgments
 
+- CPS is continuously maintained from [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools), and reusable fixes are contributed back as source-only pull requests whenever practical. Thanks to the original author and every upstream contributor for the cross-platform foundation.
+- Research for Codex account switching and record synchronization included [angusdevgo/OC-Codex](https://github.com/angusdevgo/OC-Codex). CPS adapted those ideas to its SSH workflow with transactional projection, SQLite/rollout reconciliation, orphan recovery, and app-server reload handling. Thanks for making that implementation public.
 - Antigravity account switching logic references: [Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
 - The Codex API service integrates CLIProxyAPI, and its open-source account and OAuth handling also informed the Grok CLI implementation: [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (MIT)
 - Grok icon shape references: [LobeHub/lobe-icons](https://github.com/lobehub/lobe-icons) (MIT)

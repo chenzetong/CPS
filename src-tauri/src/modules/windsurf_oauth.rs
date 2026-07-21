@@ -24,6 +24,8 @@ const WINDSURF_CLIENT_ID: &str = "3GUryQ7ldAeKEuD2obYnppsnmj58eP5u";
 const APP_USER_AGENT: &str = "antigravity-cockpit-tools";
 const OAUTH_TIMEOUT_SECONDS: u64 = 600;
 const OAUTH_STATE_FILE: &str = "windsurf_oauth_pending.json";
+// Firebase Web API keys are public client identifiers, not bearer credentials.
+// Access must remain restricted by the provider-side Firebase project policy.
 const FIREBASE_API_KEY: &str = "AIzaSyDsOl-1XpT5err0Tcnx8FFod1H8gVGIycY";
 const FIREBASE_SIGN_IN_URL: &str =
     "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword";

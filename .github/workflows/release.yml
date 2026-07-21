@@ -1,7 +1,14 @@
 name: Release
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   prepare-release:
@@ -22,6 +29,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Validate updater signing secrets
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${TAURI_SIGNING_PRIVATE_KEY}"
+          test -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD}"
 
       - name: Read app version
         id: app_version
@@ -117,16 +134,22 @@ jobs:
               --jq "[.[] | select(.isDraft == false and .isPrerelease == false and .tagName != \"${GITHUB_REF_NAME}\")][0].tagName // \"\""
           )"
           if [ -z "${PREVIOUS_TAG}" ]; then
-            echo "No previous published release was found; refusing to stage without a legacy updater manifest."
-            exit 1
+            echo "No previous published release exists; the first CPS-signed release will be staged as a prerelease."
+            exit 0
           fi
 
           mkdir -p previous-release
-          gh release download "${PREVIOUS_TAG}" \
-            --pattern "latest.json" \
-            --dir previous-release \
-            --clobber
-          test -s previous-release/latest.json
+          if ! gh release download "${PREVIOUS_TAG}" \
+              --pattern "latest.json" \
+              --dir previous-release \
+              --clobber; then
+            echo "${PREVIOUS_TAG} has no legacy updater manifest; staging the new release as a prerelease."
+            exit 0
+          fi
+          if [ ! -s previous-release/latest.json ]; then
+            echo "${PREVIOUS_TAG} returned an empty updater manifest; staging the new release as a prerelease."
+            exit 0
+          fi
           cp previous-release/latest.json legacy-latest.json
           echo "Preserved legacy latest.json from ${PREVIOUS_TAG}"
 
@@ -155,14 +178,19 @@ jobs:
 
           IS_DRAFT="$(gh release view "${TAG}" --json isDraft --jq '.isDraft')"
           if [ "${IS_DRAFT}" = "true" ]; then
-            cp legacy-latest.json latest.json
-            gh release upload "${TAG}" latest.json --clobber
-            gh release edit "${TAG}" --draft=false --prerelease=false --latest
-            echo "Published staged release ${TAG} with legacy latest.json"
+            if [ -s legacy-latest.json ]; then
+              cp legacy-latest.json latest.json
+              gh release upload "${TAG}" latest.json --clobber
+              gh release edit "${TAG}" --draft=false --prerelease=false --latest
+              echo "Published staged release ${TAG} with legacy latest.json"
+            else
+              gh release edit "${TAG}" --draft=false --prerelease
+              echo "Published first-stage prerelease ${TAG} without changing the latest release"
+            fi
           else
-            # Re-run after a prior publish: do not clobber a finalized latest.json.
-            echo "Release ${TAG} is already published; leaving latest.json as-is"
-            gh release edit "${TAG}" --prerelease=false --latest
+            # Re-run after a prior publish: do not change visibility or clobber
+            # updater metadata. The finalizer promotes a complete prerelease.
+            echo "Release ${TAG} is already published; leaving its state and latest.json as-is"
           fi
 
       - name: Upload release metadata artifact
@@ -218,7 +246,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          npx tauri build --ci
+          npx tauri build --ci --config src-tauri/tauri.ci.conf.json
 
       - name: Download release metadata
         uses: actions/download-artifact@v4
@@ -274,10 +302,15 @@ jobs:
           TAG="v${VERSION}"
           IS_DRAFT="$(gh release view "${TAG}" --json isDraft --jq '.isDraft')"
           if [ "${IS_DRAFT}" = "true" ]; then
-            cp release-metadata/legacy-latest.json latest.json
-            gh release upload "${TAG}" latest.json --clobber
-            gh release edit "${TAG}" --draft=false --prerelease=false --latest
-            echo "Published staged release from Windows fallback with legacy latest.json"
+            if [ -s release-metadata/legacy-latest.json ]; then
+              cp release-metadata/legacy-latest.json latest.json
+              gh release upload "${TAG}" latest.json --clobber
+              gh release edit "${TAG}" --draft=false --prerelease=false --latest
+              echo "Published staged release from Windows fallback with legacy latest.json"
+            else
+              gh release edit "${TAG}" --draft=false --prerelease
+              echo "Published first-stage prerelease from Windows fallback"
+            fi
           else
             echo "Release is already published; keeping its current latest.json"
           fi
@@ -341,7 +374,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          npx tauri build --ci --target aarch64-apple-darwin
+          npx tauri build --ci --config src-tauri/tauri.ci.conf.json --target aarch64-apple-darwin
 
       - name: Download release metadata
         uses: actions/download-artifact@v4
@@ -445,7 +478,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          npx tauri build --ci --target x86_64-apple-darwin
+          npx tauri build --ci --config src-tauri/tauri.ci.conf.json --target x86_64-apple-darwin
 
       - name: Download release metadata
         uses: actions/download-artifact@v4
@@ -551,7 +584,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          npx tauri build --ci --target universal-apple-darwin
+          npx tauri build --ci --config src-tauri/tauri.ci.conf.json --target universal-apple-darwin
 
       - name: Stage macOS Universal assets
         shell: bash
@@ -636,7 +669,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          npx tauri build --ci
+          npx tauri build --ci --config src-tauri/tauri.ci.conf.json
 
       - name: Download release metadata
         uses: actions/download-artifact@v4

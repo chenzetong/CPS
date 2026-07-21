@@ -1,0 +1,168 @@
+name: Sync Upstream and Release
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge upstream, validate, and dispatch release
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      UPSTREAM_REPOSITORY: jlcodes99/cockpit-tools
+    steps:
+      - name: Checkout CPS main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Fetch and merge upstream
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --no-tags upstream main
+
+          UPSTREAM_VERSION="$(
+            git show upstream/main:package.json \
+              | node -e 'let value=""; process.stdin.on("data", chunk => value += chunk); process.stdin.on("end", () => console.log(JSON.parse(value).version));'
+          )"
+          echo "version=${UPSTREAM_VERSION}" >> "$GITHUB_OUTPUT"
+
+          set +e
+          git merge --no-ff --no-edit upstream/main
+          MERGE_STATUS=$?
+          set -e
+          if [ "${MERGE_STATUS}" -ne 0 ]; then
+            CONFLICTS="$(git diff --name-only --diff-filter=U)"
+            git merge --abort
+            TITLE="Upstream sync conflict for v${UPSTREAM_VERSION}"
+            EXISTING="$(
+              gh issue list \
+                --repo "${GITHUB_REPOSITORY}" \
+                --state open \
+                --search "${TITLE} in:title" \
+                --json number \
+                --jq '.[0].number // ""'
+            )"
+            if [ -z "${EXISTING}" ]; then
+              {
+                echo "The scheduled CPS upstream sync could not merge upstream/main automatically."
+                echo
+                echo "No branch or release was changed. Conflicting paths:"
+                echo
+                echo '```text'
+                printf '%s\n' "${CONFLICTS}"
+                echo '```'
+                echo
+                echo "Resolve the conflicts on main, preserve CPS branding/updater configuration and SSH history fixes, then rerun this workflow."
+              } > upstream-sync-conflict.md
+              gh issue create \
+                --repo "${GITHUB_REPOSITORY}" \
+                --title "${TITLE}" \
+                --body-file upstream-sync-conflict.md
+            else
+              echo "Conflict issue #${EXISTING} is already open."
+            fi
+            exit "${MERGE_STATUS}"
+          fi
+
+          node scripts/sync-upstream-version.cjs "${UPSTREAM_VERSION}"
+          if ! git diff --quiet; then
+            git add package.json package-lock.json Cargo.lock src-tauri/Cargo.toml src-tauri/tauri.conf.json
+            git commit -m "chore(upstream): align CPS with v${UPSTREAM_VERSION}"
+          fi
+
+          AHEAD="$(git rev-list --count origin/main..HEAD)"
+          if [ "${AHEAD}" -gt 0 ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rust setup
+        if: steps.merge.outputs.changed == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Go setup
+        if: steps.merge.outputs.changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecars/cockpit-cliproxy/go.mod
+          cache-dependency-path: sidecars/cockpit-cliproxy/go.sum
+
+      - name: Install frontend dependencies
+        if: steps.merge.outputs.changed == 'true'
+        run: npm ci
+
+      - name: Validate merged source
+        if: steps.merge.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run test:sync-upstream-version
+          npm run security:scan
+          npm run typecheck
+          node scripts/check_locales.cjs
+          if [ -f src-tauri/scripts/test_codex_ssh_sync.py ]; then
+            python3 -m unittest src-tauri/scripts/test_codex_ssh_sync.py
+          fi
+          cargo check --locked --manifest-path src-tauri/Cargo.toml
+          git diff --check origin/main...HEAD
+
+      - name: Push main and dispatch release
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.merge.outputs.version }}"
+          TAG="v${VERSION}"
+
+          if [ "${{ steps.merge.outputs.changed }}" = "true" ]; then
+            git push origin HEAD:main
+          fi
+
+          REMOTE_TAG="$(git ls-remote --tags origin "refs/tags/${TAG}" | awk '{print $1}')"
+          if [ -z "${REMOTE_TAG}" ]; then
+            git tag -a "${TAG}" -m "CPS ${TAG} (upstream-aligned)"
+            git push origin "${TAG}"
+          fi
+
+          NEEDS_RELEASE="true"
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
+            HAS_LATEST="$(
+              gh release view "${TAG}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --json assets \
+                --jq 'any(.assets[]; .name == "latest.json")'
+            )"
+            if [ "${HAS_LATEST}" = "true" ]; then
+              NEEDS_RELEASE="false"
+            fi
+          fi
+
+          if [ "${NEEDS_RELEASE}" = "true" ]; then
+            gh workflow run release.yml --repo "${GITHUB_REPOSITORY}" --ref "${TAG}"
+            echo "Dispatched Release for ${TAG}."
+          else
+            echo "${TAG} already has complete updater metadata; no release dispatch needed."

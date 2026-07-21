@@ -73,6 +73,16 @@ The default bind is loopback (`127.0.0.1`). The user can choose LAN scope
 Base URL host can be `localhost` or `127.0.0.1`; preserve this when rewriting a
 profile, especially for WSL.
 
+### SSH projections
+
+When SSH account sync runs while the API service is enabled, the remote profile
+uses the same CPS gateway instead of projecting the underlying account directly.
+The desktop app opens an authenticated SSH reverse forward bound to remote
+`127.0.0.1`, then transactionally syncs the managed auth, provider config, and
+model catalog. This does not require LAN scope or expose the gateway on a LAN
+interface. Successful tunnel ports are persisted and restored with the gateway
+after app restart. The SSH server must permit TCP forwarding (`AllowTcpForwarding`).
+
 ## Routing And Safety Rules
 
 - Account pools support auto, random distribution, single-account, quota/plan/

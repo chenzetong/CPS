@@ -3,14 +3,18 @@ use crate::models::ssh_server::{
     SshAuthConfig, SshCodexStateRepairStatus, SshCodexSyncResult, SshCodexSyncStatus, SshServer,
     SshServerStore,
 };
-use crate::modules::{account, atomic_write, codex_account, logger};
+use crate::modules::{account, atomic_write, codex_account, codex_local_access, logger};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::OnceLock;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::sync::Mutex as TokioMutex;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -29,6 +33,10 @@ const STATE_REPAIR_TIMEOUT_SECS: u64 = 120;
 const APP_SERVER_RELOAD_TIMEOUT_SECS: u64 = 45;
 /// 只读列出远端会话的墙钟超时。
 const SESSION_LIST_TIMEOUT_SECS: u64 = 20;
+const API_SERVICE_TUNNEL_START_TIMEOUT_SECS: u64 = 20;
+const API_SERVICE_TUNNEL_PORT_START: u16 = 43000;
+const API_SERVICE_TUNNEL_PORT_COUNT: u16 = 1000;
+const API_SERVICE_TUNNEL_PORT_ATTEMPTS: u16 = 12;
 const DEFAULT_MODEL_PROVIDER_ID: &str = "openai";
 #[cfg(test)]
 const STATE_REPAIR_OUTPUT_PREFIX: &str = "__COCKPIT_CODEX_STATE_REPAIR__";
@@ -72,6 +80,23 @@ struct QuiescedAppServer {
     pids: Vec<String>,
     listener_pids: Vec<String>,
     watchdog_pid: Option<String>,
+}
+
+struct ApiServiceTunnel {
+    child: Child,
+    local_port: u16,
+    remote_port: u16,
+    server_signature: String,
+}
+
+fn api_service_tunnels() -> &'static TokioMutex<HashMap<String, ApiServiceTunnel>> {
+    static TUNNELS: OnceLock<TokioMutex<HashMap<String, ApiServiceTunnel>>> = OnceLock::new();
+    TUNNELS.get_or_init(|| TokioMutex::new(HashMap::new()))
+}
+
+fn api_service_tunnel_lifecycle_lock() -> &'static TokioMutex<()> {
+    static LOCK: OnceLock<TokioMutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| TokioMutex::new(()))
 }
 
 fn now_timestamp() -> i64 {
@@ -280,12 +305,22 @@ pub fn upsert_server(server: SshServer) -> Result<SshServerList, String> {
     let existing_index = store.servers.iter().position(|item| item.id == server.id);
     let existing = existing_index.and_then(|index| store.servers.get(index));
     let server = normalize_server(server, existing)?;
+    let previous_tunnel_signature = existing
+        .map(api_service_tunnel_server_signature)
+        .filter(|signature| signature != &api_service_tunnel_server_signature(&server));
+    let tunnel_server_id = server.id.clone();
     if let Some(index) = existing_index {
         store.servers[index] = server;
     } else {
         store.servers.push(server);
     }
     save_store(&store)?;
+    if let Some(previous_tunnel_signature) = previous_tunnel_signature {
+        stop_api_service_tunnel_if_signature_in_background(
+            tunnel_server_id,
+            previous_tunnel_signature,
+        );
+    }
     list_servers()
 }
 
@@ -297,6 +332,7 @@ pub fn delete_server(server_id: &str) -> Result<SshServerList, String> {
         store.selected_server_id = None;
     }
     save_store(&store)?;
+    stop_api_service_tunnel_in_background(server_id.to_string());
     list_servers()
 }
 
@@ -355,6 +391,290 @@ fn build_ssh_args(server: &SshServer, connect_timeout_secs: u64) -> Vec<String> 
     }
     args.push(format!("{}@{}", server.username, server.host));
     args
+}
+
+fn api_service_tunnel_server_signature(server: &SshServer) -> String {
+    let auth = match &server.auth {
+        SshAuthConfig::Agent => "agent".to_string(),
+        SshAuthConfig::PrivateKeyFile { path } => format!("key:{}", path.trim()),
+    };
+    format!(
+        "{}@{}:{}:{}",
+        server.username.trim(),
+        server.host.trim(),
+        server.port,
+        auth
+    )
+}
+
+fn api_service_tunnel_port_candidates(
+    server: &SshServer,
+    preferred_port: Option<u16>,
+    allow_fallback: bool,
+) -> Vec<u16> {
+    let mut candidates = Vec::new();
+    if let Some(port) = preferred_port.filter(|port| *port > 0) {
+        candidates.push(port);
+        if !allow_fallback {
+            return candidates;
+        }
+    }
+    let digest = Sha256::digest(api_service_tunnel_server_signature(server).as_bytes());
+    let offset = u16::from_be_bytes([digest[0], digest[1]]) % API_SERVICE_TUNNEL_PORT_COUNT;
+    for attempt in 0..API_SERVICE_TUNNEL_PORT_ATTEMPTS {
+        let port =
+            API_SERVICE_TUNNEL_PORT_START + (offset + attempt) % API_SERVICE_TUNNEL_PORT_COUNT;
+        if !candidates.contains(&port) {
+            candidates.push(port);
+        }
+    }
+    candidates
+}
+
+async fn terminate_api_service_tunnel(mut tunnel: ApiServiceTunnel) {
+    let _ = tunnel.child.start_kill();
+    let _ = timeout(Duration::from_secs(3), tunnel.child.wait()).await;
+}
+
+async fn spawn_api_service_tunnel(
+    server: &SshServer,
+    local_port: u16,
+    remote_port: u16,
+) -> Result<Child, String> {
+    let mut args = build_ssh_args(server, CONNECTION_TIMEOUT_SECS);
+    let destination = args
+        .pop()
+        .ok_or_else(|| "ssh_api_tunnel_failed: missing SSH destination".to_string())?;
+    args.extend([
+        "-T".to_string(),
+        "-o".to_string(),
+        "ExitOnForwardFailure=yes".to_string(),
+        "-R".to_string(),
+        format!("127.0.0.1:{remote_port}:127.0.0.1:{local_port}"),
+        destination,
+    ]);
+    // A static remote command provides an unambiguous readiness signal only
+    // after OpenSSH has established the reverse forward.
+    args.push("printf '__CPS_API_TUNNEL_READY__\\n'; while :; do sleep 3600; done".to_string());
+
+    let mut command = Command::new("ssh");
+    command.args(args);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+    command.kill_on_drop(true);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("ssh_binary_missing: {}", error))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "ssh_api_tunnel_failed: stdout unavailable".to_string())?;
+    let mut reader = BufReader::new(stdout);
+    let mut ready = String::new();
+    let readiness = timeout(
+        Duration::from_secs(API_SERVICE_TUNNEL_START_TIMEOUT_SECS),
+        reader.read_line(&mut ready),
+    )
+    .await;
+    if matches!(&readiness, Ok(Ok(bytes)) if *bytes > 0)
+        && ready.trim() == "__CPS_API_TUNNEL_READY__"
+    {
+        return Ok(child);
+    }
+
+    let _ = child.start_kill();
+    let output = timeout(Duration::from_secs(3), async {
+        let mut stderr_text = String::new();
+        if let Some(mut stderr) = child.stderr.take() {
+            let _ = stderr.read_to_string(&mut stderr_text).await;
+        }
+        let _ = child.wait().await;
+        stderr_text
+    })
+    .await
+    .unwrap_or_default();
+    let detail = match readiness {
+        Err(_) => "SSH reverse tunnel startup timed out".to_string(),
+        Ok(Err(error)) => format!("failed to read SSH tunnel readiness: {error}"),
+        Ok(Ok(_)) if !output.trim().is_empty() => sanitize_error(output.trim()),
+        _ => "SSH reverse tunnel exited before becoming ready".to_string(),
+    };
+    Err(format!("ssh_api_tunnel_failed: {detail}"))
+}
+
+async fn ensure_api_service_tunnel(
+    server: &SshServer,
+    local_port: u16,
+    preferred_remote_port: Option<u16>,
+    allow_fallback: bool,
+) -> Result<u16, String> {
+    let _lifecycle_guard = api_service_tunnel_lifecycle_lock().lock().await;
+    let active_local_port = codex_local_access::remote_projection_local_port()
+        .await
+        .map_err(|error| format!("ssh_api_tunnel_failed: {}", sanitize_error(error)))?;
+    if active_local_port != Some(local_port) {
+        return Err("ssh_api_tunnel_failed: CPS API service is no longer active".to_string());
+    }
+    let signature = api_service_tunnel_server_signature(server);
+    let existing = {
+        let mut tunnels = api_service_tunnels().lock().await;
+        tunnels.remove(&server.id)
+    };
+    if let Some(mut tunnel) = existing {
+        let alive = tunnel
+            .child
+            .try_wait()
+            .map_err(|error| format!("ssh_api_tunnel_failed: {error}"))?
+            .is_none();
+        let port_matches = preferred_remote_port
+            .map(|port| port == tunnel.remote_port)
+            .unwrap_or(true);
+        if alive
+            && tunnel.local_port == local_port
+            && tunnel.server_signature == signature
+            && port_matches
+        {
+            let remote_port = tunnel.remote_port;
+            api_service_tunnels()
+                .lock()
+                .await
+                .insert(server.id.clone(), tunnel);
+            return Ok(remote_port);
+        }
+        terminate_api_service_tunnel(tunnel).await;
+    }
+
+    let mut failures = Vec::new();
+    for remote_port in
+        api_service_tunnel_port_candidates(server, preferred_remote_port, allow_fallback)
+    {
+        match spawn_api_service_tunnel(server, local_port, remote_port).await {
+            Ok(child) => {
+                api_service_tunnels().lock().await.insert(
+                    server.id.clone(),
+                    ApiServiceTunnel {
+                        child,
+                        local_port,
+                        remote_port,
+                        server_signature: signature.clone(),
+                    },
+                );
+                logger::log_codex_api_info(&format!(
+                    "[Codex SSH] CPS API 反向隧道已建立: server_id={}, remote=127.0.0.1:{}",
+                    server.id, remote_port
+                ));
+                return Ok(remote_port);
+            }
+            Err(error) => failures.push(error),
+        }
+    }
+    Err(failures
+        .last()
+        .cloned()
+        .unwrap_or_else(|| "ssh_api_tunnel_failed: no candidate port".to_string()))
+}
+
+async fn stop_api_service_tunnel(server_id: &str) {
+    let _lifecycle_guard = api_service_tunnel_lifecycle_lock().lock().await;
+    let tunnel = api_service_tunnels().lock().await.remove(server_id);
+    if let Some(tunnel) = tunnel {
+        terminate_api_service_tunnel(tunnel).await;
+    }
+}
+
+pub fn stop_api_service_tunnel_in_background(server_id: String) {
+    tauri::async_runtime::spawn(async move {
+        stop_api_service_tunnel(&server_id).await;
+    });
+}
+
+fn stop_api_service_tunnel_if_signature_in_background(
+    server_id: String,
+    expected_signature: String,
+) {
+    tauri::async_runtime::spawn(async move {
+        let _lifecycle_guard = api_service_tunnel_lifecycle_lock().lock().await;
+        let tunnel = {
+            let mut tunnels = api_service_tunnels().lock().await;
+            let matches = tunnels
+                .get(&server_id)
+                .is_some_and(|tunnel| tunnel.server_signature == expected_signature);
+            matches.then(|| tunnels.remove(&server_id)).flatten()
+        };
+        if let Some(tunnel) = tunnel {
+            terminate_api_service_tunnel(tunnel).await;
+        }
+    });
+}
+
+pub async fn shutdown_api_service_tunnels() {
+    let _lifecycle_guard = api_service_tunnel_lifecycle_lock().lock().await;
+    let tunnels = {
+        let mut guard = api_service_tunnels().lock().await;
+        guard.drain().map(|(_, tunnel)| tunnel).collect::<Vec<_>>()
+    };
+    for tunnel in tunnels {
+        terminate_api_service_tunnel(tunnel).await;
+    }
+}
+
+/// Restore only the exact ports recorded by successful CPS projections. A
+/// fallback port would not match the already-synced remote config.
+pub async fn restore_api_service_tunnels(local_port: u16) {
+    match codex_local_access::remote_projection_local_port().await {
+        Ok(Some(current_port)) if current_port == local_port => {}
+        Ok(_) => return,
+        Err(error) => {
+            logger::log_codex_api_warn(&format!(
+                "[Codex SSH] 恢复 CPS API 隧道前检查网关失败: {}",
+                sanitize_error(error)
+            ));
+            return;
+        }
+    }
+    let store = match load_store() {
+        Ok(store) => store,
+        Err(error) => {
+            logger::log_codex_api_warn(&format!(
+                "[Codex SSH] 恢复 CPS API 隧道时读取服务器失败: {}",
+                error
+            ));
+            return;
+        }
+    };
+    for server in store.servers {
+        let remote_port = server.last_sync.as_ref().and_then(|sync| {
+            (sync.verified && sync.api_service_tunnel_verified)
+                .then_some(sync.api_service_tunnel_port)
+                .flatten()
+        });
+        let Some(remote_port) = remote_port else {
+            continue;
+        };
+        if let Err(error) =
+            ensure_api_service_tunnel(&server, local_port, Some(remote_port), false).await
+        {
+            logger::log_codex_api_warn(&format!(
+                "[Codex SSH] 恢复 CPS API 隧道失败: server_id={}, error={}",
+                server.id,
+                sanitize_error(error)
+            ));
+        }
+    }
+}
+
+pub fn restore_api_service_tunnels_in_background(local_port: u16) {
+    tauri::async_runtime::spawn(async move {
+        restore_api_service_tunnels(local_port).await;
+    });
 }
 
 async fn run_ssh(
@@ -765,7 +1085,7 @@ cat <<'__COCKPIT_CODEX_PAYLOAD__' | while IFS='	' read -r rel mode expected enco
 {payload}__COCKPIT_CODEX_PAYLOAD__
   [ -n "$rel" ] || continue
   case "$rel" in
-    auth.json|config.toml|.cockpit_codex_auth.json) ;;
+    auth.json|config.toml|.cockpit_codex_auth.json|cockpit-local-access-model-catalog.json) ;;
     *) printf 'invalid relative path: %s\n' "$rel" >&2; exit 4 ;;
   esac
   target="$staging_dir/$rel"
@@ -1670,6 +1990,8 @@ fn result_from_status(server: &SshServer, status: SshCodexSyncStatus) -> SshCode
         app_server_reload_status: status.app_server_reload_status,
         app_server_quiesce_status: status.app_server_quiesce_status,
         app_server_restore_status: status.app_server_restore_status,
+        api_service_tunnel_port: status.api_service_tunnel_port,
+        api_service_tunnel_verified: status.api_service_tunnel_verified,
         verified: status.verified,
         error: status.error,
         synced_at: status.synced_at,
@@ -1689,6 +2011,8 @@ fn initial_sync_status(account: &CodexAccount) -> SshCodexSyncStatus {
         app_server_reload_status: None,
         app_server_quiesce_status: None,
         app_server_restore_status: None,
+        api_service_tunnel_port: None,
+        api_service_tunnel_verified: false,
         synced_at: now_timestamp(),
         verified: false,
         error: None,
@@ -1717,9 +2041,34 @@ async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> Ss
     let sync_attempt = async {
         validate_server(&server)?;
         let existing_config = read_remote_config_toml(&server).await?;
-        let bundle =
+        let local_api_port = codex_local_access::remote_projection_local_port()
+            .await
+            .map_err(|e| format!("codex_api_service_failed: {}", sanitize_error(e)))?;
+        let bundle = if let Some(local_api_port) = local_api_port {
+            let preferred_remote_port = server
+                .last_sync
+                .as_ref()
+                .filter(|sync| sync.api_service_tunnel_verified)
+                .and_then(|sync| sync.api_service_tunnel_port);
+            let remote_port =
+                ensure_api_service_tunnel(&server, local_api_port, preferred_remote_port, true)
+                    .await?;
+            status.api_service_tunnel_port = Some(remote_port);
+            status.api_service_tunnel_verified = true;
+            let remote_base_url = format!("http://127.0.0.1:{remote_port}/v1");
+            codex_local_access::build_remote_local_access_projection_bundle(
+                account,
+                existing_config.as_deref(),
+                &remote_base_url,
+                &format!("cps-ssh-{}", server.id),
+            )
+            .await
+            .map_err(|e| format!("codex_bundle_failed: {}", sanitize_error(e)))?
+        } else {
+            stop_api_service_tunnel(&server.id).await;
             codex_account::build_projection_bundle_for_remote(account, existing_config.as_deref())
-                .map_err(|e| format!("codex_bundle_failed: {}", sanitize_error(e)))?;
+                .map_err(|e| format!("codex_bundle_failed: {}", sanitize_error(e)))?
+        };
         status.account_id = bundle.account_id.clone();
         status.account_email = bundle.account_email.clone();
         status.token_generation = bundle.token_generation;
@@ -2057,6 +2406,32 @@ mod tests {
         assert!(args
             .windows(2)
             .any(|w| w[0] == "-i" && w[1] == "/tmp/id_test"));
+    }
+
+    #[test]
+    fn api_service_tunnel_ports_are_stable_bounded_and_support_exact_restore() {
+        let server = valid_server();
+        let candidates = api_service_tunnel_port_candidates(&server, None, true);
+        assert_eq!(candidates.len(), API_SERVICE_TUNNEL_PORT_ATTEMPTS as usize);
+        assert_eq!(
+            candidates,
+            api_service_tunnel_port_candidates(&server, None, true)
+        );
+        assert!(candidates.iter().all(|port| {
+            *port >= API_SERVICE_TUNNEL_PORT_START
+                && *port < API_SERVICE_TUNNEL_PORT_START + API_SERVICE_TUNNEL_PORT_COUNT
+        }));
+        let unique = candidates
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(unique.len(), candidates.len());
+
+        let restored = api_service_tunnel_port_candidates(&server, Some(45678), false);
+        assert_eq!(restored, vec![45678]);
+        let with_fallback = api_service_tunnel_port_candidates(&server, Some(45678), true);
+        assert_eq!(with_fallback.first(), Some(&45678));
+        assert!(with_fallback.len() > 1);
     }
 
     #[test]

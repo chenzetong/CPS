@@ -2716,14 +2716,17 @@ base_url = "https://example.com/v1"
             return;
         }
 
+        let expected_session_id = std::env::var("COCKPIT_LIVE_SSH_EXPECTED_SESSION_ID")
+            .expect("set COCKPIT_LIVE_SSH_EXPECTED_SESSION_ID to a non-sensitive test session");
+
         let sessions = list_codex_sessions_from_servers()
             .await
             .expect("configured SSH session list should load");
         assert!(
             sessions
                 .iter()
-                .any(|session| session.session_id == "019f63fa-d011-7ba2-9001-ded71f7c7598"),
-            "expected the chenj_la test usage session in the remote list"
+                .any(|session| session.session_id == expected_session_id),
+            "expected configured test session in the remote list"
         );
     }
 

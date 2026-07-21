@@ -394,33 +394,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
----
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=chenzetong/CPS&type=Date)](https://star-history.com/#chenzetong/CPS&Date)
-
----
-
-## 💬 交流群
-
-QQ 交流群、微信群或新建的 Telegram 畅聊群都可以加入。
-
-新建 Telegram 畅聊群：[点击加入](https://t.me/+Y8gMv4SlZUU2MWY1)
-
-| QQ 群 | 微信（个人） |
-| :---: | :---: |
-| <img src="docs/images/qq_group_20260404_183718.png" width="200" /> | <img src="docs/images/wechat_info.jpg" width="200" /> |
-
----
-
-## ☕ 赞助项目
-
-如果不介意，请 [☕ 赞赏支持一下](docs/DONATE.md)
-
-您的每一份支持都是对开源项目最大的鼓励！无论金额大小，都代表着您对这个项目的认可。
-
----
 
 ## 致谢
 

@@ -58,32 +58,50 @@ jobs:
             CONFLICTS="$(git diff --name-only --diff-filter=U)"
             git merge --abort
             TITLE="Upstream sync conflict for v${UPSTREAM_VERSION}"
-            EXISTING="$(
-              gh issue list \
-                --repo "${GITHUB_REPOSITORY}" \
-                --state open \
-                --search "${TITLE} in:title" \
-                --json number \
-                --jq '.[0].number // ""'
+            {
+              echo "## ${TITLE}"
+              echo
+              echo "The scheduled CPS upstream sync could not merge upstream/main automatically."
+              echo
+              echo "No branch or release was changed. Conflicting paths:"
+              echo
+              echo '```text'
+              printf '%s\n' "${CONFLICTS}"
+              echo '```'
+              echo
+              echo "Resolve the conflicts on main, preserve CPS branding/updater configuration and SSH history fixes, then rerun this workflow."
+            } > upstream-sync-conflict.md
+            cat upstream-sync-conflict.md >> "${GITHUB_STEP_SUMMARY}"
+            while IFS= read -r conflict; do
+              if [ -n "${conflict}" ]; then
+                echo "::error file=${conflict}::Upstream merge conflict for v${UPSTREAM_VERSION}"
+              fi
+            done <<< "${CONFLICTS}"
+
+            HAS_ISSUES="$(
+              gh repo view "${GITHUB_REPOSITORY}" \
+                --json hasIssuesEnabled \
+                --jq '.hasIssuesEnabled' 2>/dev/null || printf 'false'
             )"
-            if [ -z "${EXISTING}" ]; then
-              {
-                echo "The scheduled CPS upstream sync could not merge upstream/main automatically."
-                echo
-                echo "No branch or release was changed. Conflicting paths:"
-                echo
-                echo '```text'
-                printf '%s\n' "${CONFLICTS}"
-                echo '```'
-                echo
-                echo "Resolve the conflicts on main, preserve CPS branding/updater configuration and SSH history fixes, then rerun this workflow."
-              } > upstream-sync-conflict.md
-              gh issue create \
-                --repo "${GITHUB_REPOSITORY}" \
-                --title "${TITLE}" \
-                --body-file upstream-sync-conflict.md
+            if [ "${HAS_ISSUES}" = "true" ]; then
+              EXISTING="$(
+                gh issue list \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --state open \
+                  --search "${TITLE} in:title" \
+                  --json number \
+                  --jq '.[0].number // ""'
+              )"
+              if [ -z "${EXISTING}" ]; then
+                gh issue create \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --title "${TITLE}" \
+                  --body-file upstream-sync-conflict.md
+              else
+                echo "Conflict issue #${EXISTING} is already open."
+              fi
             else
-              echo "Conflict issue #${EXISTING} is already open."
+              echo "::warning::GitHub Issues are disabled; conflict details are available in the job summary."
             fi
             exit "${MERGE_STATUS}"
           fi

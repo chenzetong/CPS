@@ -52,7 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Remote conversations with real user events remain visible after restart** even when `first_user_message` is empty or the SQLite rollout path is stale.
 
 ---
-## [1.3.11] - 2026-07-21
+## CPS SSH history groundwork - 2026-07-21
 
 ### Added
 
@@ -67,6 +67,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - **Remote projects survive Codex restarts**: restart recovery now restores the authoritative `selected-project` state together with the legacy remote project field and reachable-host auto-connect settings.
+
+## [1.3.11] - 2026-07-22
+
+### CPS integration
+
+- **CPS is aligned with upstream v1.3.11 while retaining transactional SSH history synchronization, orphan rollout recovery, remote-project restoration, and safe app-server reloads.**
+- **The upstream AppHandle lifecycle, CLI terminal launch options, session affinity, and Agent Identity support are combined with the CPS remote-launch context instead of replacing it.**
+- **Scheduled upstream conflicts remain fail-safe when repository Issues are disabled**: paths are reported in the Actions summary and as file annotations without creating a secondary workflow failure.
+
+### Added
+
+- **Codex accounts and API Service support the new Agent Identity authentication flow**: users can import Agent Identity accounts from official `auth.json`, JSON/JSONL, and Sub2API backups, including Sub2API's PKCS#8 v1 Ed25519 keys, keep Team workspaces separated by ChatGPT account, and switch them into official Codex; quota, rate-limit reset, HTTP, streaming Responses, Compact, image, and WebSocket requests dynamically generate `AgentAssertion` credentials, while missing or invalid tasks are registered, persisted, and recovered automatically without changing existing OAuth, Access Token, PAT, or API Key accounts.
+- **Codex API Service quota overlay now supports manual refresh and account-pool health details in the ChatGPT client**: a compact refresh action beside the account and quota badges refreshes the API Service account pool, shows an in-place spinner while refreshing, and updates the displayed account count, 5-hour quota, weekly quota, available/abnormal/cooldown counts, and plan groups when complete; an empty account pool is shown immediately as zero accounts and zero quota.
+- **Codex CLI launch dialogs support fast previews and launch options**: the account and instance pages can remember a recent working directory, choose Terminal.app, iTerm2, PowerShell, pwsh, Windows Terminal, or cmd, and quickly generate the corresponding command; the instance runtime is prepared only when the user copies the command or runs it in a terminal, while stale or broken CLI paths are skipped so another working CLI can be selected, including Codex bundled with the official client.
+- **CodeBuddy and WorkBuddy add a “Share Local Sessions on Switch” setting**: it is off by default; when enabled, account switches merge sessions and restore state in the real local session directories and databases, create local backups before changes, and do not upload session content.
+
+### Changed
+
+- **Codex API Service supports configurable session affinity and expiry**: users can set a session-affinity TTL from 60 to 86,400 seconds, keeping account binding for a session key during that period.
+- **Codex API Service gateway preparation and account refresh are now observable background flows**: the UI reports preparation and account-refresh progress, while OAuth credential refresh runs after the gateway is available instead of blocking startup on the entire account pool.
+- **Custom Codex Responses model catalogs support official display-model mapping**: synchronized catalogs use recognizable official display names in the Codex client while requests remain routed to the configured upstream models.
+
+### Fixed
+
+- **Fixed an occasional PowerShell `0xc0000142` dialog during Windows restart**: Cockpit Tools now observes the system shutdown notification early, pauses background injection, and blocks new PowerShell or other background child processes before Windows ends the session; normal operation resumes if shutdown is cancelled, without changing the app auto-launch setting.
+- **Fixed multi-instance pages flashing back to a loading state after re-entry or actions**: instance lists now keep already loaded or locally cached data visible while refreshing in the background, then replace it silently; the loading state appears only when no displayable data exists on the first load.
+- **Disabling Codex API Service now restores managed Codex profile files**: Cockpit Tools removes only the API Service fields it owns from `config.toml`, restores the pre-takeover `auth.json`, deletes injected profile artifacts and model cache, preserves unrelated user settings and other gateway backups, and no longer silently re-enables a disabled service when starting an instance that remains bound to it.
 
 ---
 ## [1.3.10] - 2026-07-19

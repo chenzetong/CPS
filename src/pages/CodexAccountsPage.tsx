@@ -100,6 +100,7 @@ import {
   formatCodexResetTime,
   formatCodexResetTimeAbsolute,
   isCodexApiKeyAccount,
+  isCodexAgentIdentityAccount,
   isCodexChatCompletionsApiKeyAccount,
   isCodexNewApiAccount,
   isCodexPendingOAuthAccount,
@@ -149,6 +150,7 @@ import {
 } from "../components/CodexOverviewTabsHeader";
 import { CodexInstancesContent } from "./CodexInstancesPage";
 import { CodexSessionManager } from "../components/codex/CodexSessionManager";
+import { CodexCliLaunchDialog } from "../components/codex/CodexCliLaunchDialog";
 import {
   CodexWakeupContent,
   type CodexWakeupTestOpenRequest,
@@ -158,6 +160,8 @@ import { CodexSpeedSelect } from "../components/codex/CodexSpeedSelect";
 import { QuickSettingsPopover } from "../components/QuickSettingsPopover";
 import { useProviderAccountsPage } from "../hooks/useProviderAccountsPage";
 import { usePlatformRuntimeSupport } from "../hooks/usePlatformRuntimeSupport";
+import { useEscClose } from "../hooks/useEscClose";
+import { useLaunchTerminalOptions } from "../hooks/useLaunchTerminalOptions";
 import {
   MultiSelectFilterDropdown,
   type MultiSelectFilterOption,
@@ -184,6 +188,7 @@ import type {
 } from "../types/codexLocalAccess";
 import {
   CODEX_API_SERVICE_BIND_ID,
+  type InstanceDefaults,
   type InstanceProfile,
 } from "../types/instance";
 import {
@@ -784,6 +789,53 @@ function sanitizeCodexCliInstanceName(value: string): string {
     .trim();
 }
 
+interface CodexCliLaunchModalState {
+  target: "account" | "apiService";
+  accountId: string;
+  accountLabel: string;
+  instanceId: string | null;
+  instanceDraft: CodexCliInstanceDraft | null;
+  instanceName: string;
+  workingDir: string;
+  workingDirError: string | null;
+  launchCommand: string;
+  terminalCommand: string;
+  runtimePrepared: boolean;
+  preparing: boolean;
+  copied: boolean;
+  executing: boolean;
+  executeMessage: string | null;
+  executeError: string | null;
+}
+
+interface CodexCliInstanceDraft {
+  name: string;
+  userDataDir: string;
+  workingDir: string;
+  extraArgs: string;
+  bindAccountId: string;
+}
+
+const CODEX_CLI_LAST_WORKING_DIR_KEY = "cockpit.codex.cli.lastWorkingDir";
+
+function readLastCodexCliWorkingDir(): string {
+  try {
+    return localStorage.getItem(CODEX_CLI_LAST_WORKING_DIR_KEY)?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+function persistLastCodexCliWorkingDir(value: string): void {
+  const workingDir = value.trim();
+  if (!workingDir) return;
+  try {
+    localStorage.setItem(CODEX_CLI_LAST_WORKING_DIR_KEY, workingDir);
+  } catch {
+    // 工作目录记忆失败不影响 CLI 启动。
+  }
+}
+
 function maskCodexApiKey(value: string): string {
   const raw = value.trim();
   if (!raw) return raw;
@@ -892,6 +944,8 @@ function resolveApiProviderPresetDefaults(
 
 export function CodexAccountsPage() {
   const isMacOS = usePlatformRuntimeSupport("macos-only");
+  const isWindows = usePlatformRuntimeSupport("windows-only");
+  const isCliLaunchSupported = isMacOS || isWindows;
   const sponsorModule = useSponsorStore((state) => state.state.sponsorModule);
   const fetchSponsorState = useSponsorStore((state) => state.fetchState);
   const [activeTab, setActiveTab] = useState<CodexTab>("overview");
@@ -1237,6 +1291,16 @@ export function CodexAccountsPage() {
   const [cliLaunchingAccountId, setCliLaunchingAccountId] = useState<
     string | null
   >(null);
+  const [cliLaunchModal, setCliLaunchModal] =
+    useState<CodexCliLaunchModalState | null>(null);
+  const codexCliInstanceDefaultsRef = useRef<InstanceDefaults | null>(null);
+  const { terminalOptions, selectedTerminal, setSelectedTerminal } =
+    useLaunchTerminalOptions(isCliLaunchSupported);
+  const closeCliLaunchModal = useCallback(() => {
+    setCliLaunchModal(null);
+    setCliLaunchingAccountId(null);
+  }, []);
+  useEscClose(Boolean(cliLaunchModal), closeCliLaunchModal);
   const [cockpitApiPanelAccountId, setCockpitApiPanelAccountId] = useState<
     string | null
   >(null);
@@ -5166,129 +5230,246 @@ export function CodexAccountsPage() {
     updateApiKeyBoundOAuthAccount,
   ]);
 
-  const resolveCodexCliInstanceForAccount = async (
-    account: CodexAccount,
+  const findCachedCodexCliInstance = (
+    bindAccountId: string,
     workingDir: string,
-  ): Promise<InstanceProfile> => {
+  ): InstanceProfile | null => {
     const normalizedWorkingDir = normalizePathForCompare(workingDir);
-    const instances = await codexInstanceService.listInstances();
-    const existing = instances.find(
-      (instance) =>
-        !instance.isDefault &&
-        (instance.launchMode ?? "app") === "cli" &&
-        instance.bindAccountId === account.id &&
-        normalizePathForCompare(instance.workingDir) === normalizedWorkingDir,
+    return (
+      codexInstanceStore.instances.find(
+        (instance) =>
+          !instance.isDefault &&
+          (instance.launchMode ?? "app") === "cli" &&
+          instance.bindAccountId === bindAccountId &&
+          normalizePathForCompare(instance.workingDir) ===
+            normalizedWorkingDir,
+      ) ?? null
     );
-    if (existing) {
-      return existing;
-    }
-
-    const defaults = await codexInstanceService.getInstanceDefaults();
-    const presentation = buildCodexAccountPresentation(account, t);
-    const displayName = presentation.displayName || account.email || account.id;
-    const instanceHash = md5(`${account.id}|${normalizedWorkingDir}`).substring(
-      0,
-      12,
-    );
-    const instanceName = sanitizeCodexCliInstanceName(
-      `${displayName} CLI ${instanceHash.substring(0, 6)}`,
-    );
-    const userDataDir = joinFilePath(defaults.rootDir, `cli-${instanceHash}`);
-
-    return await codexInstanceService.createInstance({
-      name: instanceName,
-      userDataDir,
-      workingDir: normalizedWorkingDir,
-      extraArgs: "",
-      bindAccountId: account.id,
-      launchMode: "cli",
-      copySourceInstanceId: "__default__",
-      initMode: "copy",
-    });
   };
 
-  const resolveCodexCliInstanceForApiService = async (
+  const buildCodexCliInstanceDraft = async (
+    modal: CodexCliLaunchModalState,
     workingDir: string,
-  ): Promise<InstanceProfile> => {
+  ): Promise<{
+    instanceId: string | null;
+    draft: CodexCliInstanceDraft;
+  }> => {
     const normalizedWorkingDir = normalizePathForCompare(workingDir);
-    const instances = await codexInstanceService.listInstances();
-    const existing = instances.find(
-      (instance) =>
-        !instance.isDefault &&
-        (instance.launchMode ?? "app") === "cli" &&
-        instance.bindAccountId === CODEX_API_SERVICE_BIND_ID &&
-        normalizePathForCompare(instance.workingDir) === normalizedWorkingDir,
+    const bindAccountId =
+      modal.target === "apiService"
+        ? CODEX_API_SERVICE_BIND_ID
+        : modal.accountId;
+    const cached = findCachedCodexCliInstance(
+      bindAccountId,
+      normalizedWorkingDir,
     );
-    if (existing) {
-      return existing;
+    if (cached) {
+      return {
+        instanceId: cached.id,
+        draft: {
+          name: cached.name,
+          userDataDir: cached.userDataDir,
+          workingDir:
+            normalizePathForCompare(cached.workingDir) || normalizedWorkingDir,
+          extraArgs: cached.extraArgs || "",
+          bindAccountId,
+        },
+      };
     }
 
-    const defaults = await codexInstanceService.getInstanceDefaults();
+    let defaults = codexCliInstanceDefaultsRef.current;
+    if (!defaults) {
+      defaults = await codexInstanceService.getInstanceDefaults();
+      codexCliInstanceDefaultsRef.current = defaults;
+    }
     const instanceHash = md5(
-      `${CODEX_API_SERVICE_BIND_ID}|${normalizedWorkingDir}`,
+      `${bindAccountId}|${normalizedWorkingDir}`,
     ).substring(0, 12);
     const instanceName = sanitizeCodexCliInstanceName(
-      `${t("codex.localAccess.title", "API 服务")} CLI ${instanceHash.substring(0, 6)}`,
+      `${modal.accountLabel} CLI ${instanceHash.substring(0, 6)}`,
     );
-    const userDataDir = joinFilePath(
-      defaults.rootDir,
-      `cli-api-service-${instanceHash}`,
+    const directoryName =
+      modal.target === "apiService"
+        ? `cli-api-service-${instanceHash}`
+        : `cli-${instanceHash}`;
+    return {
+      instanceId: null,
+      draft: {
+        name: instanceName,
+        userDataDir: joinFilePath(defaults.rootDir, directoryName),
+        workingDir: normalizedWorkingDir,
+        extraArgs: "",
+        bindAccountId,
+      },
+    };
+  };
+
+  const resolveCodexCliInstance = async (
+    draft: CodexCliInstanceDraft,
+  ): Promise<InstanceProfile> => {
+    const cached = findCachedCodexCliInstance(
+      draft.bindAccountId,
+      draft.workingDir,
     );
+    if (cached) return cached;
+
+    const instances = await codexInstanceService.listInstances();
+    const normalizedWorkingDir = normalizePathForCompare(draft.workingDir);
+    const existing = instances.find(
+      (instance) =>
+        !instance.isDefault &&
+        (instance.launchMode ?? "app") === "cli" &&
+        instance.bindAccountId === draft.bindAccountId &&
+        normalizePathForCompare(instance.workingDir) === normalizedWorkingDir,
+    );
+    if (existing) return existing;
 
     return await codexInstanceService.createInstance({
-      name: instanceName,
-      userDataDir,
-      workingDir: normalizedWorkingDir,
-      extraArgs: "",
-      bindAccountId: CODEX_API_SERVICE_BIND_ID,
+      name: draft.name,
+      userDataDir: draft.userDataDir,
+      workingDir: draft.workingDir,
+      extraArgs: draft.extraArgs,
+      bindAccountId: draft.bindAccountId,
       launchMode: "cli",
       copySourceInstanceId: "__default__",
       initMode: "copy",
     });
   };
 
-  const handleLaunchCodexCli = async (account: CodexAccount) => {
-    if (cliLaunchingAccountId) return;
-    setMessage(null);
-    setCliLaunchingAccountId(account.id);
-    try {
-      const selected = await openFileDialog({
-        directory: true,
-        multiple: false,
-        title: t("codex.cli.selectWorkingDir", "选择 Codex CLI 工作目录"),
-      });
-      if (!selected || typeof selected !== "string") {
-        return;
-      }
-
-      const instance = await resolveCodexCliInstanceForAccount(
-        account,
-        selected,
+  const prepareCodexCliLaunch = async (
+    modal: CodexCliLaunchModalState,
+    workingDirOverride?: string,
+  ): Promise<CodexCliLaunchModalState | null> => {
+    const workingDir = (workingDirOverride ?? modal.workingDir).trim();
+    if (!workingDir) {
+      setCliLaunchModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              workingDirError: t(
+                "instances.form.pathRequired",
+                "请选择工作目录",
+              ),
+              executeError: null,
+            }
+          : prev,
       );
-      const prepared = await codexInstanceService.startInstance(instance.id);
-      const result =
-        await codexInstanceService.executeCodexInstanceLaunchCommand(
-          prepared.id,
-        );
-      await codexInstanceStore.refreshInstances();
-      setMessage({
-        text: result || t("codex.cli.launchSuccess", "已启动 Codex CLI"),
-      });
-    } catch (e) {
-      setMessage({
-        text: t(
-          "codex.cli.launchFailed",
-          "启动 Codex CLI 失败: {{error}}",
-        ).replace("{{error}}", String(e).replace(/^Error:\s*/, "")),
-        tone: "error",
-      });
+      return null;
+    }
+
+    setCliLaunchingAccountId(modal.accountId);
+    setCliLaunchModal((prev) =>
+      prev
+        ? {
+            ...prev,
+            workingDir,
+            workingDirError: null,
+            preparing: true,
+            copied: false,
+            executeMessage: null,
+            executeError: null,
+          }
+        : prev,
+    );
+    try {
+      if (
+        modal.target === "account" &&
+        !accounts.some((item) => item.id === modal.accountId)
+      ) {
+        throw new Error(t("instances.quota.accountMissing", "账号不存在"));
+      }
+      const { instanceId, draft } = await buildCodexCliInstanceDraft(
+        modal,
+        workingDir,
+      );
+      const launchInfo =
+        await codexInstanceService.previewCodexInstanceLaunchCommand({
+          userDataDir: draft.userDataDir,
+          workingDir: draft.workingDir,
+          extraArgs: draft.extraArgs,
+          terminal: selectedTerminal,
+        });
+      persistLastCodexCliWorkingDir(workingDir);
+      const next: CodexCliLaunchModalState = {
+        ...modal,
+        instanceId,
+        instanceDraft: draft,
+        instanceName: draft.name,
+        workingDir,
+        workingDirError: null,
+        launchCommand: launchInfo.launchCommand,
+        terminalCommand: launchInfo.terminalCommand,
+        runtimePrepared: false,
+        preparing: false,
+        copied: false,
+        executing: false,
+        executeMessage: null,
+        executeError: null,
+      };
+      setCliLaunchModal((prev) =>
+        prev && prev.accountId === modal.accountId ? next : prev,
+      );
+      return next;
+    } catch (error) {
+      setCliLaunchModal((prev) =>
+        prev && prev.accountId === modal.accountId
+          ? {
+              ...prev,
+              preparing: false,
+              executing: false,
+              executeMessage: null,
+              executeError: String(error).replace(/^Error:\s*/, ""),
+            }
+          : prev,
+      );
+      return null;
     } finally {
       setCliLaunchingAccountId(null);
     }
   };
 
-  const handleLaunchLocalAccessCli = async () => {
-    if (cliLaunchingAccountId) return;
+  const openCodexCliLaunchModal = (
+    target: "account" | "apiService",
+    accountId: string,
+    accountLabel: string,
+  ) => {
+    if (cliLaunchModal || cliLaunchingAccountId) return;
+    setMessage(null);
+    const modal: CodexCliLaunchModalState = {
+      target,
+      accountId,
+      accountLabel,
+      instanceId: null,
+      instanceDraft: null,
+      instanceName: t("common.loading", "加载中..."),
+      workingDir: readLastCodexCliWorkingDir(),
+      workingDirError: null,
+      launchCommand: "",
+      terminalCommand: "",
+      runtimePrepared: false,
+      preparing: false,
+      copied: false,
+      executing: false,
+      executeMessage: null,
+      executeError: null,
+    };
+    setCliLaunchModal(modal);
+    if (modal.workingDir) {
+      void prepareCodexCliLaunch(modal);
+    }
+  };
+
+  const handleLaunchCodexCli = (account: CodexAccount) => {
+    const presentation = buildCodexAccountPresentation(account, t);
+    openCodexCliLaunchModal(
+      "account",
+      account.id,
+      presentation.displayName || account.email || account.id,
+    );
+  };
+
+  const handleLaunchLocalAccessCli = () => {
+    if (cliLaunchModal || cliLaunchingAccountId) return;
     if (!localAccessCollection) {
       setMessage({
         text: t("codex.localAccess.testUnavailable", "当前 API 服务地址不可用"),
@@ -5296,40 +5477,265 @@ export function CodexAccountsPage() {
       });
       return;
     }
-    setMessage(null);
-    setCliLaunchingAccountId(CODEX_API_SERVICE_BIND_ID);
-    try {
-      const selected = await openFileDialog({
-        directory: true,
-        multiple: false,
-        title: t("codex.cli.selectWorkingDir", "选择 Codex CLI 工作目录"),
-      });
-      if (!selected || typeof selected !== "string") {
-        return;
-      }
+    openCodexCliLaunchModal(
+      "apiService",
+      CODEX_API_SERVICE_BIND_ID,
+      t("codex.localAccess.title", "API 服务"),
+    );
+  };
 
-      const instance = await resolveCodexCliInstanceForApiService(selected);
-      const prepared = await codexInstanceService.startInstance(instance.id);
+  const updateCodexCliWorkingDir = (workingDir: string) => {
+    setCliLaunchModal((prev) =>
+      prev
+        ? {
+            ...prev,
+            workingDir,
+            workingDirError: null,
+            instanceId: null,
+            instanceDraft: null,
+            instanceName: t("common.loading", "加载中..."),
+            launchCommand: "",
+            terminalCommand: "",
+            runtimePrepared: false,
+            copied: false,
+            executeMessage: null,
+            executeError: null,
+          }
+        : prev,
+    );
+  };
+
+  const handleChooseCodexCliWorkingDir = async () => {
+    if (!cliLaunchModal || cliLaunchModal.preparing || cliLaunchModal.executing)
+      return;
+    const selected = await openFileDialog({
+      directory: true,
+      multiple: false,
+      title: t("codex.cli.selectWorkingDir", "选择 Codex CLI 工作目录"),
+    });
+    if (!selected || typeof selected !== "string") return;
+    const next = { ...cliLaunchModal, workingDir: selected };
+    updateCodexCliWorkingDir(selected);
+    await prepareCodexCliLaunch(next, selected);
+  };
+
+  const handleCopyCodexCliCommand = async () => {
+    if (!cliLaunchModal || cliLaunchModal.preparing) return;
+    const prepared = cliLaunchModal.terminalCommand
+      ? cliLaunchModal
+      : await prepareCodexCliLaunch(cliLaunchModal);
+    if (!prepared) return;
+    const runtime = prepared.runtimePrepared
+      ? prepared
+      : await prepareCodexCliRuntime(prepared);
+    if (!runtime) return;
+    try {
+      await navigator.clipboard.writeText(
+        runtime.launchCommand || runtime.terminalCommand,
+      );
+      setCliLaunchModal((prev) =>
+        prev ? { ...prev, copied: true, executeError: null } : prev,
+      );
+      window.setTimeout(() => {
+        setCliLaunchModal((prev) =>
+          prev ? { ...prev, copied: false } : prev,
+        );
+      }, 1200);
+    } catch {
+      setCliLaunchModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              executeError: t(
+                "common.shared.export.copyFailed",
+                "复制失败，请手动复制",
+              ),
+            }
+          : prev,
+      );
+    }
+  };
+
+  async function prepareCodexCliRuntime(
+    modal: CodexCliLaunchModalState,
+  ): Promise<CodexCliLaunchModalState | null> {
+    if (modal.runtimePrepared) return modal;
+    setCliLaunchingAccountId(modal.accountId);
+    setCliLaunchModal((prev) =>
+      prev
+        ? {
+            ...prev,
+            preparing: true,
+            copied: false,
+            executeMessage: null,
+            executeError: null,
+          }
+        : prev,
+    );
+    try {
+      if (
+        modal.target === "account" &&
+        !accounts.some((item) => item.id === modal.accountId)
+      ) {
+        throw new Error(t("instances.quota.accountMissing", "账号不存在"));
+      }
+      const draft =
+        modal.instanceDraft ??
+        (await buildCodexCliInstanceDraft(modal, modal.workingDir)).draft;
+      let instanceId = modal.instanceId;
+      if (!instanceId) {
+        const instance = await resolveCodexCliInstance(draft);
+        instanceId = instance.id;
+      }
+      const started = await codexInstanceService.startInstance(instanceId);
+      const launchInfo =
+        await codexInstanceService.getCodexInstanceLaunchCommand(
+          started.id,
+          selectedTerminal,
+        );
+      const next: CodexCliLaunchModalState = {
+        ...modal,
+        instanceId: started.id,
+        instanceDraft: {
+          name: started.name,
+          userDataDir: started.userDataDir,
+          workingDir:
+            normalizePathForCompare(started.workingDir) || draft.workingDir,
+          extraArgs: started.extraArgs || "",
+          bindAccountId: started.bindAccountId || draft.bindAccountId,
+        },
+        instanceName: started.name,
+        launchCommand: launchInfo.launchCommand,
+        terminalCommand: launchInfo.terminalCommand,
+        runtimePrepared: true,
+        preparing: false,
+        copied: false,
+        executing: false,
+        executeMessage: null,
+        executeError: null,
+      };
+      setCliLaunchModal((prev) =>
+        prev && prev.accountId === modal.accountId ? next : prev,
+      );
+      return next;
+    } catch (error) {
+      setCliLaunchModal((prev) =>
+        prev && prev.accountId === modal.accountId
+          ? {
+              ...prev,
+              preparing: false,
+              executing: false,
+              executeMessage: null,
+              executeError: String(error).replace(/^Error:\s*/, ""),
+            }
+          : prev,
+      );
+      return null;
+    } finally {
+      setCliLaunchingAccountId(null);
+    }
+  }
+
+  const handleExecuteCodexCli = async () => {
+    if (!cliLaunchModal || cliLaunchModal.preparing || cliLaunchModal.executing)
+      return;
+    const prepared = cliLaunchModal.terminalCommand
+      ? cliLaunchModal
+      : await prepareCodexCliLaunch(cliLaunchModal);
+    if (!prepared) return;
+    const runtime = prepared.runtimePrepared
+      ? prepared
+      : await prepareCodexCliRuntime(prepared);
+    if (!runtime?.instanceId) return;
+    setCliLaunchingAccountId(runtime.accountId);
+    setCliLaunchModal((prev) =>
+      prev
+        ? {
+            ...prev,
+            executing: true,
+            executeMessage: null,
+            executeError: null,
+          }
+        : prev,
+    );
+    try {
       const result =
         await codexInstanceService.executeCodexInstanceLaunchCommand(
-          prepared.id,
+          runtime.instanceId,
+          selectedTerminal,
         );
       await codexInstanceStore.refreshInstances();
-      setMessage({
-        text: result || t("codex.cli.launchSuccess", "已启动 Codex CLI"),
-      });
-    } catch (e) {
-      setMessage({
-        text: t(
-          "codex.cli.launchFailed",
-          "启动 Codex CLI 失败: {{error}}",
-        ).replace("{{error}}", String(e).replace(/^Error:\s*/, "")),
-        tone: "error",
-      });
+      setCliLaunchModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              executing: false,
+              executeMessage:
+                result || t("codex.cli.launchSuccess", "已启动 Codex CLI"),
+            }
+          : prev,
+      );
+    } catch (error) {
+      setCliLaunchModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              executing: false,
+              executeError: String(error).replace(/^Error:\s*/, ""),
+            }
+          : prev,
+      );
     } finally {
       setCliLaunchingAccountId(null);
     }
   };
+
+  useEffect(() => {
+    const draft = cliLaunchModal?.instanceDraft;
+    if (!draft || cliLaunchModal.preparing || cliLaunchModal.executing) return;
+    let disposed = false;
+    void codexInstanceService
+      .previewCodexInstanceLaunchCommand({
+        userDataDir: draft.userDataDir,
+        workingDir: draft.workingDir,
+        extraArgs: draft.extraArgs,
+        terminal: selectedTerminal,
+        launchCommand: cliLaunchModal.runtimePrepared
+          ? cliLaunchModal.launchCommand
+          : null,
+      })
+      .then((launchInfo) => {
+        if (disposed) return;
+        setCliLaunchModal((prev) =>
+          prev && prev.instanceDraft?.userDataDir === draft.userDataDir
+            ? {
+                ...prev,
+                launchCommand: launchInfo.launchCommand,
+                terminalCommand: launchInfo.terminalCommand,
+                copied: false,
+                executeMessage: null,
+                executeError: null,
+              }
+            : prev,
+        );
+      })
+      .catch((error) => {
+        if (disposed) return;
+        setCliLaunchModal((prev) =>
+          prev && prev.instanceDraft?.userDataDir === draft.userDataDir
+            ? {
+                ...prev,
+                executeError: String(error).replace(/^Error:\s*/, ""),
+              }
+            : prev,
+        );
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [
+    selectedTerminal,
+  ]);
 
   const handleImportFromLocal = async () => {
     page.setAddStatus("loading");
@@ -8431,6 +8837,8 @@ export function CodexAccountsPage() {
       options?: {
         restrictFreeAccounts?: boolean;
         backupAccountIds?: string[];
+        sessionAffinity?: boolean;
+        sessionAffinityTtlMs?: number;
       },
     ) => {
       setLocalAccessSaving(true);
@@ -8461,6 +8869,8 @@ export function CodexAccountsPage() {
             filteredAccountIds,
             restrictFreeAccounts,
             backupAccountIds,
+            options?.sessionAffinity,
+            options?.sessionAffinityTtlMs,
           );
         setLocalAccessState(nextState);
         setMessage({
@@ -9920,7 +10330,7 @@ export function CodexAccountsPage() {
   );
 
   const renderResetCreditControls = (account: CodexAccount) => {
-    if (isCodexApiKeyAccount(account)) return null;
+    if (isCodexApiKeyAccount(account) || isCodexAgentIdentityAccount(account)) return null;
 
     const creditDetails = getResetCreditDetails(account);
     const availableCount = getResetCreditsAvailable(account);
@@ -9969,14 +10379,16 @@ export function CodexAccountsPage() {
       const isCurrent = overviewCurrentAccountId === account.id;
       const isSelected = selected.has(account.id);
       const isApiKeyAccount = isCodexApiKeyAccount(account);
+      const isAgentIdentityAccount = isCodexAgentIdentityAccount(account);
       const isChatCompletionsApiKey =
         isCodexChatCompletionsApiKeyAccount(account);
       const compactQuotaItems = resolveCompactQuotaItems(presentation);
       const subscriptionInfo = resolveSubscriptionPresentation(account);
       const showCompactExpiry =
-        !isApiKeyAccount && subscriptionInfo.bucket !== "active";
+        !isApiKeyAccount && !isAgentIdentityAccount && subscriptionInfo.bucket !== "active";
       const showSubscriptionRefreshAction =
         !isApiKeyAccount &&
+        !isAgentIdentityAccount &&
         (subscriptionInfo.bucket === "missing" ||
           subscriptionInfo.bucket === "expired");
       const isSubscriptionRefreshPending =
@@ -17887,10 +18299,14 @@ export function CodexAccountsPage() {
               accountIds,
               restrictFreeAccounts,
               backupAccountIds,
+              sessionAffinity,
+              sessionAffinityTtlMs,
             }) =>
               handleSaveLocalAccessAccounts(accountIds, {
                 restrictFreeAccounts,
                 backupAccountIds,
+                sessionAffinity,
+                sessionAffinityTtlMs,
               })
             }
             onClearStats={handleClearLocalAccessStats}
@@ -17944,6 +18360,47 @@ export function CodexAccountsPage() {
             onAdded={reloadCodexGroups}
           />
         </>
+      )}
+
+      {cliLaunchModal && (
+        <CodexCliLaunchDialog
+          subjectLabel={t("instances.columns.account", "账号")}
+          subjectValue={cliLaunchModal.accountLabel}
+          workingDir={{
+            value: cliLaunchModal.workingDir,
+            error: cliLaunchModal.workingDirError,
+            onChange: updateCodexCliWorkingDir,
+            onBlur: () => {
+              if (
+                cliLaunchModal.workingDir.trim() &&
+                !cliLaunchModal.instanceId &&
+                !cliLaunchModal.preparing &&
+                !cliLaunchModal.executing
+              ) {
+                void prepareCodexCliLaunch(cliLaunchModal);
+              }
+            },
+            onChoose: () => void handleChooseCodexCliWorkingDir(),
+          }}
+          terminal={selectedTerminal}
+          terminalOptions={terminalOptions}
+          onTerminalChange={setSelectedTerminal}
+          command={cliLaunchModal.terminalCommand}
+          commandPlaceholder={
+            cliLaunchModal.preparing
+              ? t("common.loading", "加载中...")
+              : t("codex.cli.selectWorkingDir", "选择 Codex CLI 工作目录")
+          }
+          preparing={cliLaunchModal.preparing}
+          copied={cliLaunchModal.copied}
+          executing={cliLaunchModal.executing}
+          successMessage={cliLaunchModal.executeMessage}
+          errorMessage={cliLaunchModal.executeError}
+          onClose={closeCliLaunchModal}
+          onCopy={() => void handleCopyCodexCliCommand()}
+          onExecute={() => void handleExecuteCodexCli()}
+          showCancelButton
+        />
       )}
 
       {activeTab === "instances" && (

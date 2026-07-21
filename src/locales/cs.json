@@ -3648,15 +3648,17 @@
       "stageProvider": "konfigurace poskytovatele",
       "stageState": "stavová databáze",
       "stateRepaired": "Ve stavové databázi zarovnáno {{rows}} řádků (poskytovatel {{providerRows}}, viditelnost {{visibilityRows}}); opraveno {{rolloutFiles}} rolloutů; záloha ověřena",
-      "reconciliationSummary": "cesty {{rolloutPaths}} · uživatelské události {{userEvents}} · pracovní adresáře {{cwdRows}} · osiřelé rollouty {{orphanRollouts}}",
+      "reconciliationSummary": "cesty {{rolloutPaths}} · uživatelské události {{userEvents}} · pracovní adresáře {{cwdRows}} · osiřelé rollouty {{orphanRollouts}} · obnovená vlákna {{orphanThreads}}",
       "stateDatabaseMissing": "Vzdálená stavová databáze neexistuje; není co zarovnat",
       "reloadStatus": {
         "daemon-restarted": "služba app-server restartována",
         "app-server-terminated": "app-server zastaven kvůli opětovnému připojení",
         "no-app-server": "app-server není spuštěn",
-        "not-required": "restart není nutný",
+        "not-required": "obnovení není potřeba",
         "restore-failed": "obnovení app-serveru selhalo",
-        "unknown": "stav app-server není znám"
+        "unknown": "stav app-server není znám",
+        "app-server-paused": "app-server pozastaven kvůli synchronizaci",
+        "app-server-resumed": "app-server obnoven"
       },
       "syncFailed": "Synchronizace SSH se nezdařila",
       "syncedAs": "Synchronizováno {{email}} · {{time}}",

@@ -72,6 +72,8 @@ pub struct SshCodexStateRepairStatus {
     #[serde(default)]
     pub orphan_rollouts_found: u64,
     #[serde(default)]
+    pub orphan_threads_recovered: u64,
+    #[serde(default)]
     pub rollout_paths_repaired: u64,
     #[serde(default)]
     pub user_events_recovered: u64,

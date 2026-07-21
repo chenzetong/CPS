@@ -7,6 +7,19 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [0.26.7] - 2026-07-21
+
+### 变更
+
+- **运行中的远端 app-server 改为原进程暂停与恢复**：SSH 同步使用 `SIGSTOP` / `SIGCONT`，并设置与 SSH 标准流脱离的 240 秒自动恢复 watchdog；不再依赖远端不支持的 `codex app-server daemon restart`，也不替换原 PID。
+
+### 修复
+
+- **只有 rollout 的对话可以恢复到 Codex 历史列表**：CPS 在现有备份和回滚事务内，根据活动及归档 rollout 重建缺失的 `threads` 行，并恢复时间、项目目录、来源、provider、首条用户消息、预览和可见性字段。
+- **正确识别新版 Codex 用户消息记录**：同时解析 `event_msg` 与 `response_item` 用户消息，并排除注入的环境及插件上下文，避免把系统内容作为会话标题。
+- **未来 SQLite schema 变化会安全中止**：如果出现没有默认值的未知必填列，同步会在任何写入前停止，账号投影、rollout 和状态库都保持不变。
+
+---
 ## [0.26.6] - 2026-07-21
 
 ### 新增

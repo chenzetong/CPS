@@ -3648,15 +3648,17 @@
       "stageProvider": "Anbieterkonfiguration",
       "stageState": "Statusdatenbank",
       "stateRepaired": "Statusdatenbank: {{rows}} Zeilen abgeglichen (Anbieter {{providerRows}}, Sichtbarkeit {{visibilityRows}}); {{rolloutFiles}} Rollouts repariert; Sicherung verifiziert",
-      "reconciliationSummary": "Pfade {{rolloutPaths}} · Benutzerereignisse {{userEvents}} · Arbeitsverzeichnisse {{cwdRows}} · verwaiste Rollouts {{orphanRollouts}}",
+      "reconciliationSummary": "Pfade {{rolloutPaths}} · Benutzerereignisse {{userEvents}} · Arbeitsverzeichnisse {{cwdRows}} · verwaiste Rollouts {{orphanRollouts}} · wiederhergestellte Threads {{orphanThreads}}",
       "stateDatabaseMissing": "Keine entfernte Statusdatenbank; kein Verlauf abzugleichen",
       "reloadStatus": {
         "daemon-restarted": "app-server-Dienst neu gestartet",
         "app-server-terminated": "app-server für erneute Verbindung beendet",
         "no-app-server": "kein laufender app-server",
-        "not-required": "Neustart nicht erforderlich",
+        "not-required": "Fortsetzen nicht erforderlich",
         "restore-failed": "Wiederherstellung des app-server fehlgeschlagen",
-        "unknown": "app-server-Status unbekannt"
+        "unknown": "app-server-Status unbekannt",
+        "app-server-paused": "app-server für Synchronisierung pausiert",
+        "app-server-resumed": "app-server fortgesetzt"
       },
       "syncFailed": "Die SSH-Synchronisierung ist fehlgeschlagen",
       "syncedAs": "Synchronisiert {{email}} · {{time}}",

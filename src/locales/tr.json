@@ -3648,15 +3648,17 @@
       "stageProvider": "sağlayıcı yapılandırması",
       "stageState": "durum veritabanı",
       "stateRepaired": "Durum veritabanında {{rows}} satır hizalandı (sağlayıcı {{providerRows}}, görünürlük {{visibilityRows}}); {{rolloutFiles}} rollout onarıldı; yedek doğrulandı",
-      "reconciliationSummary": "yollar {{rolloutPaths}} · kullanıcı olayları {{userEvents}} · çalışma dizinleri {{cwdRows}} · sahipsiz rolloutlar {{orphanRollouts}}",
+      "reconciliationSummary": "yollar {{rolloutPaths}} · kullanıcı olayları {{userEvents}} · çalışma dizinleri {{cwdRows}} · sahipsiz rolloutlar {{orphanRollouts}} · geri yüklenen konuşmalar {{orphanThreads}}",
       "stateDatabaseMissing": "Uzak durum veritabanı yok; hizalanacak geçmiş yok",
       "reloadStatus": {
         "daemon-restarted": "app-server hizmeti yeniden başlatıldı",
         "app-server-terminated": "app-server yeniden bağlanmak için durduruldu",
         "no-app-server": "çalışan app-server yok",
-        "not-required": "yeniden başlatma gerekmiyor",
+        "not-required": "devam ettirme gerekmiyor",
         "restore-failed": "app-server geri yüklenemedi",
-        "unknown": "app-server durumu bilinmiyor"
+        "unknown": "app-server durumu bilinmiyor",
+        "app-server-paused": "app-server eşitleme için duraklatıldı",
+        "app-server-resumed": "app-server devam ettirildi"
       },
       "syncFailed": "SSH senkronizasyonu başarısız oldu",
       "syncedAs": "Senkronize {{email}} · {{time}}",

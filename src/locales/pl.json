@@ -3648,15 +3648,17 @@
       "stageProvider": "konfiguracja dostawcy",
       "stageState": "baza danych stanu",
       "stateRepaired": "W bazie stanu wyrównano {{rows}} wierszy (dostawca {{providerRows}}, widoczność {{visibilityRows}}); naprawiono {{rolloutFiles}} wdrożeń; kopia zapasowa zweryfikowana",
-      "reconciliationSummary": "ścieżki {{rolloutPaths}} · zdarzenia użytkownika {{userEvents}} · katalogi robocze {{cwdRows}} · osierocone rollouty {{orphanRollouts}}",
+      "reconciliationSummary": "ścieżki {{rolloutPaths}} · zdarzenia użytkownika {{userEvents}} · katalogi robocze {{cwdRows}} · osierocone rollouty {{orphanRollouts}} · odzyskane wątki {{orphanThreads}}",
       "stateDatabaseMissing": "Brak zdalnej bazy stanu; brak historii do wyrównania",
       "reloadStatus": {
         "daemon-restarted": "usługa app-server uruchomiona ponownie",
         "app-server-terminated": "app-server zatrzymany w celu ponownego połączenia",
         "no-app-server": "app-server nie jest uruchomiony",
-        "not-required": "ponowne uruchomienie nie jest wymagane",
+        "not-required": "wznowienie nie jest wymagane",
         "restore-failed": "nie udało się przywrócić app-server",
-        "unknown": "stan app-server jest nieznany"
+        "unknown": "stan app-server jest nieznany",
+        "app-server-paused": "app-server wstrzymany na czas synchronizacji",
+        "app-server-resumed": "app-server wznowiony"
       },
       "syncFailed": "Synchronizacja SSH nie powiodła się",
       "syncedAs": "Zsynchronizowane {{email}} · {{time}}",

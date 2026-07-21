@@ -7,6 +7,19 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.26.7] - 2026-07-21
+
+### Changed
+
+- **Running remote app-server processes are paused and resumed in place**. SSH sync now uses `SIGSTOP` / `SIGCONT` with a detached 240-second recovery watchdog, so it no longer depends on unsupported `codex app-server daemon restart` commands or replaces the original process.
+
+### Fixed
+
+- **Rollout-only conversations are restored to Codex history**: CPS reconstructs missing `threads` rows from active and archived rollouts inside the existing backup and rollback transaction, including timestamps, project path, source, provider, first user message, preview, and visibility fields.
+- **Current Codex user-message records are recognized correctly**: both `event_msg` user messages and `response_item` user messages are parsed, while injected environment and plugin context is excluded from conversation titles.
+- **Future SQLite schema changes fail safely**: an unknown required column without a default aborts before mutation and leaves the account projection, rollouts, and state database unchanged.
+
+---
 ## [0.26.6] - 2026-07-21
 
 ### Added

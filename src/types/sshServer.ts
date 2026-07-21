@@ -23,6 +23,7 @@ export interface SshCodexStateRepairStatus {
   rollback_performed: boolean;
   rollback_verified: boolean;
   orphan_rollouts_found: number;
+  orphan_threads_recovered: number;
   rollout_paths_repaired: number;
   user_events_recovered: number;
   cwd_rows_repaired: number;

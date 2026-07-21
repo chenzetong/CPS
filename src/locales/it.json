@@ -3648,15 +3648,17 @@
       "stageProvider": "configurazione del provider",
       "stageState": "database di stato",
       "stateRepaired": "Database di stato allineato: {{rows}} righe (provider {{providerRows}}, visibilità {{visibilityRows}}); {{rolloutFiles}} rollout riparati; backup verificato",
-      "reconciliationSummary": "percorsi {{rolloutPaths}} · eventi utente {{userEvents}} · directory di lavoro {{cwdRows}} · rollout orfani {{orphanRollouts}}",
+      "reconciliationSummary": "percorsi {{rolloutPaths}} · eventi utente {{userEvents}} · directory di lavoro {{cwdRows}} · rollout orfani {{orphanRollouts}} · conversazioni ripristinate {{orphanThreads}}",
       "stateDatabaseMissing": "Nessun database di stato remoto; nessuna cronologia da allineare",
       "reloadStatus": {
         "daemon-restarted": "servizio app-server riavviato",
         "app-server-terminated": "app-server arrestato per la riconnessione",
         "no-app-server": "nessun app-server in esecuzione",
-        "not-required": "riavvio non necessario",
+        "not-required": "ripresa non necessaria",
         "restore-failed": "ripristino di app-server non riuscito",
-        "unknown": "stato di app-server sconosciuto"
+        "unknown": "stato di app-server sconosciuto",
+        "app-server-paused": "app-server sospeso per la sincronizzazione",
+        "app-server-resumed": "app-server ripreso"
       },
       "syncFailed": "Sincronizzazione SSH non riuscita",
       "syncedAs": "{{email}} sincronizzato · {{time}}",

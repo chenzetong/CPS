@@ -114,15 +114,17 @@ function describeSyncStatus(t: TFunction, sync: SshCodexSyncStatus) {
           userEvents: sync.state_repair.user_events_recovered,
           cwdRows: sync.state_repair.cwd_rows_repaired,
           orphanRollouts: sync.state_repair.orphan_rollouts_found,
+          orphanThreads: sync.state_repair.orphan_threads_recovered,
         },
       )} · ${t(
         'codex.ssh.reconciliationSummary',
-        '路径 {{rolloutPaths}} · 用户事件 {{userEvents}} · 工作目录 {{cwdRows}} · 孤立 rollout {{orphanRollouts}}',
+        '路径 {{rolloutPaths}} · 用户事件 {{userEvents}} · 工作目录 {{cwdRows}} · 孤立 rollout {{orphanRollouts}} / 已恢复 {{orphanThreads}}',
         {
           rolloutPaths: sync.state_repair.rollout_paths_repaired,
           userEvents: sync.state_repair.user_events_recovered,
           cwdRows: sync.state_repair.cwd_rows_repaired,
           orphanRollouts: sync.state_repair.orphan_rollouts_found,
+          orphanThreads: sync.state_repair.orphan_threads_recovered,
         },
       )}`
     : t('codex.ssh.stateDatabaseMissing', '远端尚无状态库，无历史需要对齐');

@@ -3648,15 +3648,17 @@
       "stageProvider": "プロバイダー設定",
       "stageState": "状態データベース",
       "stateRepaired": "状態データベースの {{rows}} 行を整合しました（プロバイダー {{providerRows}}、表示設定 {{visibilityRows}}）。{{rolloutFiles}} 件の rollout を修復し、バックアップを検証しました",
-      "reconciliationSummary": "パス {{rolloutPaths}} · ユーザーイベント {{userEvents}} · 作業ディレクトリ {{cwdRows}} · 孤立 rollout {{orphanRollouts}}",
+      "reconciliationSummary": "パス {{rolloutPaths}} · ユーザーイベント {{userEvents}} · 作業ディレクトリ {{cwdRows}} · 孤立 rollout {{orphanRollouts}} · 復元スレッド {{orphanThreads}}",
       "stateDatabaseMissing": "リモート状態データベースがないため、整合する履歴はありません",
       "reloadStatus": {
         "daemon-restarted": "app-server デーモンを再起動しました",
         "app-server-terminated": "再接続のため app-server を停止しました",
         "no-app-server": "実行中の app-server はありません",
-        "not-required": "再起動は不要です",
+        "not-required": "再開不要",
         "restore-failed": "app-server の復元に失敗しました",
-        "unknown": "app-server の状態は不明です"
+        "unknown": "app-server の状態は不明です",
+        "app-server-paused": "同期のため app-server を一時停止",
+        "app-server-resumed": "app-server を再開しました"
       },
       "syncFailed": "SSH同期に失敗しました",
       "syncedAs": "同期済み {{email}} · {{time}}",

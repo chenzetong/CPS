@@ -38,6 +38,7 @@ def empty_result():
         "rollback_performed": False,
         "rollback_verified": False,
         "orphan_rollouts_found": 0,
+        "orphan_threads_recovered": 0,
         "rollout_paths_repaired": 0,
         "user_events_recovered": 0,
         "cwd_rows_repaired": 0,
@@ -167,13 +168,98 @@ def scan_rollout_paths(root, referenced_paths):
     return sorted(paths, key=str)
 
 
+def compact_json(value):
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+
+
+def normalized_scalar(value):
+    if isinstance(value, str):
+        return value.strip()
+    if value is None:
+        return None
+    return compact_json(value)
+
+
+def parse_timestamp(value):
+    if isinstance(value, (int, float)):
+        return int(value)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return int(parsed.timestamp())
+
+
+def event_user_message(record):
+    if record.get("type") != "event_msg" or not isinstance(record.get("payload"), dict):
+        return None
+    payload = record["payload"]
+    if payload.get("type") not in ("user_message", "user_input"):
+        return None
+    for key in ("message", "text", "input"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def response_item_user_message(record):
+    if record.get("type") != "response_item" or not isinstance(record.get("payload"), dict):
+        return None
+    payload = record["payload"]
+    if payload.get("type") != "message" or payload.get("role") != "user":
+        return None
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return None
+    synthetic_prefixes = (
+        "<recommended_plugins>",
+        "<environment_context>",
+        "<permissions",
+        "<app-context>",
+        "<collaboration_mode>",
+        "<apps_instructions>",
+        "<plugins_instructions>",
+        "<skills_instructions>",
+    )
+    messages = []
+    for item in content:
+        if not isinstance(item, dict) or item.get("type") not in ("input_text", "text"):
+            continue
+        value = item.get("text", item.get("input_text"))
+        if not isinstance(value, str) or not value.strip():
+            continue
+        value = value.strip()
+        if value.startswith(synthetic_prefixes):
+            continue
+        messages.append(value)
+    return "\n".join(messages) if messages else None
+
+
 def parse_rollout(path, model_provider):
     content = path.read_bytes()
-    has_user_event = b'"user_message"' in content or b'"user_input"' in content
     lines = content.splitlines(keepends=True)
     session_id = None
     cwd = None
     provider = None
+    source = None
+    cli_version = None
+    thread_source = None
+    history_mode = None
+    memory_mode = None
+    git = {}
+    created_at = None
+    updated_at = None
+    approval_mode = None
+    sandbox_policy = None
+    model = None
+    reasoning_effort = None
+    first_user_message = None
+    fallback_user_message = None
     updated = None
     for index, raw_line in enumerate(lines):
         body = raw_line.rstrip(b"\r\n")
@@ -182,10 +268,38 @@ def parse_rollout(path, model_provider):
             record = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             continue
-        if not isinstance(record, dict) or record.get("type") != "session_meta":
+        if not isinstance(record, dict):
             continue
+        record_timestamp = parse_timestamp(record.get("timestamp"))
+        if record_timestamp is not None:
+            updated_at = max(updated_at or record_timestamp, record_timestamp)
+
+        message = event_user_message(record)
+        if first_user_message is None and message:
+            first_user_message = message
+        if fallback_user_message is None:
+            fallback_user_message = response_item_user_message(record)
+
         payload = record.get("payload")
         if not isinstance(payload, dict):
+            continue
+        if record.get("type") == "turn_context":
+            if approval_mode is None:
+                approval_mode = normalized_scalar(
+                    payload.get("approval_policy", payload.get("approval_mode"))
+                )
+            if sandbox_policy is None:
+                raw_sandbox = payload.get("sandbox_policy", payload.get("file_system_sandbox_policy"))
+                if raw_sandbox is not None:
+                    sandbox_policy = normalized_scalar(raw_sandbox)
+            if model is None:
+                model = normalized_scalar(payload.get("model"))
+            if reasoning_effort is None:
+                reasoning_effort = normalized_scalar(
+                    payload.get("reasoning_effort", payload.get("effort"))
+                )
+            continue
+        if record.get("type") != "session_meta" or session_id is not None:
             continue
         raw_id = payload.get("id", payload.get("session_id"))
         if isinstance(raw_id, str) and raw_id.strip():
@@ -193,24 +307,120 @@ def parse_rollout(path, model_provider):
         raw_cwd = payload.get("cwd")
         if isinstance(raw_cwd, str) and raw_cwd.strip():
             cwd = raw_cwd.strip()
+        source = payload.get("source")
+        cli_version = normalized_scalar(payload.get("cli_version"))
+        thread_source = normalized_scalar(payload.get("thread_source"))
+        history_mode = normalized_scalar(payload.get("history_mode"))
+        memory_mode = normalized_scalar(payload.get("memory_mode"))
+        if isinstance(payload.get("git"), dict):
+            git = payload["git"]
+        created_at = parse_timestamp(payload.get("timestamp")) or record_timestamp
         provider = payload.get("model_provider")
         if provider != model_provider:
             payload["model_provider"] = model_provider
-            lines[index] = json.dumps(
-                record, separators=(",", ":"), ensure_ascii=False
-            ).encode("utf-8") + ending
+            lines[index] = compact_json(record).encode("utf-8") + ending
             updated = b"".join(lines)
-        break
     metadata = path.stat()
+    first_user_message = first_user_message or fallback_user_message
+    fallback_timestamp = int(metadata.st_mtime)
     return {
         "path": path,
         "session_id": session_id,
         "cwd": cwd,
-        "has_user_event": has_user_event,
+        "has_user_event": bool(first_user_message),
+        "first_user_message": first_user_message,
         "provider": provider,
+        "source": source,
+        "cli_version": cli_version,
+        "thread_source": thread_source,
+        "history_mode": history_mode,
+        "memory_mode": memory_mode,
+        "git": git,
+        "created_at": created_at or fallback_timestamp,
+        "updated_at": updated_at or created_at or fallback_timestamp,
+        "approval_mode": approval_mode,
+        "sandbox_policy": sandbox_policy,
+        "model": model,
+        "reasoning_effort": reasoning_effort,
+        "archived": "archived_sessions" in path.parts,
         "updated": updated,
         "fingerprint": (metadata.st_size, metadata.st_mtime_ns, sha256_bytes(content)),
         "mtime_ns": metadata.st_mtime_ns,
+    }
+
+
+def fact_thread_source(fact):
+    thread_source = fact["thread_source"]
+    if not thread_source:
+        if isinstance(fact["source"], dict) and "subagent" in fact["source"]:
+            thread_source = "subagent"
+        elif fact["has_user_event"]:
+            thread_source = "user"
+    return thread_source
+
+
+def thread_insert_values(fact, model_provider, root):
+    first_message = fact["first_user_message"] or ""
+    created_at = int(fact["created_at"])
+    updated_at = max(created_at, int(fact["updated_at"]))
+    source = fact["source"]
+    if not isinstance(source, str):
+        source = normalized_scalar(source)
+    source = source or "cli"
+    thread_source = fact_thread_source(fact)
+    git = fact["git"]
+    return {
+        "id": fact["session_id"],
+        "rollout_path": str(fact["path"]),
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "source": source,
+        "model_provider": model_provider,
+        "cwd": fact["cwd"] or str(root),
+        "title": first_message,
+        "sandbox_policy": fact["sandbox_policy"] or '{"type":"read-only"}',
+        "approval_mode": fact["approval_mode"] or "on-request",
+        "tokens_used": 0,
+        "has_user_event": 1 if fact["has_user_event"] else 0,
+        "archived": 1 if fact["archived"] else 0,
+        "archived_at": updated_at if fact["archived"] else None,
+        "git_sha": normalized_scalar(git.get("commit_hash", git.get("sha"))),
+        "git_branch": normalized_scalar(git.get("branch")),
+        "git_origin_url": normalized_scalar(git.get("repository_url", git.get("origin_url"))),
+        "cli_version": fact["cli_version"] or "",
+        "first_user_message": first_message,
+        "agent_nickname": None,
+        "agent_role": None,
+        "memory_mode": fact["memory_mode"] or "enabled",
+        "model": fact["model"],
+        "reasoning_effort": fact["reasoning_effort"],
+        "agent_path": None,
+        "created_at_ms": created_at * 1000,
+        "updated_at_ms": updated_at * 1000,
+        "thread_source": thread_source,
+        "preview": first_message,
+        "recency_at": updated_at,
+        "recency_at_ms": updated_at * 1000,
+        "history_mode": fact["history_mode"] or "legacy",
+    }
+
+
+def prepare_thread_insert(schema, fact, model_provider, root):
+    values = thread_insert_values(fact, model_provider, root)
+    unknown_required = [
+        column[1]
+        for column in schema
+        if int(column[3]) == 1 and column[4] is None and column[1] not in values
+    ]
+    if unknown_required:
+        raise RuntimeError(
+            "unsupported threads schema: unknown required columns: "
+            + ", ".join(sorted(unknown_required))
+        )
+    return {
+        column[1]: values[column[1]]
+        for column in schema
+        if column[1] in values
     }
 
 
@@ -227,7 +437,8 @@ def choose_rollout(facts, archived):
 
 
 def plan_database(connection, root, model_provider):
-    columns = [str(row[1]) for row in connection.execute("PRAGMA table_info(threads)")]
+    schema = list(connection.execute("PRAGMA table_info(threads)"))
+    columns = [str(row[1]) for row in schema]
     column_set = set(columns)
     provider_supported = "model_provider" in column_set
     visibility_supported = "has_user_event" in column_set
@@ -240,7 +451,10 @@ def plan_database(connection, root, model_provider):
         )
 
     selected_columns = ["id", "model_provider", "has_user_event"]
-    for optional in ("rollout_path", "cwd", "thread_source", "archived"):
+    for optional in (
+        "rollout_path", "cwd", "thread_source", "archived", "first_user_message",
+        "preview", "title",
+    ):
         if optional in column_set:
             selected_columns.append(optional)
     rows = [dict(zip(selected_columns, row)) for row in connection.execute(
@@ -255,6 +469,10 @@ def plan_database(connection, root, model_provider):
 
     row_ids = {str(row["id"]) for row in rows}
     orphan_ids = {session_id for session_id in facts_by_id if session_id not in row_ids}
+    inserts = []
+    for session_id in sorted(orphan_ids):
+        fact = choose_rollout(facts_by_id[session_id], False)
+        inserts.append(prepare_thread_insert(schema, fact, model_provider, root))
     updates = []
     provider_rows = 0
     visible_rows = 0
@@ -269,12 +487,21 @@ def plan_database(connection, root, model_provider):
             assignments["model_provider"] = model_provider
         facts = facts_by_id.get(session_id, [])
         fact = choose_rollout(facts, bool(row.get("archived", 0))) if facts else None
-        if fact and fact["has_user_event"] and int(row.get("has_user_event") or 0) != 1:
-            visible_rows += 1
-            user_rows += 1
-            assignments["has_user_event"] = 1
+        if fact and fact["has_user_event"]:
+            visibility_changed = False
+            if int(row.get("has_user_event") or 0) != 1:
+                assignments["has_user_event"] = 1
+                visibility_changed = True
+            for message_column in ("first_user_message", "preview", "title"):
+                if message_column in column_set and not (row.get(message_column) or "").strip():
+                    assignments[message_column] = fact["first_user_message"]
+                    visibility_changed = True
             if "thread_source" in column_set and not (row.get("thread_source") or "").strip():
-                assignments["thread_source"] = "user"
+                assignments["thread_source"] = fact_thread_source(fact) or "user"
+                visibility_changed = True
+            if visibility_changed:
+                visible_rows += 1
+                user_rows += 1
         if fact and rollout_supported:
             current = resolve_managed_path(root, row.get("rollout_path")) if row.get("rollout_path") else None
             if current != fact["path"] or not fact["path"].is_file():
@@ -291,6 +518,8 @@ def plan_database(connection, root, model_provider):
         "columns": column_set,
         "rows": rows,
         "updates": updates,
+        "inserts": inserts,
+        "orphan_ids": orphan_ids,
         "rollouts": rollout_facts,
         "rollout_changes": rollout_changes,
         "provider_rows": provider_rows,
@@ -308,7 +537,7 @@ def plan_database(connection, root, model_provider):
 def verify_rollout_fingerprints(plan):
     return all(
         fact["path"].is_file() and fingerprint(fact["path"]) == fact["fingerprint"]
-        for fact in plan["rollout_changes"]
+        for fact in plan["rollouts"]
     )
 
 
@@ -420,9 +649,23 @@ def restore_backup(root, backup_dir, manifest):
             raise RuntimeError("rollback hash mismatch: " + str(target))
 
 
+def quote_identifier(value):
+    return '"' + str(value).replace('"', '""') + '"'
+
+
 def apply_database_updates(connection, plan, model_provider, root):
     connection.execute("BEGIN IMMEDIATE")
     try:
+        for values in plan["inserts"]:
+            columns = list(values)
+            connection.execute(
+                "INSERT INTO threads ("
+                + ", ".join(quote_identifier(column) for column in columns)
+                + ") VALUES ("
+                + ", ".join("?" for _ in columns)
+                + ")",
+                [values[column] for column in columns],
+            )
         for session_id, assignments in plan["updates"]:
             columns = list(assignments)
             parameters = [assignments[column] for column in columns] + [session_id]
@@ -441,10 +684,20 @@ def apply_database_updates(connection, plan, model_provider, root):
     visibility_remaining = 0
     for fact in plan["rollouts"]:
         if fact["session_id"] and fact["has_user_event"]:
+            visibility_columns = ["has_user_event"]
+            for optional in ("first_user_message", "preview"):
+                if optional in plan["columns"]:
+                    visibility_columns.append(optional)
             row = connection.execute(
-                "SELECT has_user_event FROM threads WHERE id = ?", (fact["session_id"],)
+                "SELECT " + ", ".join(visibility_columns) + " FROM threads WHERE id = ?",
+                (fact["session_id"],),
             ).fetchone()
-            if row is not None and int(row[0] or 0) != 1:
+            row_values = dict(zip(visibility_columns, row)) if row is not None else {}
+            if (
+                int(row_values.get("has_user_event") or 0) != 1
+                or ("first_user_message" in row_values and not (row_values["first_user_message"] or "").strip())
+                or ("preview" in row_values and not (row_values["preview"] or "").strip())
+            ):
                 visibility_remaining += 1
     path_remaining = 0
     if plan["rollout_supported"]:
@@ -455,11 +708,23 @@ def apply_database_updates(connection, plan, model_provider, root):
                 "SELECT rollout_path FROM threads WHERE id = ?", (fact["session_id"],)
             ).fetchone()
             if row is None:
+                path_remaining += 1
                 continue
             resolved = resolve_managed_path(root, row[0]) if row[0] else None
             if resolved is None or not resolved.is_file():
                 path_remaining += 1
-    return provider_remaining, visibility_remaining, path_remaining, quick_check(connection)
+    orphan_remaining = sum(
+        1
+        for session_id in plan["orphan_ids"]
+        if connection.execute("SELECT 1 FROM threads WHERE id = ?", (session_id,)).fetchone() is None
+    )
+    return (
+        provider_remaining,
+        visibility_remaining,
+        path_remaining,
+        orphan_remaining,
+        quick_check(connection),
+    )
 
 
 def run(root, staging, model_provider, result):
@@ -536,21 +801,36 @@ def run(root, staging, model_provider, result):
 
         result["error_stage"] = "apply_database"
         if connection is not None:
-            provider_remaining, visibility_remaining, path_remaining, final_check = apply_database_updates(
-                connection, plan, model_provider, root
-            )
+            (
+                provider_remaining,
+                visibility_remaining,
+                path_remaining,
+                orphan_remaining,
+                final_check,
+            ) = apply_database_updates(connection, plan, model_provider, root)
             result.update({
-                "rows_repaired": len(plan["updates"]),
+                "rows_repaired": len(plan["updates"]) + len(plan["inserts"]),
+                "orphan_threads_recovered": len(plan["inserts"]),
                 "provider_rows_remaining": provider_remaining,
                 "visibility_rows_remaining": visibility_remaining,
                 "quick_check": final_check,
             })
             if os.environ.get("CPS_SSH_SYNC_TEST_FAIL_STAGE") == "database":
                 raise RuntimeError("injected database failure")
-            if provider_remaining or visibility_remaining or path_remaining or final_check != "ok":
+            if (
+                provider_remaining
+                or visibility_remaining
+                or path_remaining
+                or orphan_remaining
+                or final_check != "ok"
+            ):
                 raise RuntimeError(
-                    "database verification failed: provider={}, visibility={}, path={}, quick_check={}".format(
-                        provider_remaining, visibility_remaining, path_remaining, final_check
+                    "database verification failed: provider={}, visibility={}, path={}, orphan={}, quick_check={}".format(
+                        provider_remaining,
+                        visibility_remaining,
+                        path_remaining,
+                        orphan_remaining,
+                        final_check,
                     )
                 )
 
@@ -584,6 +864,8 @@ def run(root, staging, model_provider, result):
             try:
                 restore_backup(root, backup_dir, backup_manifest)
                 result["rollback_verified"] = True
+                result["rows_repaired"] = 0
+                result["orphan_threads_recovered"] = 0
                 result["rollout_files_repaired"] = 0
             except Exception as rollback_error:
                 raise RuntimeError(str(original_error) + "; rollback failed: " + str(rollback_error))

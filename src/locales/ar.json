@@ -3695,15 +3695,17 @@
       "stageProvider": "إعدادات الموفر",
       "stageState": "قاعدة بيانات الحالة",
       "stateRepaired": "تمت محاذاة {{rows}} صفًا في قاعدة الحالة (الموفر {{providerRows}}، الظهور {{visibilityRows}})؛ تم إصلاح {{rolloutFiles}} ملفات طرح؛ تم التحقق من النسخة الاحتياطية",
-      "reconciliationSummary": "المسارات {{rolloutPaths}} · أحداث المستخدم {{userEvents}} · أدلة العمل {{cwdRows}} · ملفات rollout اليتيمة {{orphanRollouts}}",
+      "reconciliationSummary": "المسارات {{rolloutPaths}} · أحداث المستخدم {{userEvents}} · أدلة العمل {{cwdRows}} · ملفات rollout اليتيمة {{orphanRollouts}} · سلاسل المحادثة المستعادة {{orphanThreads}}",
       "stateDatabaseMissing": "لا توجد قاعدة حالة بعيدة؛ لا يوجد سجل للمحاذاة",
       "reloadStatus": {
         "daemon-restarted": "أُعيد تشغيل خدمة app-server",
         "app-server-terminated": "توقف app-server لإعادة الاتصال",
         "no-app-server": "لا توجد خدمة app-server قيد التشغيل",
-        "not-required": "لا حاجة لإعادة التشغيل",
+        "not-required": "لا حاجة إلى الاستئناف",
         "restore-failed": "فشلت استعادة app-server",
-        "unknown": "حالة app-server غير معروفة"
+        "unknown": "حالة app-server غير معروفة",
+        "app-server-paused": "تم إيقاف app-server مؤقتًا للمزامنة",
+        "app-server-resumed": "تم استئناف app-server"
       },
       "syncFailed": "فشلت مزامنة SSH",
       "syncedAs": "تمت المزامنة {{email}} · {{time}}",

@@ -15,7 +15,7 @@ const rules = [
   ["slack-token", /\bxox[baprs]-[0-9A-Za-z-]{20,}\b/g],
   ["local-user-path", /\/(?:Users\/naigou|home\/chenj)(?:\/|\b)/g],
   ["private-host", /\b10\.11\.23\.172\b/g],
-  ["diagnostic-thread-id", /\b019f61c9-5619-7000-a926-6704f37a3c5a\b/g],
+  ["codex-thread-id", /\b01[0-9a-f]{6}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/g],
 ];
 
 const tracked = execFileSync(
@@ -60,6 +60,14 @@ function isAllowedFixture(relativePath, rule, text, match) {
     text.slice(Math.max(0, lineStart - 500), lineStart).includes(
       "api_key_upsert_without_sync_preference_preserves_instance_model_catalog",
     )
+  ) {
+    return true;
+  }
+
+  if (
+    rule === "codex-thread-id" &&
+    relativePath ===
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/runtime/executor/codex_websockets_executor_test.go"
   ) {
     return true;
   }

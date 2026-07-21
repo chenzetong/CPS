@@ -7,6 +7,19 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [0.26.8] - 2026-07-21
+
+### 变更
+
+- **SSH 同步在提交历史修复后会刷新远端 app-server 进程**：CPS 先恢复被暂停的进程，优先执行受支持的 `codex app-server daemon restart`；若 listener 不受 daemon 管理，则安全交接给 `daemon start`。
+- **分别报告 app-server 生命周期状态**：同步详情现在区分暂停、恢复与重载结果，不再把 `SIGCONT` 误当作重载成功。
+
+### 修复
+
+- **远端会话不再因 app-server 的旧内存状态而持续不可见**：listener 识别现在支持带中间配置参数的 Codex App 命令，包括 `codex -c ... app-server --listen`，并验证重载后出现不同的新受管 listener PID。
+- **显式恢复后会取消对应的恢复 watchdog**，同时保留 CPS 或 SSH 在事务中断开时的自动恢复保护。
+
+---
 ## [0.26.7] - 2026-07-21
 
 ### 变更

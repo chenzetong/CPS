@@ -7,6 +7,19 @@ All notable changes to Cockpit Tools will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [0.26.8] - 2026-07-21
+
+### Changed
+
+- **SSH synchronization now refreshes the remote app-server process after committing history repairs**: CPS resumes paused processes first, prefers the supported `codex app-server daemon restart` flow, and safely hands an unmanaged listener over to `daemon start` when required.
+- **App-server lifecycle results are reported separately**: the sync detail distinguishes quiesce, restore, and reload outcomes instead of treating `SIGCONT` as a successful reload.
+
+### Fixed
+
+- **Remote conversations no longer remain hidden behind stale in-memory app-server state**: listener detection now recognizes Codex App commands with intermediate configuration arguments, including `codex -c ... app-server --listen`, and verifies that reload creates a different managed listener PID.
+- **Recovery watchdogs are cancelled after an explicit restore** while retaining the detached fail-safe when CPS or SSH disconnects during a transaction.
+
+---
 ## [0.26.7] - 2026-07-21
 
 ### Changed

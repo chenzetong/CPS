@@ -3831,7 +3831,7 @@
       "syncNow": "Sync now",
       "connectionOk": "Connected",
       "syncVerified": "SSH sync verified",
-      "syncVerifiedDetail": "Provider {{provider}} verified · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Provider {{provider}} verified · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · Completed: {{stages}}",
       "stageBundle": "auth bundle hashes",
       "stageProvider": "provider config",

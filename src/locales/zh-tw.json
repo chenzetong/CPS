@@ -3642,7 +3642,7 @@
       "syncNow": "立即同步",
       "connectionOk": "已連接",
       "syncVerified": "SSH 同步已驗證",
-      "syncVerifiedDetail": "Provider {{provider}} 已驗證 · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Provider {{provider}} 已驗證 · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · 已完成：{{stages}}",
       "stageBundle": "驗證套件雜湊",
       "stageProvider": "Provider 設定",

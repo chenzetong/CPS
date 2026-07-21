@@ -25,8 +25,8 @@ const TEST_COMMAND_TIMEOUT_SECS: u64 = 20;
 const SYNC_TIMEOUT_SECS: u64 = 45;
 /// 远端 SQLite 在线备份可能明显慢于凭据写入。
 const STATE_REPAIR_TIMEOUT_SECS: u64 = 120;
-/// 远端 app-server reload 墙钟超时。
-const APP_SERVER_RELOAD_TIMEOUT_SECS: u64 = 20;
+/// 远端 app-server pause/resume/reload 墙钟超时。
+const APP_SERVER_RELOAD_TIMEOUT_SECS: u64 = 45;
 /// 只读列出远端会话的墙钟超时。
 const SESSION_LIST_TIMEOUT_SECS: u64 = 20;
 const DEFAULT_MODEL_PROVIDER_ID: &str = "openai";
@@ -70,6 +70,8 @@ struct RemoteSessionRow {
 struct QuiescedAppServer {
     status: String,
     pids: Vec<String>,
+    listener_pids: Vec<String>,
+    watchdog_pid: Option<String>,
 }
 
 fn now_timestamp() -> i64 {
@@ -1284,11 +1286,20 @@ watchdog_delay=${2:-240}
 case "$watchdog_delay" in
   ''|*[!0-9]*) watchdog_delay=240 ;;
 esac
-pids="$(ps -u "$(id -u)" -o pid= -o args= 2>/dev/null | awk -v marker="$test_marker" '
-(/[c]odex app-server --listen/ || /[c]odex app-server proxy/) &&
+processes="$(ps -u "$(id -u)" -o pid= -o args= 2>/dev/null || true)"
+listener_pids="$(printf '%s\n' "$processes" | awk -v marker="$test_marker" '
+{ executable = $2; sub(/^.*\//, "", executable) }
+(executable == "codex" && index($0, "app-server --listen") > 0) &&
   (marker == "" || index($0, marker) > 0) { print $1 }
 ' || true)"
+proxy_pids="$(printf '%s\n' "$processes" | awk -v marker="$test_marker" '
+{ executable = $2; sub(/^.*\//, "", executable) }
+(executable == "codex" && index($0, "app-server proxy") > 0) &&
+  (marker == "" || index($0, marker) > 0) { print $1 }
+' || true)"
+pids="$(printf '%s\n%s\n' "$listener_pids" "$proxy_pids" | awk 'NF && !seen[$1]++ { print $1 }')"
 pids="$(printf '%s\n' "$pids" | tr -s '[:space:]' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+listener_pids="$(printf '%s\n' "$listener_pids" | tr -s '[:space:]' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 if [ -z "$pids" ]; then
   printf 'no-app-server\n'
   exit 0
@@ -1324,8 +1335,29 @@ paused_csv=''
 for pid in $paused; do
   if [ -z "$paused_csv" ]; then paused_csv=$pid; else paused_csv="$paused_csv,$pid"; fi
 done
-printf 'app-server-paused:%s\n' "$paused_csv"
+listener_csv=''
+for pid in $listener_pids; do
+  if [ -z "$listener_csv" ]; then listener_csv=$pid; else listener_csv="$listener_csv,$pid"; fi
+done
+printf 'app-server-paused:%s:%s:%s\n' "$watchdog_pid" "$paused_csv" "$listener_csv"
 "#
+}
+
+fn parse_process_ids(raw: &str, allow_empty: bool) -> Result<Vec<String>, String> {
+    let pids = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|pid| !pid.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if (!allow_empty && pids.is_empty())
+        || pids
+            .iter()
+            .any(|pid| !pid.bytes().all(|value| value.is_ascii_digit()) || pid == "0")
+    {
+        return Err(format!("invalid process token: {}", sanitize_error(raw)));
+    }
+    Ok(pids)
 }
 
 fn parse_quiesced_app_server(output: &str) -> Result<QuiescedAppServer, String> {
@@ -1338,33 +1370,38 @@ fn parse_quiesced_app_server(output: &str) -> Result<QuiescedAppServer, String> 
         return Ok(QuiescedAppServer {
             status: response.to_string(),
             pids: Vec::new(),
+            listener_pids: Vec::new(),
+            watchdog_pid: None,
         });
     }
-    let Some(raw_pids) = response.strip_prefix("app-server-paused:") else {
+    let Some(raw_token) = response.strip_prefix("app-server-paused:") else {
         return Err(format!(
             "ssh_remote_app_server_quiesce_failed: unexpected response: {}",
             sanitize_error(response)
         ));
     };
-    let pids = raw_pids
-        .split(',')
-        .map(str::trim)
-        .filter(|pid| !pid.is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    if pids.is_empty()
-        || pids
-            .iter()
-            .any(|pid| !pid.bytes().all(|value| value.is_ascii_digit()) || pid == "0")
+    let mut fields = raw_token.splitn(3, ':');
+    let watchdog_pid = fields.next().unwrap_or("");
+    let raw_pids = fields.next().unwrap_or("");
+    let raw_listener_pids = fields.next().unwrap_or("");
+    let pids = parse_process_ids(raw_pids, false)
+        .map_err(|error| format!("ssh_remote_app_server_quiesce_failed: {error}"))?;
+    let listener_pids = parse_process_ids(raw_listener_pids, true)
+        .map_err(|error| format!("ssh_remote_app_server_quiesce_failed: {error}"))?;
+    if !watchdog_pid.bytes().all(|value| value.is_ascii_digit())
+        || watchdog_pid == "0"
+        || listener_pids.iter().any(|pid| !pids.contains(pid))
     {
         return Err(format!(
             "ssh_remote_app_server_quiesce_failed: invalid process token: {}",
-            sanitize_error(raw_pids)
+            sanitize_error(raw_token)
         ));
     }
     Ok(QuiescedAppServer {
         status: "app-server-paused".to_string(),
         pids,
+        listener_pids,
+        watchdog_pid: Some(watchdog_pid.to_string()),
     })
 }
 
@@ -1387,6 +1424,8 @@ async fn quiesce_remote_codex_app_server(server: &SshServer) -> Result<QuiescedA
 
 fn restore_app_server_script() -> &'static str {
     r#"set +e
+watchdog_pid=${1:-}
+[ "$#" -gt 0 ] && shift
 if [ "$#" -eq 0 ]; then
   printf 'not-required\n'
   exit 0
@@ -1396,6 +1435,15 @@ for pid in "$@"; do
   case "$pid" in ''|*[!0-9]*) failed=1; continue ;; esac
   if ! kill -CONT "$pid" 2>/dev/null; then failed=1; fi
 done
+case "$watchdog_pid" in
+  ''|*[!0-9]*) ;;
+  *)
+    watchdog_args="$(ps -p "$watchdog_pid" -o args= 2>/dev/null || true)"
+    case "$watchdog_args" in
+      *cps-app-server-watchdog*) kill -TERM "$watchdog_pid" 2>/dev/null || true ;;
+    esac
+    ;;
+esac
 if [ "$failed" -ne 0 ]; then
   printf 'restore-failed\n'
 else
@@ -1406,10 +1454,11 @@ fi
 
 async fn restore_remote_codex_app_server(
     server: &SshServer,
-    pids: &[String],
+    quiesced: &QuiescedAppServer,
 ) -> Result<String, String> {
-    let mut remote_args = vec!["sh", "-s", "--"];
-    remote_args.extend(pids.iter().map(String::as_str));
+    let watchdog_pid = quiesced.watchdog_pid.as_deref().unwrap_or("");
+    let mut remote_args = vec!["sh", "-s", "--", watchdog_pid];
+    remote_args.extend(quiesced.pids.iter().map(String::as_str));
     let output = run_ssh(
         server,
         APP_SERVER_RELOAD_TIMEOUT_SECS,
@@ -1433,6 +1482,174 @@ async fn restore_remote_codex_app_server(
     } else {
         Err(format!(
             "ssh_remote_app_server_restore_failed: {}",
+            sanitize_error(status)
+        ))
+    }
+}
+
+fn reload_app_server_script() -> &'static str {
+    r#"set +e
+codex_home=$1
+test_marker=${2:-}
+shift 2
+[ "$test_marker" = "__cps_no_test_marker__" ] && test_marker=''
+case "$codex_home" in
+  "~") codex_home="$HOME" ;;
+  "~/"*) codex_home="$HOME/${codex_home#~/}" ;;
+esac
+export CODEX_HOME="$codex_home"
+PATH="${CODEX_INSTALL_DIR:-$HOME/.local/bin}:$PATH"
+export PATH
+old_listener_pids="$*"
+if [ -z "$old_listener_pids" ]; then
+  printf 'not-required\n'
+  exit 0
+fi
+if ! command -v codex >/dev/null 2>&1; then
+  printf 'reload-unavailable\n'
+  exit 0
+fi
+
+listener_pids() {
+  ps -u "$(id -u)" -o pid= -o args= 2>/dev/null | awk -v marker="$test_marker" '
+  { executable = $2; sub(/^.*\//, "", executable) }
+  (executable == "codex" && index($0, "app-server --listen") > 0) &&
+    (marker == "" || index($0, marker) > 0) { print $1 }
+  ' | tr -s '[:space:]' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+is_listener_pid() {
+  candidate=$1
+  case "$candidate" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$candidate" 2>/dev/null || return 1
+  candidate_args="$(ps -p "$candidate" -o args= 2>/dev/null || true)"
+  candidate_executable=${candidate_args%% *}
+  [ "${candidate_executable##*/}" = "codex" ] || return 1
+  case "$candidate_args" in
+    *codex*"app-server --listen"*)
+      [ -z "$test_marker" ] || case "$candidate_args" in *"$test_marker"*) return 0 ;; *) return 1 ;; esac
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+has_fresh_listener() {
+  current="$(listener_pids)"
+  [ -n "$current" ] || return 1
+  for candidate in $current; do
+    old=0
+    for previous in $old_listener_pids; do
+      [ "$candidate" = "$previous" ] && old=1
+    done
+    if [ "$old" -eq 0 ] && is_listener_pid "$candidate"; then return 0; fi
+  done
+  return 1
+}
+
+if command -v timeout >/dev/null 2>&1; then
+  timeout 12 codex app-server daemon restart >/dev/null 2>&1
+  restart_rc=$?
+else
+  codex app-server daemon restart >/dev/null 2>&1
+  restart_rc=$?
+fi
+if [ "$restart_rc" -eq 0 ]; then
+  tries=0
+  while [ "$tries" -lt 50 ]; do
+    if has_fresh_listener && codex app-server daemon version >/dev/null 2>&1; then
+      printf 'daemon-restarted\n'
+      exit 0
+    fi
+    sleep 0.1
+    tries=$((tries + 1))
+  done
+fi
+
+# A listener started directly by Codex App owns the control socket but cannot be
+# restarted by `daemon restart`. Stop only the verified old listeners, then let
+# the supported daemon command take ownership.
+for pid in $old_listener_pids; do
+  if is_listener_pid "$pid"; then kill -TERM "$pid" 2>/dev/null || true; fi
+done
+tries=0
+while [ "$tries" -lt 50 ]; do
+  alive=0
+  for pid in $old_listener_pids; do
+    if is_listener_pid "$pid"; then alive=1; fi
+  done
+  [ "$alive" -eq 0 ] && break
+  sleep 0.1
+  tries=$((tries + 1))
+done
+for pid in $old_listener_pids; do
+  if is_listener_pid "$pid"; then kill -KILL "$pid" 2>/dev/null || true; fi
+done
+
+if command -v timeout >/dev/null 2>&1; then
+  timeout 15 codex app-server daemon start >/dev/null 2>&1
+  start_rc=$?
+else
+  codex app-server daemon start >/dev/null 2>&1
+  start_rc=$?
+fi
+if [ "$start_rc" -ne 0 ]; then
+  printf 'reload-failed\n'
+  exit 0
+fi
+tries=0
+while [ "$tries" -lt 50 ]; do
+  if has_fresh_listener && codex app-server daemon version >/dev/null 2>&1; then
+    printf 'daemon-started-after-takeover\n'
+    exit 0
+  fi
+  sleep 0.1
+  tries=$((tries + 1))
+done
+printf 'reload-failed\n'
+"#
+}
+
+async fn reload_remote_codex_app_server(
+    server: &SshServer,
+    listener_pids: &[String],
+) -> Result<String, String> {
+    if listener_pids.is_empty() {
+        return Ok("not-required".to_string());
+    }
+    // OpenSSH joins remote argv into a shell command, so an empty positional
+    // argument is not preserved reliably. Use an explicit no-marker sentinel.
+    let mut remote_args = vec![
+        "sh",
+        "-s",
+        "--",
+        &server.codex_home,
+        "__cps_no_test_marker__",
+    ];
+    remote_args.extend(listener_pids.iter().map(String::as_str));
+    let output = run_ssh(
+        server,
+        APP_SERVER_RELOAD_TIMEOUT_SECS,
+        &remote_args,
+        Some(reload_app_server_script().to_string()),
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "ssh_remote_app_server_reload_failed: {}",
+            sanitize_error(error)
+        )
+    })?;
+    let status = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if matches!(status, "daemon-restarted" | "daemon-started-after-takeover") {
+        Ok("daemon-restarted".to_string())
+    } else {
+        Err(format!(
+            "ssh_remote_app_server_reload_failed: {}",
             sanitize_error(status)
         ))
     }
@@ -1527,18 +1744,16 @@ async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> Ss
         cleanup_remote_staging(&server, &staging_dir).await;
 
         let restore = if !quiesced.pids.is_empty() {
-            restore_remote_codex_app_server(&server, &quiesced.pids).await
+            restore_remote_codex_app_server(&server, &quiesced).await
         } else {
             Ok("not-required".to_string())
         };
         match &restore {
             Ok(value) => {
                 status.app_server_restore_status = Some(value.clone());
-                status.app_server_reload_status = Some(value.clone());
             }
             Err(error) => {
                 status.app_server_restore_status = Some("restore-failed".to_string());
-                status.app_server_reload_status = Some("restore-failed".to_string());
                 logger::log_warn(&format!(
                     "[Codex SSH] 恢复远端 app-server 失败: server_id={}, error={}",
                     server.id,
@@ -1568,6 +1783,22 @@ async fn sync_account_to_server(server: SshServer, account: &CodexAccount) -> Ss
         }
         if let Err(restore_error) = restore {
             return Err(restore_error);
+        }
+
+        let reload = reload_remote_codex_app_server(&server, &quiesced.listener_pids).await;
+        match &reload {
+            Ok(value) => status.app_server_reload_status = Some(value.clone()),
+            Err(error) => {
+                status.app_server_reload_status = Some("reload-failed".to_string());
+                logger::log_warn(&format!(
+                    "[Codex SSH] 重载远端 app-server 失败: server_id={}, error={}",
+                    server.id,
+                    sanitize_error(error)
+                ));
+            }
+        }
+        if let Err(reload_error) = reload {
+            return Err(reload_error);
         }
 
         status.bundle_verified = true;
@@ -1711,6 +1942,8 @@ mod tests {
     use std::path::PathBuf;
     #[cfg(unix)]
     use std::process::Command as StdCommand;
+    #[cfg(unix)]
+    use std::process::Output as StdOutput;
 
     struct StoreBackup {
         path: PathBuf,
@@ -1835,6 +2068,8 @@ mod tests {
         assert!(quiesce.contains("nohup sh -c"));
         assert!(quiesce.contains("</dev/null >/dev/null 2>&1 &"));
         assert!(quiesce.contains("watchdog_delay=${2:-240}"));
+        assert!(quiesce.contains("index($0, \"app-server --listen\")"));
+        assert!(quiesce.contains("listener_pids"));
         assert!(!quiesce.contains("kill -TERM"));
         assert!(!quiesce.contains("kill -KILL"));
         assert!(!quiesce.contains("daemon restart"));
@@ -1843,16 +2078,28 @@ mod tests {
         assert!(restore.contains("kill -CONT"));
         assert!(restore.contains("app-server-resumed"));
         assert!(restore.contains("restore-failed"));
+        assert!(restore.contains("cps-app-server-watchdog"));
         assert!(!restore.contains("codex app-server"));
+
+        let reload = reload_app_server_script();
+        assert!(reload.contains("codex app-server daemon restart"));
+        assert!(reload.contains("codex app-server daemon start"));
+        assert!(reload.contains("daemon-started-after-takeover"));
+        assert!(reload.contains("has_fresh_listener"));
+        assert!(reload.contains("__cps_no_test_marker__"));
+        assert!(reload.contains("kill -TERM"));
+        assert!(reload.contains("kill -KILL"));
     }
 
     #[test]
     fn app_server_pause_token_is_strictly_validated() {
         assert_eq!(
-            parse_quiesced_app_server("app-server-paused:123,456\n").unwrap(),
+            parse_quiesced_app_server("app-server-paused:99:123,456:123\n").unwrap(),
             QuiescedAppServer {
                 status: "app-server-paused".to_string(),
                 pids: vec!["123".to_string(), "456".to_string()],
+                listener_pids: vec!["123".to_string()],
+                watchdog_pid: Some("99".to_string()),
             }
         );
         assert_eq!(
@@ -1860,9 +2107,13 @@ mod tests {
             QuiescedAppServer {
                 status: "no-app-server".to_string(),
                 pids: Vec::new(),
+                listener_pids: Vec::new(),
+                watchdog_pid: None,
             }
         );
-        assert!(parse_quiesced_app_server("app-server-paused:12,bad").is_err());
+        assert!(parse_quiesced_app_server("app-server-paused:99:12,bad:12").is_err());
+        assert!(parse_quiesced_app_server("app-server-paused:99:12:13").is_err());
+        assert!(parse_quiesced_app_server("app-server-paused:bad:12:12").is_err());
         assert!(parse_quiesced_app_server("pause-failed").is_err());
     }
 
@@ -1889,13 +2140,9 @@ mod tests {
         }
 
         let marker = format!("cps-pause-test-{}", std::process::id());
-        let process_name = format!("codex app-server --listen {marker}");
-        let mut app_server = StdCommand::new("sh")
-            .arg("-c")
-            .arg("while :; do sleep 1; done")
-            .arg(&process_name)
-            .spawn()
-            .expect("spawn fake app-server");
+        let root = std::env::temp_dir().join(format!("cps-pause-test-{}", Uuid::new_v4()));
+        let listener_executable = fake_listener_executable(&root);
+        let mut app_server = spawn_fake_listener(&marker, &listener_executable);
         let pid = app_server.id().to_string();
         std::thread::sleep(Duration::from_millis(100));
 
@@ -1908,6 +2155,12 @@ mod tests {
             if token.pids != vec![pid.clone()] {
                 return Err(format!("unexpected paused pids: {:?}", token.pids));
             }
+            if token.listener_pids != vec![pid.clone()] {
+                return Err(format!(
+                    "unexpected listener pids: {:?}",
+                    token.listener_pids
+                ));
+            }
             let paused_state = StdCommand::new("ps")
                 .args(["-o", "state=", "-p", &pid])
                 .output()
@@ -1919,7 +2172,11 @@ mod tests {
                 return Err("fake app-server was not stopped".to_string());
             }
 
-            let restore = run_script(restore_app_server_script(), &[&pid]);
+            let watchdog_pid = token
+                .watchdog_pid
+                .as_deref()
+                .ok_or_else(|| "missing watchdog pid".to_string())?;
+            let restore = run_script(restore_app_server_script(), &[watchdog_pid, &pid]);
             if !restore.status.success()
                 || String::from_utf8_lossy(&restore.stdout).trim() != "app-server-resumed"
             {
@@ -1945,7 +2202,182 @@ mod tests {
         let _ = StdCommand::new("kill").args(["-CONT", &pid]).status();
         let _ = app_server.kill();
         let _ = app_server.wait();
+        let _ = std::fs::remove_dir_all(&root);
         result.expect("pause and resume lifecycle");
+    }
+
+    #[cfg(unix)]
+    fn run_script_with_env(script: &str, args: &[&str], env: &[(&str, &str)]) -> StdOutput {
+        let mut command = StdCommand::new("sh");
+        command
+            .arg("-s")
+            .arg("--")
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (key, value) in env {
+            command.env(key, value);
+        }
+        let mut child = command.spawn().expect("spawn shell script");
+        child
+            .stdin
+            .take()
+            .expect("script stdin")
+            .write_all(script.as_bytes())
+            .expect("write shell script");
+        child.wait_with_output().expect("wait for shell script")
+    }
+
+    #[cfg(unix)]
+    fn fake_listener_executable(root: &std::path::Path) -> PathBuf {
+        use std::os::unix::fs::symlink;
+
+        let bin_dir = root.join("listener-bin");
+        std::fs::create_dir_all(&bin_dir).expect("create fake listener bin directory");
+        let executable = bin_dir.join("codex");
+        symlink("/bin/sh", &executable).expect("link fake codex listener executable");
+        executable
+    }
+
+    #[cfg(unix)]
+    fn spawn_fake_listener(
+        marker: &str,
+        listener_executable: &std::path::Path,
+    ) -> std::process::Child {
+        let process_name =
+            format!("codex -c features.code_mode_host=true app-server --listen unix:// {marker}");
+        StdCommand::new(listener_executable)
+            .arg("-c")
+            .arg("while :; do sleep 1; done")
+            .arg(process_name)
+            .spawn()
+            .expect("spawn fake listener")
+    }
+
+    #[cfg(unix)]
+    fn write_fake_codex_cli(bin_dir: &std::path::Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::create_dir_all(bin_dir).expect("create fake bin directory");
+        let path = bin_dir.join("codex");
+        std::fs::write(
+            &path,
+            r#"#!/bin/sh
+set +e
+command_name="${1:-} ${2:-} ${3:-}"
+spawn_listener() {
+  "$FAKE_CODEX_LISTENER" -c 'while :; do sleep 1; done' "codex -c features.code_mode_host=true app-server --listen unix:// $FAKE_CODEX_MARKER" </dev/null >/dev/null 2>&1 &
+  printf '%s\n' "$!" >"$FAKE_CODEX_STATE/new_pid"
+}
+case "$command_name" in
+  "app-server daemon restart")
+    if [ "$FAKE_CODEX_MODE" != "managed" ]; then exit 1; fi
+    old_pid="$(cat "$FAKE_CODEX_STATE/old_pid")"
+    kill -TERM "$old_pid" 2>/dev/null || true
+    spawn_listener
+    exit 0
+    ;;
+  "app-server daemon start")
+    spawn_listener
+    exit 0
+    ;;
+  "app-server daemon version")
+    new_pid="$(cat "$FAKE_CODEX_STATE/new_pid" 2>/dev/null)"
+    kill -0 "$new_pid" 2>/dev/null
+    exit $?
+    ;;
+esac
+exit 1
+"#,
+        )
+        .expect("write fake codex CLI");
+        let mut permissions = std::fs::metadata(&path)
+            .expect("fake codex metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).expect("make fake codex executable");
+        path
+    }
+
+    #[cfg(unix)]
+    fn assert_reload_lifecycle(mode: &str, expected_status: &str) {
+        let marker = format!("cps-reload-{mode}-{}", Uuid::new_v4());
+        let root = std::env::temp_dir().join(format!("cps-reload-test-{}", Uuid::new_v4()));
+        let state_dir = root.join("state");
+        let bin_dir = root.join("bin");
+        std::fs::create_dir_all(&state_dir).expect("create fake state directory");
+        write_fake_codex_cli(&bin_dir);
+        let listener_executable = fake_listener_executable(&root);
+
+        let mut old_listener = spawn_fake_listener(&marker, &listener_executable);
+        let old_pid = old_listener.id().to_string();
+        std::fs::write(state_dir.join("old_pid"), &old_pid).expect("write old listener pid");
+        std::thread::sleep(Duration::from_millis(100));
+
+        let original_path = std::env::var("PATH").unwrap_or_default();
+        let test_path = format!("{}:{original_path}", bin_dir.display());
+        let state = state_dir.to_string_lossy().into_owned();
+        let listener = listener_executable.to_string_lossy().into_owned();
+        let output = run_script_with_env(
+            reload_app_server_script(),
+            &["~/.codex", &marker, &old_pid],
+            &[
+                ("PATH", &test_path),
+                ("FAKE_CODEX_MODE", mode),
+                ("FAKE_CODEX_MARKER", &marker),
+                ("FAKE_CODEX_STATE", &state),
+                ("FAKE_CODEX_LISTENER", &listener),
+            ],
+        );
+
+        let result = (|| -> Result<String, String> {
+            if !output.status.success() {
+                return Err(String::from_utf8_lossy(&output.stderr).to_string());
+            }
+            let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if status != expected_status {
+                return Err(format!(
+                    "unexpected reload status {status:?}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            let new_pid = std::fs::read_to_string(state_dir.join("new_pid"))
+                .map_err(|error| error.to_string())?
+                .trim()
+                .to_string();
+            if new_pid == old_pid {
+                return Err("reload reused the old listener pid".to_string());
+            }
+            let new_args = StdCommand::new("ps")
+                .args(["-p", &new_pid, "-o", "args="])
+                .output()
+                .map_err(|error| error.to_string())?;
+            if !String::from_utf8_lossy(&new_args.stdout).contains(&marker) {
+                return Err("fresh listener was not running".to_string());
+            }
+            Ok(new_pid)
+        })();
+
+        let _ = old_listener.kill();
+        let _ = old_listener.wait();
+        if let Ok(new_pid) = &result {
+            let _ = StdCommand::new("kill").args(["-TERM", new_pid]).status();
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        result.expect("reload app-server lifecycle");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn app_server_reload_restarts_a_managed_listener() {
+        assert_reload_lifecycle("managed", "daemon-restarted");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn app_server_reload_takes_over_an_unmanaged_listener() {
+        assert_reload_lifecycle("unmanaged", "daemon-started-after-takeover");
     }
 
     #[test]

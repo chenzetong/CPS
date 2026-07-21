@@ -136,10 +136,14 @@ function describeSyncStatus(t: TFunction, sync: SshCodexSyncStatus) {
     `codex.ssh.reloadStatus.${sync.app_server_restore_status ?? 'unknown'}`,
     sync.app_server_restore_status ?? 'unknown',
   );
+  const reload = t(
+    `codex.ssh.reloadStatus.${sync.app_server_reload_status ?? 'unknown'}`,
+    sync.app_server_reload_status ?? 'unknown',
+  );
   return t(
     'codex.ssh.syncVerifiedDetail',
-    'Provider {{provider}} 已校验 · {{state}} · {{quiesce}} / {{restore}}',
-    { provider, state, quiesce, restore },
+    'Provider {{provider}} 已校验 · {{state}} · {{quiesce}} / {{restore}} / {{reload}}',
+    { provider, state, quiesce, restore, reload },
   );
 }
 

@@ -3831,7 +3831,7 @@
       "syncNow": "立即同步",
       "connectionOk": "连接成功",
       "syncVerified": "SSH 已校验同步成功",
-      "syncVerifiedDetail": "Provider {{provider}} 已校验 · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Provider {{provider}} 已校验 · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · 已完成：{{stages}}",
       "stageBundle": "鉴权包哈希",
       "stageProvider": "Provider 配置",

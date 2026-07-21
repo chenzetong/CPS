@@ -3642,7 +3642,7 @@
       "syncNow": "지금 동기화",
       "connectionOk": "연결됨",
       "syncVerified": "SSH 동기화가 확인되었습니다.",
-      "syncVerifiedDetail": "공급자 {{provider}} 확인됨 · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "공급자 {{provider}} 확인됨 · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · 완료됨: {{stages}}",
       "stageBundle": "인증 번들 해시",
       "stageProvider": "공급자 구성",

@@ -3642,7 +3642,7 @@
       "syncNow": "Synchronizovat nyní",
       "connectionOk": "Připojeno",
       "syncVerified": "Synchronizace SSH ověřena",
-      "syncVerifiedDetail": "Poskytovatel {{provider}} ověřen · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Poskytovatel {{provider}} ověřen · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · Dokončeno: {{stages}}",
       "stageBundle": "otisky ověřovacího balíčku",
       "stageProvider": "konfigurace poskytovatele",

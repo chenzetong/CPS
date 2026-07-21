@@ -3642,7 +3642,7 @@
       "syncNow": "今すぐ同期する",
       "connectionOk": "接続済み",
       "syncVerified": "SSH同期が確認されました",
-      "syncVerifiedDetail": "プロバイダー {{provider}} を検証しました · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "プロバイダー {{provider}} を検証しました · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · 完了: {{stages}}",
       "stageBundle": "認証バンドルのハッシュ",
       "stageProvider": "プロバイダー設定",

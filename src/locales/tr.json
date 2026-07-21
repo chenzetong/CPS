@@ -3642,7 +3642,7 @@
       "syncNow": "Şimdi senkronize et",
       "connectionOk": "Bağlı",
       "syncVerified": "SSH senkronizasyonu doğrulandı",
-      "syncVerifiedDetail": "Sağlayıcı {{provider}} doğrulandı · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Sağlayıcı {{provider}} doğrulandı · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · Tamamlanan: {{stages}}",
       "stageBundle": "kimlik doğrulama paketi karmaları",
       "stageProvider": "sağlayıcı yapılandırması",

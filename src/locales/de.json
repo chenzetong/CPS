@@ -3642,7 +3642,7 @@
       "syncNow": "Jetzt synchronisieren",
       "connectionOk": "Verbunden",
       "syncVerified": "SSH-Synchronisierung überprüft",
-      "syncVerifiedDetail": "Anbieter {{provider}} verifiziert · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Anbieter {{provider}} verifiziert · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · Abgeschlossen: {{stages}}",
       "stageBundle": "Prüfsummen des Authentifizierungspakets",
       "stageProvider": "Anbieterkonfiguration",

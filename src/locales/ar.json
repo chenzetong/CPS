@@ -3689,7 +3689,7 @@
       "syncNow": "مزامنة الآن",
       "connectionOk": "متصل",
       "syncVerified": "تم التحقق من مزامنة SSH",
-      "syncVerifiedDetail": "تم التحقق من الموفر {{provider}} · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "تم التحقق من الموفر {{provider}} · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · المكتمل: {{stages}}",
       "stageBundle": "تجزئات حزمة المصادقة",
       "stageProvider": "إعدادات الموفر",

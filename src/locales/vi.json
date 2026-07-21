@@ -3642,7 +3642,7 @@
       "syncNow": "Đồng bộ hóa ngay bây giờ",
       "connectionOk": "Đã kết nối",
       "syncVerified": "Đã xác minh đồng bộ hóa SSH",
-      "syncVerifiedDetail": "Đã xác minh nhà cung cấp {{provider}} · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Đã xác minh nhà cung cấp {{provider}} · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · Đã hoàn tất: {{stages}}",
       "stageBundle": "mã băm gói xác thực",
       "stageProvider": "cấu hình nhà cung cấp",

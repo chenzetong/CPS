@@ -3642,7 +3642,7 @@
       "syncNow": "Синхронизировать сейчас",
       "connectionOk": "Подключено",
       "syncVerified": "Синхронизация по SSH проверена",
-      "syncVerifiedDetail": "Провайдер {{provider}} проверен · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Провайдер {{provider}} проверен · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · Завершено: {{stages}}",
       "stageBundle": "хеши пакета аутентификации",
       "stageProvider": "конфигурация провайдера",

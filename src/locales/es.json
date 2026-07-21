@@ -3642,7 +3642,7 @@
       "syncNow": "Sincronizar ahora",
       "connectionOk": "Conectado",
       "syncVerified": "Sincronización SSH verificada",
-      "syncVerifiedDetail": "Proveedor {{provider}} verificado · {{state}} · {{quiesce}} / {{restore}}",
+      "syncVerifiedDetail": "Proveedor {{provider}} verificado · {{state}} · {{quiesce}} / {{restore}} / {{reload}}",
       "syncPartialFailure": "{{error}} · Completado: {{stages}}",
       "stageBundle": "hashes del paquete de autenticación",
       "stageProvider": "configuración del proveedor",

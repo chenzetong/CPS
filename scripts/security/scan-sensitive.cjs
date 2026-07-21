@@ -13,8 +13,8 @@ const rules = [
   ["openai-style-key", /\bsk-[A-Za-z0-9_-]{20,}\b/g],
   ["google-api-key", /\bAIza[0-9A-Za-z_-]{30,}\b/g],
   ["slack-token", /\bxox[baprs]-[0-9A-Za-z-]{20,}\b/g],
-  ["local-user-path", /\/(?:Users\/naigou|home\/chenj)(?:\/|\b)/g],
-  ["private-host", /\b10\.11\.23\.172\b/g],
+  ["developer-home-path", /\/(?:Users|home)\/([A-Za-z0-9._-]+)(?:\/|\b)/g],
+  ["rfc1918-host", /\b(?:10(?:\.[0-9]{1,3}){3}|192\.168(?:\.[0-9]{1,3}){2}|172\.(?:1[6-9]|2[0-9]|3[01])(?:\.[0-9]{1,3}){2})\b/g],
   ["codex-thread-id", /\b01[0-9a-f]{6}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/g],
 ];
 
@@ -32,6 +32,29 @@ function isAllowedFixture(relativePath, rule, text, match) {
   const lineStart = text.lastIndexOf("\n", match.index) + 1;
   const lineEnd = text.indexOf("\n", match.index);
   const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
+
+  if (
+    rule === "developer-home-path" &&
+    ["demo", "me", "runner", "shared", "test", "zcode-round-trip-test", "zcode-test", "zcode-user"].includes(
+      match[1],
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    rule === "rfc1918-host" &&
+    [
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/config.example.yaml",
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/api/modules/amp/routes_test.go",
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/watcher/diff/config_diff_test.go",
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/sdk/api/handlers/openai/openai_responses_websocket_test.go",
+      "src/components/codex/CodexSshServersPanel.tsx",
+      "src/utils/codexApiServiceCompatibility.test.ts",
+    ].includes(relativePath)
+  ) {
+    return true;
+  }
 
   if (
     rule === "google-api-key" &&

@@ -13000,7 +13000,7 @@ mod legacy_platform_adapter_cleanup_tests {
 
     #[test]
     fn matches_orphaned_legacy_platform_adapter() {
-        let line = " 1359     1 /Users/jieli/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
+        let line = " 1359     1 /Users/test/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
         assert_eq!(
             orphaned_legacy_platform_adapter_pid_from_ps_line(line, 99999),
             Some(1359)
@@ -13009,13 +13009,13 @@ mod legacy_platform_adapter_cleanup_tests {
 
     #[test]
     fn ignores_non_orphaned_or_current_processes() {
-        let line = " 1359 1805 /Users/jieli/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
+        let line = " 1359 1805 /Users/test/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
         assert_eq!(
             orphaned_legacy_platform_adapter_pid_from_ps_line(line, 99999),
             None
         );
 
-        let current_line = " 1359 1 /Users/jieli/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
+        let current_line = " 1359 1 /Users/test/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
         assert_eq!(
             orphaned_legacy_platform_adapter_pid_from_ps_line(current_line, 1359),
             None

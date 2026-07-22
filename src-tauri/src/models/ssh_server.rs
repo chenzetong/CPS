@@ -101,11 +101,6 @@ pub struct SshCodexSyncStatus {
     pub app_server_quiesce_status: Option<String>,
     #[serde(default)]
     pub app_server_restore_status: Option<String>,
-    /// Remote loopback port forwarded back to the local CPS API service.
-    #[serde(default)]
-    pub api_service_tunnel_port: Option<u16>,
-    #[serde(default)]
-    pub api_service_tunnel_verified: bool,
     pub synced_at: i64,
     pub verified: bool,
     pub error: Option<String>,
@@ -126,8 +121,6 @@ pub struct SshCodexSyncResult {
     pub app_server_reload_status: Option<String>,
     pub app_server_quiesce_status: Option<String>,
     pub app_server_restore_status: Option<String>,
-    pub api_service_tunnel_port: Option<u16>,
-    pub api_service_tunnel_verified: bool,
     pub verified: bool,
     pub error: Option<String>,
     pub synced_at: i64,

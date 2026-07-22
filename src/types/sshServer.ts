@@ -41,8 +41,6 @@ export interface SshCodexSyncStatus {
   app_server_reload_status: string | null;
   app_server_quiesce_status: string | null;
   app_server_restore_status: string | null;
-  api_service_tunnel_port: number | null;
-  api_service_tunnel_verified: boolean;
   synced_at: number;
   verified: boolean;
   error: string | null;

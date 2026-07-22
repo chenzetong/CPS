@@ -13,9 +13,7 @@ from pathlib import Path
 
 
 OUTPUT_PREFIX = "__CPS_CODEX_SYNC_TRANSACTION__"
-REQUIRED_BUNDLE_FILES = {"auth.json", "config.toml", ".cockpit_codex_auth.json"}
-OPTIONAL_BUNDLE_FILES = {"cockpit-local-access-model-catalog.json"}
-ALLOWED_BUNDLE_FILES = REQUIRED_BUNDLE_FILES | OPTIONAL_BUNDLE_FILES
+BUNDLE_FILES = {"auth.json", "config.toml", ".cockpit_codex_auth.json"}
 
 
 def empty_result():
@@ -139,17 +137,8 @@ def load_staged_bundle(root, staging):
         raise RuntimeError("staging manifest is missing")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     files = manifest.get("files")
-    if not isinstance(files, list):
+    if not isinstance(files, list) or {item.get("relative_path") for item in files} != BUNDLE_FILES:
         raise RuntimeError("staging manifest does not contain the complete projection bundle")
-    relative_paths = [item.get("relative_path") for item in files if isinstance(item, dict)]
-    unique_paths = set(relative_paths)
-    if (
-        len(relative_paths) != len(files)
-        or len(unique_paths) != len(relative_paths)
-        or not REQUIRED_BUNDLE_FILES.issubset(unique_paths)
-        or not unique_paths.issubset(ALLOWED_BUNDLE_FILES)
-    ):
-        raise RuntimeError("staging manifest does not contain a valid projection bundle")
     staged = []
     for item in files:
         relative_path = item.get("relative_path")

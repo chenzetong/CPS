@@ -4973,15 +4973,6 @@ fn build_bundle_hash(files: &[CodexProjectionFile]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Recompute file and aggregate hashes after another module augments a remote
-/// projection (for example, the CPS API service model catalog).
-pub(crate) fn finalize_projection_bundle_for_remote(bundle: &mut CodexAccountProjectionBundle) {
-    for file in &mut bundle.files {
-        file.sha256 = sha256_hex_bytes(file.content.as_bytes());
-    }
-    bundle.bundle_hash = build_bundle_hash(&bundle.files);
-}
-
 /// Build a remote projection bundle without writing host keychain secrets.
 pub(crate) fn build_projection_bundle_for_remote(
     account: &CodexAccount,

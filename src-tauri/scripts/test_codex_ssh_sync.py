@@ -149,25 +149,6 @@ class CodexSshSyncTests(unittest.TestCase):
                 path = backup / "state_5.sqlite"
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), record["sha256"])
 
-    def test_optional_cps_model_catalog_is_applied_and_verified(self):
-        name = "cockpit-local-access-model-catalog.json"
-        content = b'{"models":[]}\n'
-        (self.staging / name).write_bytes(content)
-        manifest_path = self.staging / "manifest.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["files"].append({
-            "relative_path": name,
-            "mode": 0o600,
-            "sha256": hashlib.sha256(content).hexdigest(),
-        })
-        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-        result = self.run_sync()
-
-        self.assertTrue(result["success"], result)
-        self.assertEqual((self.root / name).read_bytes(), content)
-        self.assertEqual((self.root / name).stat().st_mode & 0o777, 0o600)
-
     def test_bundle_failure_restores_bundle_rollouts_and_database(self):
         originals = {name: (self.root / name).read_bytes() for name in self.bundle}
         original_rollout = self.rollout.read_bytes()

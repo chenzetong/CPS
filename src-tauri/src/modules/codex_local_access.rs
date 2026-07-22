@@ -12361,9 +12361,10 @@ fn profile_api_key_supports_websockets(
             .unwrap_or(true)
 }
 
-fn build_local_access_profile_model_catalog_content(
+fn write_local_access_profile_model_catalog(
+    profile_dir: &Path,
     supports_websockets: bool,
-) -> Result<String, String> {
+) -> Result<(), String> {
     let mut client_models =
         codex_protocol::build_codex_client_models_response(&supported_codex_model_ids());
     if let Some(models) = client_models
@@ -12381,15 +12382,8 @@ fn build_local_access_profile_model_catalog_content(
             .cloned()
             .unwrap_or_default(),
     });
-    serde_json::to_string_pretty(&catalog)
-        .map_err(|e| format!("生成 Codex API 服务模型目录失败: {}", e))
-}
-
-fn write_local_access_profile_model_catalog(
-    profile_dir: &Path,
-    supports_websockets: bool,
-) -> Result<(), String> {
-    let content = build_local_access_profile_model_catalog_content(supports_websockets)?;
+    let content = serde_json::to_string_pretty(&catalog)
+        .map_err(|e| format!("生成 Codex API 服务模型目录失败: {}", e))?;
     write_string_atomic(
         &profile_dir.join(CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE),
         &content,
@@ -12444,132 +12438,6 @@ async fn write_local_access_profile_takeover(
     );
     codex_account::write_account_bundle_to_dir(profile_dir, &runtime_account)?;
     write_local_access_profile_model_catalog(profile_dir, supports_websockets)
-}
-
-/// Return the local port that an SSH reverse tunnel should forward when the
-/// CPS API service is enabled. An enabled-but-unavailable gateway is an error:
-/// silently projecting the underlying account would make local and remote
-/// Codex instances behave differently.
-pub async fn remote_projection_local_port() -> Result<Option<u16>, String> {
-    ensure_runtime_loaded().await?;
-    let runtime = gateway_runtime().lock().await;
-    let Some(collection) = runtime
-        .collection
-        .as_ref()
-        .filter(|collection| collection.enabled)
-    else {
-        return Ok(None);
-    };
-    if !runtime.running {
-        return Err(runtime
-            .last_error
-            .clone()
-            .unwrap_or_else(|| "CPS API 服务已启用但当前未运行".to_string()));
-    }
-    Ok(Some(collection.port))
-}
-
-fn augment_remote_local_access_projection_bundle(
-    bundle: &mut codex_account::CodexAccountProjectionBundle,
-    supports_websockets: bool,
-    client_instance_id: &str,
-) -> Result<(), String> {
-    let config = bundle
-        .files
-        .iter_mut()
-        .find(|file| file.relative_path == CODEX_PROFILE_CONFIG_FILE)
-        .ok_or_else(|| "CPS SSH 投影缺少 config.toml".to_string())?;
-    let mut doc =
-        crate::modules::codex_config_format::read_codex_config_doc_from_str(&config.content)
-            .map_err(|error| format!("解析 CPS SSH config.toml 失败: {}", error))?;
-    doc["model_catalog_json"] = value(CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE);
-    let provider = doc
-        .get_mut("model_providers")
-        .and_then(|item| item.as_table_mut())
-        .and_then(|providers| providers.get_mut(CODEX_LOCAL_ACCESS_RUNTIME_PROVIDER_ID))
-        .and_then(|item| item.as_table_mut())
-        .ok_or_else(|| "CPS SSH 投影缺少本地 API provider".to_string())?;
-    set_provider_header_value(
-        provider,
-        codex_account::CODEX_CLIENT_INSTANCE_ID_HEADER,
-        toml_edit::Value::from(client_instance_id.trim()),
-    );
-    config.content = crate::modules::codex_config_format::codex_config_doc_to_string(&mut doc);
-
-    bundle
-        .files
-        .retain(|file| file.relative_path != CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE);
-    bundle.files.push(codex_account::CodexProjectionFile {
-        relative_path: CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE.to_string(),
-        content: build_local_access_profile_model_catalog_content(supports_websockets)?,
-        mode: 0o600,
-        sha256: String::new(),
-    });
-    codex_account::finalize_projection_bundle_for_remote(bundle);
-    Ok(())
-}
-
-/// Build the same managed profile used locally, but point it at the remote
-/// loopback endpoint supplied by the SSH reverse tunnel.
-pub async fn build_remote_local_access_projection_bundle(
-    source_account: &CodexAccount,
-    existing_config_toml: Option<&str>,
-    remote_base_url: &str,
-    client_instance_id: &str,
-) -> Result<codex_account::CodexAccountProjectionBundle, String> {
-    ensure_runtime_loaded().await?;
-    let (collection, running, last_error) = {
-        let runtime = gateway_runtime().lock().await;
-        (
-            runtime
-                .collection
-                .clone()
-                .filter(|collection| collection.enabled),
-            runtime.running,
-            runtime.last_error.clone(),
-        )
-    };
-    let collection = collection.ok_or_else(|| "CPS API 服务未启用".to_string())?;
-    if !running {
-        return Err(last_error.unwrap_or_else(|| "CPS API 服务当前未运行".to_string()));
-    }
-
-    let parsed =
-        Url::parse(remote_base_url).map_err(|error| format!("SSH API 服务地址无效: {}", error))?;
-    let is_loopback = match parsed.host() {
-        Some(url::Host::Ipv4(address)) => address.is_loopback(),
-        Some(url::Host::Ipv6(address)) => address.is_loopback(),
-        Some(url::Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
-        None => false,
-    };
-    if parsed.scheme() != "http" || !is_loopback || parsed.port().is_none() {
-        return Err("SSH API 服务地址必须是带端口的 HTTP loopback 地址".to_string());
-    }
-
-    let bound_oauth_account_id =
-        normalize_optional_account_ref(collection.bound_oauth_account_id.as_deref());
-    if let Some(bound_id) = bound_oauth_account_id.as_deref() {
-        let _ = validate_local_access_bound_oauth_account(bound_id)?;
-        let _ = codex_account::ensure_managed_account_fresh(bound_id).await?;
-    }
-    let supports_websockets = profile_api_key_supports_websockets(&collection, &collection.api_key);
-    let runtime_account = build_runtime_account(
-        remote_base_url.to_string(),
-        collection.api_key.clone(),
-        bound_oauth_account_id,
-        supports_websockets,
-    );
-    let mut bundle =
-        codex_account::build_projection_bundle_for_remote(&runtime_account, existing_config_toml)?;
-    bundle.account_id = source_account.id.clone();
-    bundle.account_email = source_account.email.clone();
-    bundle.token_generation = source_account.token_generation;
-    augment_remote_local_access_projection_bundle(
-        &mut bundle,
-        supports_websockets,
-        client_instance_id,
-    )?;
-    Ok(bundle)
 }
 
 fn push_local_access_takeover_dir(
@@ -19907,7 +19775,6 @@ pub async fn clear_local_access_stats() -> Result<CodexLocalAccessState, String>
 
 pub async fn prepare_local_access_gateway_for_restart() -> Result<CodexLocalAccessState, String> {
     ensure_runtime_loaded_without_start().await?;
-    crate::modules::ssh_server::shutdown_api_service_tunnels().await;
     stop_all_sidecar_processes_for_app_shutdown().await?;
 
     let runtime = gateway_runtime().lock().await;
@@ -19969,18 +19836,13 @@ pub async fn update_local_access_port(port: u16) -> Result<CodexLocalAccessState
     collection.port = port;
     collection.updated_at = now_ms();
     save_collection_to_disk(&collection)?;
-    let should_restore_tunnels = collection.enabled;
 
     {
         let mut runtime = gateway_runtime().lock().await;
         sync_runtime_collection(&mut runtime, collection);
     }
 
-    crate::modules::ssh_server::shutdown_api_service_tunnels().await;
     ensure_gateway_matches_runtime().await?;
-    if should_restore_tunnels {
-        crate::modules::ssh_server::restore_api_service_tunnels_in_background(port);
-    }
     snapshot_state().await
 }
 
@@ -20014,10 +19876,8 @@ pub async fn set_local_access_enabled(enabled: bool) -> Result<CodexLocalAccessS
     if enabled {
         ensure_gateway_matches_runtime().await?;
         ensure_local_access_profile_takeovers(&next_collection).await?;
-        crate::modules::ssh_server::restore_api_service_tunnels_in_background(next_collection.port);
         snapshot_state().await
     } else {
-        crate::modules::ssh_server::shutdown_api_service_tunnels().await;
         stop_gateway().await;
         restore_takeover_profiles_after_disable(&next_collection)?;
         snapshot_state_without_gateway_reload().await
@@ -20030,18 +19890,6 @@ pub async fn restore_local_access_gateway() {
         runtime.loaded = true;
         runtime.last_error = Some(err.clone());
         logger::log_codex_api_warn(&format!("[CodexLocalAccess] 初始化失败: {}", err));
-    } else {
-        let local_port = {
-            let runtime = gateway_runtime().lock().await;
-            runtime
-                .collection
-                .as_ref()
-                .filter(|collection| collection.enabled && runtime.running)
-                .map(|collection| collection.port)
-        };
-        if let Some(local_port) = local_port {
-            crate::modules::ssh_server::restore_api_service_tunnels_in_background(local_port);
-        }
     }
 }
 
@@ -20101,7 +19949,6 @@ async fn stop_all_sidecar_processes_for_app_shutdown() -> Result<(), String> {
 }
 
 pub async fn shutdown_local_access_gateway_for_app_exit() {
-    crate::modules::ssh_server::shutdown_api_service_tunnels().await;
     if let Err(error) = stop_all_sidecar_processes_for_app_shutdown().await {
         logger::log_codex_api_warn(&format!(
             "[CodexLocalAccess] 应用退出时关闭 sidecar 失败: {}",
@@ -25040,10 +24887,9 @@ mod tests {
         account_requires_provider_gateway, account_upstream_base_url, align_codex_prompt_cache,
         api_key_inherits_account_pool, api_key_priority_account_ids,
         append_eligible_local_access_account_ids, append_usage_event, apply_codex_official_headers,
-        apply_routing_strategy, augment_remote_local_access_projection_bundle,
-        backup_current_profile_model_before_provider_gateway, bound_oauth_quota_refresh_failures,
-        bound_oauth_quota_reserve_blocks_account, bridge_websocket_streams,
-        build_account_scoped_upstream_body, build_base_url_with_host,
+        apply_routing_strategy, backup_current_profile_model_before_provider_gateway,
+        bound_oauth_quota_refresh_failures, bound_oauth_quota_reserve_blocks_account,
+        bridge_websocket_streams, build_account_scoped_upstream_body, build_base_url_with_host,
         build_chat_completion_payload, build_chat_completion_stream_body,
         build_codex_client_models_response, build_collection_base_url, build_images_api_payload,
         build_local_access_api_key, build_local_models_response,
@@ -25137,7 +24983,6 @@ mod tests {
     use crate::models::{
         DefaultInstanceSettings, InstanceLaunchMode, InstanceProfile, InstanceStore,
     };
-    use crate::modules::codex_account;
     use futures_util::{SinkExt, StreamExt};
     use reqwest::StatusCode;
     use serde_json::{json, Value};
@@ -31239,57 +31084,6 @@ data: {"error":{"code":"server_error","type":"upstream","message":"stream aborte
                 "gpt-5.3-codex-spark",
             ]
         );
-    }
-
-    #[test]
-    fn remote_local_access_projection_adds_catalog_instance_header_and_hashes() {
-        let mut bundle = codex_account::CodexAccountProjectionBundle {
-            account_id: "account-1".to_string(),
-            account_email: "user@example.com".to_string(),
-            token_generation: 1,
-            files: vec![codex_account::CodexProjectionFile {
-                relative_path: CODEX_PROFILE_CONFIG_FILE.to_string(),
-                content: r#"model_provider = "codex_local_access"
-
-[model_providers.codex_local_access]
-name = "CPS API Service"
-base_url = "http://127.0.0.1:43123/v1"
-wire_api = "responses"
-requires_openai_auth = false
-experimental_bearer_token = "agt_codex_test"
-"#
-                .to_string(),
-                mode: 0o600,
-                sha256: String::new(),
-            }],
-            bundle_hash: String::new(),
-        };
-
-        augment_remote_local_access_projection_bundle(&mut bundle, true, "cps-ssh-server-1")
-            .expect("augment remote CPS projection");
-
-        assert!(!bundle.bundle_hash.is_empty());
-        assert!(bundle.files.iter().all(|file| !file.sha256.is_empty()));
-        let config = bundle
-            .files
-            .iter()
-            .find(|file| file.relative_path == CODEX_PROFILE_CONFIG_FILE)
-            .expect("config projection");
-        assert!(config.content.contains(&format!(
-            "model_catalog_json = \"{}\"",
-            CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE
-        )));
-        assert!(config.content.contains("cps-ssh-server-1"));
-        let catalog = bundle
-            .files
-            .iter()
-            .find(|file| file.relative_path == CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE)
-            .expect("model catalog projection");
-        let catalog: Value = serde_json::from_str(&catalog.content).expect("parse model catalog");
-        assert!(catalog
-            .get("models")
-            .and_then(Value::as_array)
-            .is_some_and(|models| !models.is_empty()));
     }
 
     #[tokio::test]

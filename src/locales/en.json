@@ -2050,11 +2050,23 @@
       "formatRefreshOnlyLabel": "session / accessToken / at- / refresh_token examples",
       "formatBatchLabel": "Batch example"
     },
+    "agentIdentityRegistration": {
+      "noticeTitle": "Web Session import notice",
+      "noticeMessage": "Detected {{count}} Web Session account(s). Continuing will automatically register them as Agent Identity.",
+      "noticeApiOnly": "These accounts are for API Service only and will be added to its account pool automatically.",
+      "noticeNoSwitch": "They cannot be used for normal Codex account switching, to launch the official client or CLI directly, or as an OAuth binding account.",
+      "noticeCredential": "The app generates and stores an Agent Identity private key locally. Protect exported backups like passwords.",
+      "noticeConfirm": "I understand, continue",
+      "apiOnlyActionError": "Agent Identity accounts are available through API Service only and cannot be switched to or launched directly.",
+      "oauthBindingUnsupported": "Agent Identity accounts are for API Service only and cannot be used as OAuth binding accounts."
+    },
     "exportFormat": {
       "label": "Export Format",
       "cockpitTools": "CPS",
       "sub2api": "sub2api",
       "cpa": "cpa",
+      "agentIdentityCpaUnsupported": "Agent Identity accounts cannot be exported as cpa. Choose Cockpit Tools or sub2api.",
+      "agentIdentityPrivateKeyNotice": "This export contains an Agent Identity private key that can restore the account on another device. Protect it like a password.",
       "downloadAll": "Download All",
       "cpaCardTitle": "Account {{index}}",
       "savedFolder": "Saved Folder",

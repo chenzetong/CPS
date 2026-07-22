@@ -1834,11 +1834,23 @@
       "formatRefreshOnlyLabel": "Solo refresh_token",
       "formatBatchLabel": "Ejemplo por lotes"
     },
+    "agentIdentityRegistration": {
+      "noticeTitle": "Aviso de importación de Web Session",
+      "noticeMessage": "Se detectaron {{count}} cuentas Web Session. Al continuar se registrarán automáticamente como Agent Identity.",
+      "noticeApiOnly": "Estas cuentas son solo para el Servicio API y se añadirán automáticamente a su grupo de cuentas.",
+      "noticeNoSwitch": "No se pueden usar para cambiar cuentas normales de Codex, iniciar directamente el cliente oficial o la CLI ni como cuenta vinculada mediante OAuth.",
+      "noticeCredential": "La aplicación genera y guarda localmente una clave privada de Agent Identity. Protege las copias exportadas como contraseñas.",
+      "noticeConfirm": "Entiendo, continuar",
+      "apiOnlyActionError": "Las cuentas Agent Identity solo están disponibles mediante el Servicio API y no se pueden cambiar ni iniciar directamente.",
+      "oauthBindingUnsupported": "Las cuentas Agent Identity son exclusivas del Servicio API y no se pueden usar como cuentas vinculadas mediante OAuth."
+    },
     "exportFormat": {
       "label": "Formato de exportación",
       "cockpitTools": "CPS​",
       "sub2api": "Formato sub2api",
       "cpa": "Formato cpa",
+      "agentIdentityCpaUnsupported": "Las cuentas Agent Identity no se pueden exportar en formato cpa. Usa Cockpit Tools o sub2api.",
+      "agentIdentityPrivateKeyNotice": "Esta exportación contiene una clave privada de Agent Identity que permite restaurar la cuenta en otro dispositivo. Protégela como una contraseña.",
       "downloadAll": "Descargar todo",
       "cpaCardTitle": "Cuenta {{index}}",
       "savedFolder": "Carpeta guardada",

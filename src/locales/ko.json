@@ -1834,11 +1834,23 @@
       "formatRefreshOnlyLabel": "refresh_token만",
       "formatBatchLabel": "일괄 예시"
     },
+    "agentIdentityRegistration": {
+      "noticeTitle": "Web Session 가져오기 안내",
+      "noticeMessage": "Web Session 계정 {{count}}개를 감지했습니다. 계속하면 Agent Identity로 자동 등록됩니다.",
+      "noticeApiOnly": "이 계정은 API 서비스 전용이며 해당 계정 풀에 자동으로 추가됩니다.",
+      "noticeNoSwitch": "일반 Codex 계정 전환, 공식 클라이언트 또는 CLI 직접 실행, OAuth 연결 계정으로는 사용할 수 없습니다.",
+      "noticeCredential": "앱이 Agent Identity 개인 키를 로컬에서 생성하고 저장합니다. 내보낸 백업은 비밀번호처럼 보호하세요.",
+      "noticeConfirm": "확인하고 계속",
+      "apiOnlyActionError": "Agent Identity 계정은 API 서비스에서만 사용할 수 있으며 일반 전환이나 직접 실행은 지원하지 않습니다.",
+      "oauthBindingUnsupported": "Agent Identity 계정은 API 서비스 전용이며 OAuth 연결 계정으로 사용할 수 없습니다."
+    },
     "exportFormat": {
       "label": "내보내기 형식",
       "cockpitTools": "CPS​",
       "sub2api": "sub2api 형식",
       "cpa": "cpa 형식",
+      "agentIdentityCpaUnsupported": "Agent Identity 계정은 cpa 형식으로 내보낼 수 없습니다. Cockpit Tools 또는 sub2api를 사용하세요.",
+      "agentIdentityPrivateKeyNotice": "이 내보내기에는 다른 기기에서 계정을 복원할 수 있는 Agent Identity 개인 키가 포함됩니다. 비밀번호처럼 안전하게 보관하세요.",
       "downloadAll": "모두 다운로드",
       "cpaCardTitle": "계정 {{index}}",
       "savedFolder": "저장 폴더",

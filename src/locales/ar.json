@@ -1881,11 +1881,23 @@
       "formatRefreshOnlyLabel": "مثال refresh_token فقط",
       "formatBatchLabel": "مثال دفعي"
     },
+    "agentIdentityRegistration": {
+      "noticeTitle": "تنبيه استيراد Web Session",
+      "noticeMessage": "تم اكتشاف {{count}} من حسابات Web Session. عند المتابعة ستُسجّل تلقائيًا كـ Agent Identity.",
+      "noticeApiOnly": "هذه الحسابات مخصصة لخدمة API فقط وستُضاف تلقائيًا إلى مجموعة حساباتها.",
+      "noticeNoSwitch": "لا يمكن استخدامها لتبديل حساب Codex العادي أو لتشغيل العميل الرسمي أو CLI مباشرةً أو كحساب مرتبط عبر OAuth.",
+      "noticeCredential": "ينشئ التطبيق مفتاح Agent Identity خاصًا ويحفظه محليًا. احمِ النسخ الاحتياطية المصدّرة مثل كلمات المرور.",
+      "noticeConfirm": "أفهم ذلك، متابعة",
+      "apiOnlyActionError": "حسابات Agent Identity متاحة عبر خدمة API فقط ولا يمكن التبديل إليها أو تشغيلها مباشرةً.",
+      "oauthBindingUnsupported": "حسابات Agent Identity مخصصة لخدمة API فقط ولا يمكن استخدامها كحسابات مرتبطة عبر OAuth."
+    },
     "exportFormat": {
       "label": "تنسيق التصدير",
       "cockpitTools": "CPS​",
       "sub2api": "تنسيق sub2api",
       "cpa": "تنسيق cpa",
+      "agentIdentityCpaUnsupported": "لا يمكن تصدير حسابات Agent Identity بتنسيق cpa. استخدم Cockpit Tools أو sub2api.",
+      "agentIdentityPrivateKeyNotice": "يتضمن هذا التصدير مفتاح Agent Identity خاصًا يمكن استخدامه لاستعادة الحساب على جهاز آخر. احفظه كما تحفظ كلمة المرور.",
       "downloadAll": "تنزيل الكل",
       "cpaCardTitle": "الحساب {{index}}",
       "savedFolder": "مجلد الحفظ",

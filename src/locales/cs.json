@@ -1834,11 +1834,23 @@
       "formatRefreshOnlyLabel": "Jen refresh_token",
       "formatBatchLabel": "Dávkový příklad"
     },
+    "agentIdentityRegistration": {
+      "noticeTitle": "Upozornění k importu Web Session",
+      "noticeMessage": "Bylo rozpoznáno {{count}} účtů Web Session. Pokračováním se automaticky zaregistrují jako Agent Identity.",
+      "noticeApiOnly": "Tyto účty jsou určeny pouze pro službu API a automaticky se přidají do jejího fondu účtů.",
+      "noticeNoSwitch": "Nelze je použít k běžnému přepínání účtů Codex, k přímému spuštění oficiálního klienta či CLI ani jako účet svázaný přes OAuth.",
+      "noticeCredential": "Aplikace místně vytvoří a uloží soukromý klíč Agent Identity. Exportované zálohy chraňte jako hesla.",
+      "noticeConfirm": "Rozumím, pokračovat",
+      "apiOnlyActionError": "Účty Agent Identity jsou dostupné pouze přes službu API a nelze na ně přímo přepnout ani je spustit.",
+      "oauthBindingUnsupported": "Účty Agent Identity jsou určeny pouze pro službu API a nelze je použít jako účty svázané přes OAuth."
+    },
     "exportFormat": {
       "label": "Formát exportu",
       "cockpitTools": "CPS​",
       "sub2api": "sub2api formát",
       "cpa": "cpa formát",
+      "agentIdentityCpaUnsupported": "Účty Agent Identity nelze exportovat ve formátu cpa. Použijte Cockpit Tools nebo sub2api.",
+      "agentIdentityPrivateKeyNotice": "Export obsahuje soukromý klíč Agent Identity, který umožňuje obnovit účet na jiném zařízení. Chraňte jej jako heslo.",
       "downloadAll": "Stáhnout vše",
       "cpaCardTitle": "Účet {{index}}",
       "savedFolder": "Uložená složka",

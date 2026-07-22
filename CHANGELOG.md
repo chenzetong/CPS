@@ -68,6 +68,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Remote projects survive Codex restarts**: restart recovery now restores the authoritative `selected-project` state together with the legacy remote project field and reachable-host auto-connect settings.
 
+---
+
+## [1.3.14] - 2026-07-22
+
+### CPS integration
+
+- **CPS is aligned with upstream v1.3.14 while retaining transactional SSH account/history synchronization, orphan rollout recovery, remote-project restoration, and safe app-server reloads.**
+- **Automatic CPS API Service reverse tunnels over SSH are not included**: the experimental implementation from `1887a31b` was reverted; API Service access on a remote host can instead use a manually managed reverse tunnel.
+
+### Added
+
+- **Web Sessions can be registered automatically as Agent Identity accounts**: confirmed imports are added to the Codex API Service account pool automatically and can be exported and imported across devices; these accounts are limited to API Service use and do not support normal account switching, client or CLI launch, or OAuth binding.
+
+### Fixed
+
+- **Fixed custom Responses API Key accounts with “Sync model catalog to Codex” enabled being rejected by Codex API Service**: model-catalog synchronization continues to affect only direct account switching and instance-specific gateways, no longer changes API Service pool eligibility, and keeps Chat Completions accounts isolated behind instance-specific gateways.
+
+## [1.3.13] - 2026-07-22
+
+### Fixed
+
+- **Fixed Codex official direct wakeup failing for K12 Agent Identity accounts**: wakeup requests now generate `AgentAssertion` credentials dynamically, register and persist a missing or invalid task, and retry safely once while preserving the existing wakeup behavior for regular OAuth accounts.
+
+## [1.3.12] - 2026-07-22
+
+### Fixed
+
+- **Fixed Agent Identity users in the same K12 workspace overwriting each other**: accounts are now distinguished by the combined ChatGPT account and user identity; reimporting the same user still updates the existing account and preserves its saved metadata, while accounts saved by the previous release keep their existing identifier.
+
 ## [1.3.11] - 2026-07-22
 
 ### CPS integration

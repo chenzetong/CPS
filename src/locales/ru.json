@@ -1834,11 +1834,23 @@
       "formatRefreshOnlyLabel": "Только refresh_token",
       "formatBatchLabel": "Пакетный пример"
     },
+    "agentIdentityRegistration": {
+      "noticeTitle": "Уведомление об импорте Web Session",
+      "noticeMessage": "Обнаружено аккаунтов Web Session: {{count}}. При продолжении они будут автоматически зарегистрированы как Agent Identity.",
+      "noticeApiOnly": "Эти аккаунты предназначены только для API-сервиса и будут автоматически добавлены в его пул.",
+      "noticeNoSwitch": "Их нельзя использовать для обычного переключения аккаунтов Codex, прямого запуска официального клиента или CLI либо как аккаунт, привязанный через OAuth.",
+      "noticeCredential": "Приложение локально создаёт и хранит закрытый ключ Agent Identity. Защищайте экспортированные копии как пароли.",
+      "noticeConfirm": "Понятно, продолжить",
+      "apiOnlyActionError": "Аккаунты Agent Identity доступны только через API-сервис; на них нельзя напрямую переключиться или запустить их.",
+      "oauthBindingUnsupported": "Аккаунты Agent Identity предназначены только для API-сервиса и не могут использоваться как аккаунты, привязанные через OAuth."
+    },
     "exportFormat": {
       "label": "Формат экспорта",
       "cockpitTools": "CPS​",
       "sub2api": "Формат sub2api",
       "cpa": "Формат cpa",
+      "agentIdentityCpaUnsupported": "Аккаунты Agent Identity нельзя экспортировать в формате cpa. Используйте Cockpit Tools или sub2api.",
+      "agentIdentityPrivateKeyNotice": "Экспорт содержит закрытый ключ Agent Identity, с помощью которого можно восстановить аккаунт на другом устройстве. Храните его как пароль.",
       "downloadAll": "Скачать все",
       "cpaCardTitle": "Аккаунт {{index}}",
       "savedFolder": "Папка сохранения",

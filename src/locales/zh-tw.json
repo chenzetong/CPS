@@ -1834,11 +1834,23 @@
       "formatRefreshOnlyLabel": "僅 refresh_token 範例",
       "formatBatchLabel": "批次範例"
     },
+    "agentIdentityRegistration": {
+      "noticeTitle": "Web Session 匯入須知",
+      "noticeMessage": "偵測到 {{count}} 個 Web Session 帳號。繼續後將自動註冊為 Agent Identity。",
+      "noticeApiOnly": "這類帳號僅供 API 服務使用，確認後會自動加入 API 服務帳號池。",
+      "noticeNoSwitch": "無法作為一般 Codex 帳號切換，不能直接啟動官方用戶端或 CLI，也不能作為 OAuth 綁定帳號。",
+      "noticeCredential": "應用程式會在本機產生並儲存 Agent Identity 私密金鑰；匯出備份時請像密碼一樣保護。",
+      "noticeConfirm": "已知悉，繼續匯入",
+      "apiOnlyActionError": "Agent Identity 帳號僅支援 API 服務，無法作為一般帳號切換或啟動。",
+      "oauthBindingUnsupported": "Agent Identity 帳號僅供 API 服務使用，不能作為 OAuth 綁定帳號。"
+    },
     "exportFormat": {
       "label": "匯出格式",
       "cockpitTools": "CPS",
       "sub2api": "sub2api 格式",
       "cpa": "cpa 格式",
+      "agentIdentityCpaUnsupported": "Agent Identity 帳號不支援 cpa 格式，請使用 Cockpit Tools 或 sub2api 格式匯出。",
+      "agentIdentityPrivateKeyNotice": "匯出內容包含 Agent Identity 私密金鑰，可用於在其他裝置還原帳號。請像密碼一樣妥善保管。",
       "downloadAll": "一鍵下載全部",
       "cpaCardTitle": "帳號 {{index}}",
       "savedFolder": "儲存目錄",

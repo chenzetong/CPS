@@ -1,9 +1,10 @@
 use crate::models::codex::CodexAccount;
 use crate::modules::{codex_account, codex_local_access, logger};
 use base64::{engine::general_purpose, Engine as _};
-use ed25519_dalek::{pkcs8::DecodePrivateKey, Signer, SigningKey};
+use ed25519_dalek::{pkcs8::DecodePrivateKey, pkcs8::EncodePrivateKey, Signer, SigningKey};
+use rand::{rngs::OsRng, RngCore};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
@@ -11,7 +12,11 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 
 pub(crate) const AGENT_IDENTITY_AUTH_API_BASE_URL: &str = "https://auth.openai.com/api/accounts";
+const AGENT_IDENTITY_REGISTRATION_TIMEOUT: Duration = Duration::from_secs(15);
 const AGENT_IDENTITY_TASK_REGISTRATION_TIMEOUT: Duration = Duration::from_secs(30);
+const AGENT_IDENTITY_REGISTRATION_ATTEMPTS: usize = 3;
+const AGENT_IDENTITY_KEY_SEED_BYTES: usize = 64;
+const AGENT_IDENTITY_KEY_DERIVATION_CONTEXT: &[u8] = b"codex-agent-identity-ed25519-v1";
 
 static AGENT_IDENTITY_TASK_LOCKS: OnceLock<StdMutex<HashMap<String, Arc<Mutex<()>>>>> =
     OnceLock::new();
@@ -33,6 +38,193 @@ struct AgentIdentityTaskRegistrationResponse {
     encrypted_task_id: Option<String>,
     #[serde(default, rename = "encryptedTaskId")]
     encrypted_task_id_camel: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AgentIdentityBillOfMaterials {
+    agent_version: String,
+    agent_harness_id: String,
+    running_location: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AgentIdentityRegistrationRequest {
+    abom: AgentIdentityBillOfMaterials,
+    agent_public_key: String,
+    capabilities: Vec<String>,
+    ttl: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentIdentityRegistrationResponse {
+    agent_runtime_id: String,
+}
+
+struct GeneratedAgentIdentityKeyMaterial {
+    private_key_pkcs8_base64: String,
+    public_key_ssh: String,
+}
+
+pub(crate) struct RegisteredAgentIdentity {
+    pub agent_runtime_id: String,
+    pub agent_private_key: String,
+}
+
+struct AgentIdentityRegistrationAttemptError {
+    message: String,
+    retryable: bool,
+}
+
+fn append_ssh_string(target: &mut Vec<u8>, value: &[u8]) -> Result<(), String> {
+    let len =
+        u32::try_from(value.len()).map_err(|_| "Agent Identity SSH 公钥字段过长".to_string())?;
+    target.extend_from_slice(&len.to_be_bytes());
+    target.extend_from_slice(value);
+    Ok(())
+}
+
+fn encode_ssh_ed25519_public_key(signing_key: &SigningKey) -> Result<String, String> {
+    let verifying_key = signing_key.verifying_key();
+    let mut blob = Vec::with_capacity(4 + 11 + 4 + 32);
+    append_ssh_string(&mut blob, b"ssh-ed25519")?;
+    append_ssh_string(&mut blob, verifying_key.as_bytes())?;
+    Ok(format!(
+        "ssh-ed25519 {}",
+        general_purpose::STANDARD.encode(blob)
+    ))
+}
+
+fn generate_agent_identity_key_material() -> Result<GeneratedAgentIdentityKeyMaterial, String> {
+    let mut seed_material = [0u8; AGENT_IDENTITY_KEY_SEED_BYTES];
+    OsRng.fill_bytes(&mut seed_material);
+    let mut digest = Sha512::new();
+    digest.update(AGENT_IDENTITY_KEY_DERIVATION_CONTEXT);
+    digest.update(seed_material);
+    let digest = digest.finalize();
+    let mut secret_key_bytes = [0u8; 32];
+    secret_key_bytes.copy_from_slice(&digest[..32]);
+    let signing_key = SigningKey::from_bytes(&secret_key_bytes);
+    let private_key = signing_key
+        .to_pkcs8_der()
+        .map_err(|_| "Agent Identity 私钥编码失败".to_string())?;
+    Ok(GeneratedAgentIdentityKeyMaterial {
+        private_key_pkcs8_base64: general_purpose::STANDARD.encode(private_key.as_bytes()),
+        public_key_ssh: encode_ssh_ed25519_public_key(&signing_key)?,
+    })
+}
+
+async fn register_agent_identity_once(
+    client: &reqwest::Client,
+    url: &str,
+    access_token: &str,
+    is_fedramp_account: bool,
+    key_material: &GeneratedAgentIdentityKeyMaterial,
+) -> Result<String, AgentIdentityRegistrationAttemptError> {
+    let request = AgentIdentityRegistrationRequest {
+        abom: AgentIdentityBillOfMaterials {
+            agent_version: env!("CARGO_PKG_VERSION").to_string(),
+            agent_harness_id: "codex-cli".to_string(),
+            running_location: format!("cli-{}", std::env::consts::OS),
+        },
+        agent_public_key: key_material.public_key_ssh.clone(),
+        capabilities: vec!["responsesapi".to_string()],
+        ttl: None,
+    };
+    let mut request_builder = client
+        .post(url)
+        .bearer_auth(access_token)
+        .header("Accept", "application/json")
+        .json(&request);
+    if is_fedramp_account {
+        request_builder = request_builder.header("X-OpenAI-Fedramp", "true");
+    }
+    let response =
+        request_builder
+            .send()
+            .await
+            .map_err(|error| AgentIdentityRegistrationAttemptError {
+                message: format!("Agent Identity runtime 注册请求失败: {}", error),
+                retryable: error.is_timeout() || error.is_connect() || error.is_request(),
+            })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(AgentIdentityRegistrationAttemptError {
+            message: format!("Agent Identity runtime 注册返回 HTTP {}", status),
+            retryable: status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error(),
+        });
+    }
+    let response_body =
+        response
+            .bytes()
+            .await
+            .map_err(|error| AgentIdentityRegistrationAttemptError {
+                message: format!("读取 Agent Identity runtime 注册响应失败: {}", error),
+                retryable: error.is_timeout() || error.is_connect() || error.is_request(),
+            })?;
+    if response_body.len() > 64 * 1024 {
+        return Err(AgentIdentityRegistrationAttemptError {
+            message: "Agent Identity runtime 注册响应过大".to_string(),
+            retryable: false,
+        });
+    }
+    let result = serde_json::from_slice::<AgentIdentityRegistrationResponse>(&response_body)
+        .map_err(|_| AgentIdentityRegistrationAttemptError {
+            message: "Agent Identity runtime 注册响应格式无效".to_string(),
+            retryable: false,
+        })?;
+    let runtime_id = result.agent_runtime_id.trim().to_string();
+    if runtime_id.is_empty() {
+        return Err(AgentIdentityRegistrationAttemptError {
+            message: "Agent Identity runtime 注册响应缺少 agent_runtime_id".to_string(),
+            retryable: false,
+        });
+    }
+    Ok(runtime_id)
+}
+
+pub(crate) async fn register_agent_identity_with_base_url(
+    access_token: &str,
+    is_fedramp_account: bool,
+    base_url: &str,
+) -> Result<RegisteredAgentIdentity, String> {
+    let access_token = access_token.trim();
+    if access_token.is_empty() {
+        return Err("Agent Identity runtime 注册缺少 accessToken".to_string());
+    }
+    let key_material = generate_agent_identity_key_material()?;
+    let client = reqwest::Client::builder()
+        .timeout(AGENT_IDENTITY_REGISTRATION_TIMEOUT)
+        .connect_timeout(Duration::from_secs(10))
+        .user_agent(format!("cockpit-tools/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| format!("创建 Agent Identity runtime 注册客户端失败: {}", error))?;
+    let url = format!("{}/v1/agent/register", base_url.trim_end_matches('/'));
+
+    let mut last_error = None;
+    for attempt in 1..=AGENT_IDENTITY_REGISTRATION_ATTEMPTS {
+        match register_agent_identity_once(
+            &client,
+            &url,
+            access_token,
+            is_fedramp_account,
+            &key_material,
+        )
+        .await
+        {
+            Ok(agent_runtime_id) => {
+                return Ok(RegisteredAgentIdentity {
+                    agent_runtime_id,
+                    agent_private_key: key_material.private_key_pkcs8_base64,
+                });
+            }
+            Err(error) if error.retryable && attempt < AGENT_IDENTITY_REGISTRATION_ATTEMPTS => {
+                last_error = Some(error.message);
+            }
+            Err(error) => return Err(error.message),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "Agent Identity runtime 注册失败".to_string()))
 }
 
 fn task_lock_for(account_id: &str) -> Arc<Mutex<()>> {
@@ -337,13 +529,45 @@ pub fn redact_sensitive_body(account: &CodexAccount, body: &str) -> String {
 mod tests {
     use super::{
         agent_identity_key, build_agent_assertion, decrypt_agent_task_id, redact_sensitive_body,
+        register_agent_identity_with_base_url,
     };
     use crate::models::codex::{CodexAccount, CodexAgentIdentity, CodexTokens};
     use base64::{engine::general_purpose, Engine as _};
     use crypto_box::PublicKey;
-    use ed25519_dalek::{pkcs8::EncodePrivateKey, SigningKey};
+    use ed25519_dalek::{pkcs8::DecodePrivateKey, pkcs8::EncodePrivateKey, SigningKey};
     use rand::rngs::OsRng;
     use sha2::Digest;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    async fn read_test_http_request(stream: &mut tokio::net::TcpStream) -> String {
+        let mut bytes = Vec::new();
+        let mut chunk = [0u8; 2048];
+        let header_end = loop {
+            let read = stream.read(&mut chunk).await.expect("read request");
+            assert!(read > 0, "connection closed before request headers");
+            bytes.extend_from_slice(&chunk[..read]);
+            if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                break index + 4;
+            }
+        };
+        let headers = String::from_utf8_lossy(&bytes[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or(0);
+        while bytes.len() < header_end + content_length {
+            let read = stream.read(&mut chunk).await.expect("read request body");
+            assert!(read > 0, "connection closed before request body");
+            bytes.extend_from_slice(&chunk[..read]);
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
 
     fn test_account() -> CodexAccount {
         let signing_key = SigningKey::generate(&mut OsRng);
@@ -382,6 +606,80 @@ mod tests {
         )
         .expect("build assertion");
         assert!(assertion.starts_with("AgentAssertion "));
+    }
+
+    #[tokio::test]
+    async fn runtime_registration_uses_official_payload_and_reuses_key_on_retry() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock registration server");
+        let base_url = format!("http://{}", listener.local_addr().expect("local address"));
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for attempt in 0..2 {
+                let (mut stream, _) = listener.accept().await.expect("accept request");
+                let request = read_test_http_request(&mut stream).await;
+                requests.push(request);
+                let (status, body) = if attempt == 0 {
+                    ("429 Too Many Requests", r#"{"error":"retry"}"#)
+                } else {
+                    ("200 OK", r#"{"agent_runtime_id":"runtime-registered"}"#)
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write response");
+            }
+            requests
+        });
+
+        let registered =
+            register_agent_identity_with_base_url("session-access-token", true, &base_url)
+                .await
+                .expect("register runtime");
+        assert_eq!(registered.agent_runtime_id, "runtime-registered");
+        let private_key = general_purpose::STANDARD
+            .decode(&registered.agent_private_key)
+            .expect("decode private key");
+        SigningKey::from_pkcs8_der(&private_key).expect("valid PKCS#8 Ed25519 private key");
+
+        let requests = server.await.expect("mock registration server");
+        assert_eq!(requests.len(), 2);
+        let request_bodies =
+            requests
+                .iter()
+                .map(|request| {
+                    assert!(request.starts_with("POST /v1/agent/register HTTP/1.1"));
+                    assert!(request.lines().any(|line| line
+                        .eq_ignore_ascii_case("authorization: Bearer session-access-token")));
+                    assert!(request
+                        .lines()
+                        .any(|line| line.eq_ignore_ascii_case("x-openai-fedramp: true")));
+                    let (_, body) = request.split_once("\r\n\r\n").expect("request body");
+                    serde_json::from_str::<serde_json::Value>(body).expect("registration JSON")
+                })
+                .collect::<Vec<_>>();
+        assert_eq!(
+            request_bodies[0]["agent_public_key"],
+            request_bodies[1]["agent_public_key"]
+        );
+        assert!(request_bodies[0]["agent_public_key"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("ssh-ed25519 ")));
+        assert_eq!(
+            request_bodies[0]["capabilities"],
+            serde_json::json!(["responsesapi"])
+        );
+        assert!(request_bodies[0]["ttl"].is_null());
+        assert_eq!(
+            request_bodies[0].pointer("/abom/agent_harness_id"),
+            Some(&serde_json::json!("codex-cli"))
+        );
+        assert!(!requests[0].contains(&registered.agent_private_key));
     }
 
     #[test]

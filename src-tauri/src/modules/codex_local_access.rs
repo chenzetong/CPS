@@ -18,7 +18,8 @@ use crate::models::codex_local_access::{
 };
 use crate::modules::atomic_write::{write_string_atomic, write_string_atomic_if_hash_matches};
 use crate::modules::{
-    account, codex_account, codex_oauth, codex_protocol, codex_quota, codex_wakeup, logger, process,
+    account, codex_account, codex_agent_identity, codex_oauth, codex_protocol, codex_quota,
+    codex_wakeup, logger, process,
 };
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{Datelike, Duration as ChronoDuration, Local, LocalResult, NaiveDate, TimeZone};
@@ -1420,8 +1421,17 @@ fn validate_local_access_bound_oauth_account(
         .ok_or_else(|| "请选择要绑定的 OAuth 账号".to_string())?;
     let oauth_account = codex_account::load_account(&bound_id)
         .ok_or_else(|| format!("绑定的 OAuth 账号不存在: {}", bound_id))?;
+    validate_loaded_local_access_bound_oauth_account(oauth_account)
+}
+
+fn validate_loaded_local_access_bound_oauth_account(
+    oauth_account: CodexAccount,
+) -> Result<CodexAccount, String> {
     if oauth_account.is_api_key_auth() {
         return Err("API 服务只能绑定 OAuth 账号，不能绑定 API Key 账号".to_string());
+    }
+    if oauth_account.is_agent_identity_auth() {
+        return Err("Agent Identity 账号仅用于 API 服务，不能作为 OAuth 绑定账号".to_string());
     }
     if !codex_account::account_has_refresh_token(&oauth_account) {
         return Err("API 服务只能绑定带 refresh_token 的 OAuth 账号".to_string());
@@ -1814,6 +1824,12 @@ pub struct CodexOfficialWakeupChatResult {
     pub duration_ms: u64,
 }
 
+struct CodexOfficialWakeupHttpResponse {
+    account: CodexAccount,
+    status: StatusCode,
+    body: String,
+}
+
 async fn official_wakeup_network_config() -> (Option<String>, CodexLocalAccessTimeouts) {
     if let Err(err) = ensure_runtime_loaded_without_start().await {
         logger::log_warn(&format!(
@@ -1834,6 +1850,76 @@ async fn official_wakeup_network_config() -> (Option<String>, CodexLocalAccessTi
             )
         })
         .unwrap_or_else(|| (None, CodexLocalAccessTimeouts::default()))
+}
+
+async fn send_agent_identity_wakeup_request_with_base_urls(
+    account: &CodexAccount,
+    target: &str,
+    headers: &HashMap<String, String>,
+    body: &[u8],
+    upstream_proxy_url: Option<&str>,
+    connect_timeout: Duration,
+    timeouts: &CodexLocalAccessTimeouts,
+    upstream_base_url: &str,
+    agent_auth_base_url: &str,
+) -> Result<CodexOfficialWakeupHttpResponse, String> {
+    let upstream_url = format!("{}{}", upstream_base_url.trim_end_matches('/'), target);
+    Url::parse(&upstream_url).map_err(|e| format!("Codex 上游 URL 无效: {}", e))?;
+    let mut current = account.clone();
+    let mut expected_task_id: Option<String> = None;
+
+    for attempt in 0..=1 {
+        let (updated, auth_headers, assertion_task_id) =
+            codex_agent_identity::build_authentication_headers_with_base_url(
+                &current,
+                expected_task_id.as_deref(),
+                agent_auth_base_url,
+            )
+            .await?;
+        current = updated;
+        let authorization = auth_headers
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| "Agent Identity 未生成有效 Authorization 头".to_string())?;
+        let response = send_upstream_request_with_authorization_url(
+            "POST",
+            &upstream_url,
+            target,
+            headers,
+            body,
+            &current,
+            authorization,
+            upstream_proxy_url,
+            connect_timeout,
+            timeouts,
+            CodexLocalAccessImageGenerationMode::Disabled,
+            CodexLocalAccessRequestKind::Text,
+        )
+        .await?;
+        let status = response.status();
+        let raw_body = response
+            .text()
+            .await
+            .map_err(|e| format!("读取官方直连唤醒响应失败: {}", e))?;
+
+        if attempt == 0 && codex_agent_identity::is_task_invalid_response(status, &raw_body) {
+            expected_task_id = Some(assertion_task_id);
+            continue;
+        }
+
+        let body = if status.is_success() {
+            raw_body
+        } else {
+            codex_agent_identity::redact_sensitive_body(&current, &raw_body)
+        };
+        return Ok(CodexOfficialWakeupHttpResponse {
+            account: current,
+            status,
+            body,
+        });
+    }
+
+    Err("Agent Identity task 恢复后官方直连唤醒仍失败".to_string())
 }
 
 pub async fn run_official_wakeup_chat(
@@ -1894,6 +1980,13 @@ pub async fn run_official_wakeup_chat(
             .entry((*header).to_string())
             .or_insert_with(String::new);
     }
+    if account
+        .agent_identity
+        .as_ref()
+        .is_some_and(|identity| identity.chatgpt_account_is_fedramp)
+    {
+        headers.insert("x-openai-fedramp".to_string(), "true".to_string());
+    }
 
     let (upstream_proxy_url, timeouts) = official_wakeup_network_config().await;
     let upstream_connect_timeout = duration_from_millis(
@@ -1902,20 +1995,7 @@ pub async fn run_official_wakeup_chat(
     );
     let upstream_target = resolve_upstream_target(RESPONSES_PATH)?;
     let started_at = Instant::now();
-    let response = send_upstream_request(
-        "POST",
-        &upstream_target,
-        &headers,
-        &body,
-        &account,
-        upstream_proxy_url.as_deref(),
-        upstream_connect_timeout,
-        &timeouts,
-        CodexLocalAccessImageGenerationMode::Disabled,
-        CodexLocalAccessRequestKind::Text,
-    )
-    .await
-    .map_err(|err| {
+    let format_transport_error = |err: String| {
         let detail = err
             .split_once("技术细节:")
             .map(|(_, detail)| detail.trim())
@@ -1925,12 +2005,44 @@ pub async fn run_official_wakeup_chat(
             "Codex 官方服务暂时不可用，未能连接到所选账号的官方对话服务。请检查网络和代理配置。技术细节: {}",
             detail
         )
-    })?;
-    let status = response.status();
-    let body_text = response
-        .text()
+    };
+    let (account, status, body_text) = if account.is_agent_identity_auth() {
+        let response = send_agent_identity_wakeup_request_with_base_urls(
+            &account,
+            &upstream_target,
+            &headers,
+            &body,
+            upstream_proxy_url.as_deref(),
+            upstream_connect_timeout,
+            &timeouts,
+            UPSTREAM_CODEX_BASE_URL,
+            codex_agent_identity::AGENT_IDENTITY_AUTH_API_BASE_URL,
+        )
         .await
-        .map_err(|e| format!("读取官方直连唤醒响应失败: {}", e))?;
+        .map_err(format_transport_error)?;
+        (response.account, response.status, response.body)
+    } else {
+        let response = send_upstream_request(
+            "POST",
+            &upstream_target,
+            &headers,
+            &body,
+            &account,
+            upstream_proxy_url.as_deref(),
+            upstream_connect_timeout,
+            &timeouts,
+            CodexLocalAccessImageGenerationMode::Disabled,
+            CodexLocalAccessRequestKind::Text,
+        )
+        .await
+        .map_err(format_transport_error)?;
+        let status = response.status();
+        let body_text = response
+            .text()
+            .await
+            .map_err(|e| format!("读取官方直连唤醒响应失败: {}", e))?;
+        (account, status, body_text)
+    };
 
     if !status.is_success() {
         let message = extract_upstream_error_message(&body_text)
@@ -1947,6 +2059,9 @@ pub async fn run_official_wakeup_chat(
     let reply = extract_output_text_from_response(&response_body);
     if reply.trim().is_empty() {
         return Err("官方直连唤醒未返回可读回复。".to_string());
+    }
+    if account.is_agent_identity_auth() {
+        cache_prepared_account(&account).await;
     }
 
     Ok(CodexOfficialWakeupChatResult {
@@ -13952,10 +14067,13 @@ fn local_access_ineligible_reason(
     {
         return Some("pending_oauth");
     }
-    if account_requires_provider_gateway(account) {
+    if is_chat_completions_api_key_account(account) {
         return Some("chat_completions_api_key");
     }
-    if restrict_free_accounts && is_free_plan_type(account.plan_type.as_deref()) {
+    if restrict_free_accounts
+        && !account.is_agent_identity_auth()
+        && is_free_plan_type(account.plan_type.as_deref())
+    {
         return Some("free_restricted");
     }
     None
@@ -14341,7 +14459,9 @@ fn sanitize_collection_with_accounts(
     let valid_bound_oauth_account_ids: HashSet<String> = accounts
         .iter()
         .filter(|account| {
-            !account.is_api_key_auth() && codex_account::account_has_refresh_token(account)
+            !account.is_api_key_auth()
+                && !account.is_agent_identity_auth()
+                && codex_account::account_has_refresh_token(account)
         })
         .map(|account| account.id.clone())
         .collect();
@@ -16281,11 +16401,13 @@ fn account_uses_synced_model_shell_gateway(account: &CodexAccount) -> bool {
     provider_model_slots_need_upstream_rewrite(&provider_gateway_model_slots(&models))
 }
 
+fn is_chat_completions_api_key_account(account: &CodexAccount) -> bool {
+    account.is_api_key_auth()
+        && provider_gateway_wire_api_for_account(account) == "chat_completions"
+}
+
 pub fn account_requires_provider_gateway(account: &CodexAccount) -> bool {
-    if !account.is_api_key_auth() {
-        return false;
-    }
-    if provider_gateway_wire_api_for_account(account) == "chat_completions" {
+    if is_chat_completions_api_key_account(account) {
         return true;
     }
     account_uses_synced_model_shell_gateway(account)
@@ -22053,10 +22175,42 @@ async fn send_upstream_request(
     image_generation_mode: CodexLocalAccessImageGenerationMode,
     request_kind: CodexLocalAccessRequestKind,
 ) -> Result<reqwest::Response, String> {
-    let method =
-        Method::from_bytes(method.as_bytes()).map_err(|e| format!("不支持的请求方法: {}", e))?;
     let url = build_upstream_url(account, target)?;
     let upstream_token = account_upstream_token(account)?;
+    let authorization = format!("Bearer {}", upstream_token);
+    send_upstream_request_with_authorization_url(
+        method,
+        &url,
+        target,
+        headers,
+        body,
+        account,
+        &authorization,
+        upstream_proxy_url,
+        connect_timeout,
+        timeouts,
+        image_generation_mode,
+        request_kind,
+    )
+    .await
+}
+
+async fn send_upstream_request_with_authorization_url(
+    method: &str,
+    url: &str,
+    target: &str,
+    headers: &HashMap<String, String>,
+    body: &[u8],
+    account: &CodexAccount,
+    authorization: &str,
+    upstream_proxy_url: Option<&str>,
+    connect_timeout: Duration,
+    timeouts: &CodexLocalAccessTimeouts,
+    image_generation_mode: CodexLocalAccessImageGenerationMode,
+    request_kind: CodexLocalAccessRequestKind,
+) -> Result<reqwest::Response, String> {
+    let method =
+        Method::from_bytes(method.as_bytes()).map_err(|e| format!("不支持的请求方法: {}", e))?;
     let client = upstream_http_client(upstream_proxy_url, connect_timeout)?;
     let upstream_body = build_account_scoped_upstream_body(
         target,
@@ -22067,7 +22221,7 @@ async fn send_upstream_request(
     )?;
     let max_send_retries = timeouts.upstream_send_retry_attempts as usize;
     for retry_attempt in 0..=max_send_retries {
-        let mut request = client.request(method.clone(), &url);
+        let mut request = client.request(method.clone(), url);
 
         for (name, value) in headers {
             if matches!(
@@ -22090,7 +22244,7 @@ async fn send_upstream_request(
             request = request.header(header_name, header_value);
         }
 
-        request = request.header(AUTHORIZATION, format!("Bearer {}", upstream_token));
+        request = request.header(AUTHORIZATION, authorization);
         if !account.is_api_key_auth() && !headers.contains_key("user-agent") {
             request = request.header(USER_AGENT, DEFAULT_CODEX_USER_AGENT);
         }
@@ -24881,6 +25035,7 @@ mod tests {
         );
     }
     use base64::{engine::general_purpose, Engine as _};
+    use ed25519_dalek::{pkcs8::EncodePrivateKey, SigningKey};
 
     use super::{
         account_model_rule_blocks_model, account_requires_bound_oauth_local_gateway,
@@ -24934,6 +25089,7 @@ mod tests {
         resolve_upstream_target, restore_config_toml_from_takeover_backup,
         sanitize_collection_with_accounts, scutil_proxy_map,
         selected_account_ids_have_image_generation_capacity,
+        send_agent_identity_wakeup_request_with_base_urls,
         should_retry_single_account_upstream_status, should_treat_response_as_stream,
         should_try_next_account, sidecar_account_manifest_value,
         sidecar_account_needs_background_refresh, sidecar_api_key_account_scope_values,
@@ -24945,10 +25101,10 @@ mod tests {
         sidecar_routing_strategy_value, sidecar_stable_id, supported_codex_model_ids,
         system_proxy_target_scheme, system_proxy_value_url,
         tool_declares_image_generation_capability, validate_api_key_account_scope_update,
-        validate_client_model_visible, visible_codex_model_ids_for_api_key,
-        visible_codex_model_ids_for_api_key_with_accounts, websocket_accept_value,
-        websocket_connect_error_from_http_response, windows_proxy_url_from_server,
-        windows_reg_dword_enabled, windows_reg_query_map,
+        validate_client_model_visible, validate_loaded_local_access_bound_oauth_account,
+        visible_codex_model_ids_for_api_key, visible_codex_model_ids_for_api_key_with_accounts,
+        websocket_accept_value, websocket_connect_error_from_http_response,
+        windows_proxy_url_from_server, windows_reg_dword_enabled, windows_reg_query_map,
         write_local_access_profile_model_override, write_local_access_profile_takeover,
         write_provider_gateway_model_catalog, write_string_atomic, write_string_atomic_if_changed,
         CodexLocalAccessCollection, CodexLocalAccessGatewayMode, CodexLocalAccessScope,
@@ -24984,6 +25140,7 @@ mod tests {
         DefaultInstanceSettings, InstanceLaunchMode, InstanceProfile, InstanceStore,
     };
     use futures_util::{SinkExt, StreamExt};
+    use rand::rngs::OsRng;
     use reqwest::StatusCode;
     use serde_json::{json, Value};
     use std::{
@@ -25017,6 +25174,185 @@ mod tests {
         .expect_err("request should be rejected");
 
         assert_eq!(err, "请求体过大");
+    }
+
+    fn agent_identity_wakeup_test_account() -> CodexAccount {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let private_key = signing_key.to_pkcs8_der().expect("encode PKCS#8");
+        let mut account = CodexAccount::new(
+            format!("agent-wakeup-{}", uuid::Uuid::new_v4()),
+            "agent-wakeup@example.com".to_string(),
+            CodexTokens {
+                id_token: String::new(),
+                access_token: String::new(),
+                refresh_token: None,
+            },
+        );
+        account.account_id = Some("team-wakeup".to_string());
+        account.agent_identity = Some(CodexAgentIdentity {
+            agent_runtime_id: "runtime-wakeup".to_string(),
+            agent_private_key: general_purpose::STANDARD.encode(private_key.as_bytes()),
+            task_id: Some("task-old".to_string()),
+            account_id: "team-wakeup".to_string(),
+            chatgpt_user_id: "user-wakeup".to_string(),
+            email: Some(account.email.clone()),
+            plan_type: Some("k12".to_string()),
+            chatgpt_account_is_fedramp: true,
+        });
+        account
+    }
+
+    fn wakeup_assertion_task_id(request: &str) -> Option<String> {
+        let authorization = request.lines().find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("authorization")
+                .then(|| value.trim())
+        })?;
+        let encoded = authorization.strip_prefix("AgentAssertion ")?;
+        let payload = general_purpose::URL_SAFE_NO_PAD.decode(encoded).ok()?;
+        serde_json::from_slice::<Value>(&payload)
+            .ok()?
+            .get("task_id")?
+            .as_str()
+            .map(str::to_string)
+    }
+
+    async fn read_wakeup_test_http_request(stream: &mut TcpStream) -> String {
+        let mut bytes = Vec::new();
+        let mut chunk = [0u8; 2048];
+        let header_end = loop {
+            let read = stream.read(&mut chunk).await.expect("read request");
+            assert!(read > 0, "connection closed before request headers");
+            bytes.extend_from_slice(&chunk[..read]);
+            if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                break index + 4;
+            }
+        };
+        let headers = String::from_utf8_lossy(&bytes[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or(0);
+        while bytes.len() < header_end + content_length {
+            let read = stream.read(&mut chunk).await.expect("read request body");
+            assert!(read > 0, "connection closed before request body");
+            bytes.extend_from_slice(&chunk[..read]);
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[tokio::test]
+    async fn official_wakeup_agent_identity_recovers_invalid_task_once() {
+        let account = agent_identity_wakeup_test_account();
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock upstream");
+        let base_url = format!("http://{}", listener.local_addr().expect("local address"));
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            let mut wakeup_calls = 0;
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().await.expect("accept request");
+                let request = read_wakeup_test_http_request(&mut stream).await;
+                let request_line = request.lines().next().unwrap_or_default().to_string();
+                let (status, content_type, body) = if request_line.contains("/task/register") {
+                    ("200 OK", "application/json", r#"{"task_id":"task-new"}"#)
+                } else if wakeup_calls == 0 {
+                    wakeup_calls += 1;
+                    (
+                        "401 Unauthorized",
+                        "application/json",
+                        r#"{"error":{"code":"invalid_task_id"}}"#,
+                    )
+                } else {
+                    wakeup_calls += 1;
+                    (
+                        "200 OK",
+                        "text/event-stream",
+                        "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"awake\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_wakeup\",\"status\":\"completed\"}}\n\n",
+                    )
+                };
+                requests.push(request);
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write response");
+            }
+            requests
+        });
+
+        let mut headers = HashMap::new();
+        headers.insert("accept".to_string(), "text/event-stream".to_string());
+        headers.insert("content-type".to_string(), "application/json".to_string());
+        headers.insert("x-openai-fedramp".to_string(), "true".to_string());
+        let response = send_agent_identity_wakeup_request_with_base_urls(
+            &account,
+            "/responses",
+            &headers,
+            br#"{"model":"gpt-5.4-mini","stream":true}"#,
+            None,
+            Duration::from_secs(2),
+            &CodexLocalAccessTimeouts::default(),
+            &base_url,
+            &base_url,
+        )
+        .await
+        .expect("recover Agent Identity task and retry wakeup");
+
+        assert!(response.status.is_success());
+        assert_eq!(
+            response
+                .account
+                .agent_identity
+                .as_ref()
+                .and_then(|identity| identity.task_id.as_deref()),
+            Some("task-new")
+        );
+        let parsed = parse_responses_payload_from_upstream(response.body.as_bytes())
+            .expect("parse wakeup SSE response");
+        assert_eq!(
+            parsed
+                .get("response")
+                .and_then(|value| value.get("output_text"))
+                .and_then(Value::as_str),
+            Some("awake")
+        );
+
+        let requests = server.await.expect("mock server");
+        let wakeup_requests = requests
+            .iter()
+            .filter(|request| {
+                request
+                    .lines()
+                    .next()
+                    .is_some_and(|line| line.contains("/responses"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(wakeup_requests.len(), 2);
+        assert_eq!(
+            wakeup_assertion_task_id(wakeup_requests[0]),
+            Some("task-old".to_string())
+        );
+        assert_eq!(
+            wakeup_assertion_task_id(wakeup_requests[1]),
+            Some("task-new".to_string())
+        );
+        assert!(wakeup_requests.iter().all(|request| {
+            let lower = request.to_ascii_lowercase();
+            lower.contains("originator: codex-tui")
+                && lower.contains("chatgpt-account-id: team-wakeup")
+                && lower.contains("x-openai-fedramp: true")
+                && !lower.contains("authorization: bearer ")
+        }));
     }
 
     fn test_local_access_collection(account_ids: Vec<String>) -> CodexLocalAccessCollection {
@@ -25678,7 +26014,8 @@ HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings
     }
 
     #[test]
-    fn responses_sync_catalog_with_custom_models_requires_provider_gateway() {
+    fn responses_sync_catalog_with_custom_models_requires_instance_gateway_but_remains_local_access_eligible(
+    ) {
         let mut account = CodexAccount::new_api_key(
             "local-account-id".to_string(),
             "relay@example.com".to_string(),
@@ -25693,6 +26030,20 @@ HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings
         account.api_sync_model_catalog_to_codex = true;
 
         assert!(account_requires_provider_gateway(&account));
+        assert!(is_local_access_eligible_account(&account, true));
+        assert_eq!(local_access_ineligible_reason(&account, true), None);
+
+        let account_id = account.id.clone();
+        let (next_ids, synced_ids, added_ids, skipped) = append_eligible_local_access_account_ids(
+            &[],
+            vec![account_id.clone()],
+            &[account],
+            true,
+        );
+        assert_eq!(next_ids, vec![account_id.clone()]);
+        assert_eq!(synced_ids, vec![account_id.clone()]);
+        assert_eq!(added_ids, vec![account_id]);
+        assert!(skipped.is_empty());
     }
 
     #[test]
@@ -26634,6 +26985,54 @@ wire_api = "responses"
                 .collect::<Vec<_>>(),
             vec![("pending", "pending_oauth")]
         );
+    }
+
+    #[test]
+    fn free_agent_identity_remains_eligible_for_local_access_pool() {
+        let mut account = test_account_with_plan("free");
+        account.tokens.access_token.clear();
+        account.agent_identity = Some(CodexAgentIdentity {
+            agent_runtime_id: "runtime-free-agent".to_string(),
+            agent_private_key: "private-key".to_string(),
+            task_id: Some("task-free-agent".to_string()),
+            account_id: "account-free-agent".to_string(),
+            chatgpt_user_id: "user-free-agent".to_string(),
+            email: Some("free-agent@example.com".to_string()),
+            plan_type: Some("free".to_string()),
+            chatgpt_account_is_fedramp: false,
+        });
+
+        assert!(is_local_access_eligible_account(&account, true));
+        let (_, synced_ids, added_ids, skipped) = append_eligible_local_access_account_ids(
+            &[],
+            vec![account.id.clone()],
+            &[account.clone()],
+            true,
+        );
+        assert_eq!(synced_ids, vec![account.id.clone()]);
+        assert_eq!(added_ids, vec![account.id]);
+        assert!(skipped.is_empty());
+    }
+
+    #[test]
+    fn agent_identity_cannot_be_used_as_local_access_oauth_binding() {
+        let mut account = test_account_with_plan("plus");
+        account.tokens.refresh_token = Some("refresh-token".to_string());
+        account.agent_identity = Some(CodexAgentIdentity {
+            agent_runtime_id: "runtime-oauth-binding".to_string(),
+            agent_private_key: "private-key".to_string(),
+            task_id: Some("task-oauth-binding".to_string()),
+            account_id: "account-oauth-binding".to_string(),
+            chatgpt_user_id: "user-oauth-binding".to_string(),
+            email: Some("agent-oauth-binding@example.com".to_string()),
+            plan_type: Some("plus".to_string()),
+            chatgpt_account_is_fedramp: false,
+        });
+
+        let error = validate_loaded_local_access_bound_oauth_account(account)
+            .expect_err("Agent Identity must not be accepted as an OAuth binding");
+
+        assert!(error.contains("不能作为 OAuth 绑定账号"));
     }
 
     fn make_test_jwt(payload: Value) -> String {
@@ -31812,6 +32211,35 @@ data: {"error":{"code":"server_error","type":"upstream","message":"stream aborte
         assert!(collection.account_ids.is_empty());
         assert_eq!(collection.api_keys.len(), 1);
         assert_eq!(collection.api_keys[0].account_ids, vec![account_id]);
+    }
+
+    #[test]
+    fn sanitize_collection_removes_agent_identity_oauth_binding() {
+        let mut agent_identity = test_account_with_plan("plus");
+        agent_identity.id = "agent-identity-binding".to_string();
+        agent_identity.tokens.refresh_token = Some("refresh-token".to_string());
+        agent_identity.agent_identity = Some(CodexAgentIdentity {
+            agent_runtime_id: "runtime-binding".to_string(),
+            agent_private_key: "private-key".to_string(),
+            task_id: Some("task-binding".to_string()),
+            account_id: "account-binding".to_string(),
+            chatgpt_user_id: "user-binding".to_string(),
+            email: Some("agent-binding@example.com".to_string()),
+            plan_type: Some("plus".to_string()),
+            chatgpt_account_is_fedramp: false,
+        });
+
+        let mut collection = test_local_access_collection(vec![agent_identity.id.clone()]);
+        collection.bound_oauth_account_id = Some(agent_identity.id.clone());
+
+        let (changed, valid_account_ids) =
+            sanitize_collection_with_accounts(&mut collection, &[agent_identity.clone()])
+                .expect("collection should sanitize");
+
+        assert!(changed);
+        assert!(collection.bound_oauth_account_id.is_none());
+        assert!(valid_account_ids.contains(&agent_identity.id));
+        assert!(collection.account_ids.contains(&agent_identity.id));
     }
 
     #[test]

@@ -1884,11 +1884,23 @@
       "formatRefreshOnlyLabel": "Hanya refresh_token",
       "formatBatchLabel": "Contoh batch"
     },
+    "agentIdentityRegistration": {
+      "noticeTitle": "Pemberitahuan impor Web Session",
+      "noticeMessage": "Terdeteksi {{count}} akun Web Session. Jika dilanjutkan, akun akan otomatis didaftarkan sebagai Agent Identity.",
+      "noticeApiOnly": "Akun ini hanya untuk Layanan API dan akan otomatis ditambahkan ke kumpulan akunnya.",
+      "noticeNoSwitch": "Akun tidak dapat digunakan untuk pergantian akun Codex biasa, menjalankan klien resmi maupun CLI secara langsung, atau sebagai akun pengikatan OAuth.",
+      "noticeCredential": "Aplikasi membuat dan menyimpan kunci privat Agent Identity secara lokal. Lindungi cadangan ekspor seperti kata sandi.",
+      "noticeConfirm": "Saya paham, lanjutkan",
+      "apiOnlyActionError": "Akun Agent Identity hanya tersedia melalui Layanan API dan tidak dapat dialihkan atau dijalankan langsung.",
+      "oauthBindingUnsupported": "Akun Agent Identity hanya untuk Layanan API dan tidak dapat digunakan sebagai akun pengikatan OAuth."
+    },
     "exportFormat": {
       "label": "Format ekspor",
       "cockpitTools": "CPS​",
       "sub2api": "Format sub2api",
       "cpa": "Format cpa",
+      "agentIdentityCpaUnsupported": "Akun Agent Identity tidak dapat diekspor dalam format cpa. Gunakan Cockpit Tools atau sub2api.",
+      "agentIdentityPrivateKeyNotice": "Ekspor ini berisi kunci privat Agent Identity yang dapat memulihkan akun di perangkat lain. Lindungi seperti kata sandi.",
       "downloadAll": "Unduh semua",
       "cpaCardTitle": "Akun {{index}}",
       "savedFolder": "Folder tersimpan",

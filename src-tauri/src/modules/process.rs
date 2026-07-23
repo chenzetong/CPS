@@ -9312,6 +9312,167 @@ pub fn collect_codex_process_entries() -> Vec<(u32, Option<String>)> {
         .collect()
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CodexLocalAppServerProcess {
+    pid: u32,
+    ppid: u32,
+    codex_home: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+fn take_ps_field(value: &str) -> Option<(&str, &str)> {
+    let value = value.trim_start();
+    let end = value.find(char::is_whitespace).unwrap_or(value.len());
+    let field = value.get(..end)?.trim();
+    if field.is_empty() {
+        None
+    } else {
+        Some((field, value.get(end..).unwrap_or("")))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn parse_codex_local_app_server_ps_line(line: &str) -> Option<CodexLocalAppServerProcess> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+
+    let (pid, remaining) = take_ps_field(line)?;
+    let (ppid, command_line) = take_ps_field(remaining)?;
+    let pid = pid.parse::<u32>().ok()?;
+    let ppid = ppid.parse::<u32>().ok()?;
+    let command_line = command_line.trim();
+    if pid == 0 || command_line.is_empty() {
+        return None;
+    }
+
+    let tokens = split_command_tokens(command_line);
+    let command_tokens = tokens
+        .iter()
+        .take_while(|token| !is_env_token(token))
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let executable = command_tokens.first()?.to_ascii_lowercase();
+    if !executable.contains(".app/contents/resources/codex")
+        || Path::new(&executable)
+            .file_name()
+            .and_then(|name| name.to_str())
+            != Some("codex")
+    {
+        return None;
+    }
+
+    let app_server_index = command_tokens
+        .iter()
+        .position(|token| *token == "app-server")?;
+    let runtime_args = &command_tokens[app_server_index + 1..];
+    if runtime_args
+        .iter()
+        .any(|token| matches!(*token, "proxy" | "daemon") || token.starts_with("--listen"))
+    {
+        return None;
+    }
+
+    let mut codex_home = extract_env_value_from_tokens(&tokens, "CODEX_HOME");
+    if codex_home.is_none() {
+        codex_home = extract_env_value(command_line, "CODEX_HOME");
+    }
+    Some(CodexLocalAppServerProcess {
+        pid,
+        ppid,
+        codex_home,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn collect_codex_local_app_server_processes() -> Vec<CodexLocalAppServerProcess> {
+    let output = match Command::new("ps")
+        .args(["-Eww", "-ax", "-o", "pid=,ppid=,command="])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return Vec::new(),
+    };
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(parse_codex_local_app_server_ps_line)
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+fn local_app_server_matches_target_home(
+    process: &CodexLocalAppServerProcess,
+    target_homes: &HashSet<String>,
+    default_home: &str,
+) -> bool {
+    let process_home = process
+        .codex_home
+        .as_deref()
+        .map(normalize_path_for_compare)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default_home.to_string());
+    !process_home.is_empty() && target_homes.contains(&process_home)
+}
+
+#[cfg(target_os = "macos")]
+fn managed_local_app_server_pids(
+    processes: &[CodexLocalAppServerProcess],
+    main_pids: &[u32],
+    target_homes: &HashSet<String>,
+    default_home: &str,
+) -> Vec<u32> {
+    let main_pids = main_pids.iter().copied().collect::<HashSet<_>>();
+    let mut pids = processes
+        .iter()
+        .filter(|process| process.ppid == 1 || main_pids.contains(&process.ppid))
+        .filter(|process| local_app_server_matches_target_home(process, target_homes, default_home))
+        .map(|process| process.pid)
+        .collect::<Vec<_>>();
+    pids.sort();
+    pids.dedup();
+    pids
+}
+
+#[cfg(target_os = "macos")]
+fn close_codex_local_app_servers(
+    tracked_pids: &[u32],
+    target_homes: &HashSet<String>,
+    default_home: &str,
+    timeout_secs: u64,
+) -> Result<(), String> {
+    let mut pids = tracked_pids.to_vec();
+    pids.extend(managed_local_app_server_pids(
+        &collect_codex_local_app_server_processes(),
+        &[],
+        target_homes,
+        default_home,
+    ));
+    pids.sort();
+    pids.dedup();
+    pids.retain(|pid| *pid != 0 && is_pid_running(*pid));
+    if pids.is_empty() {
+        crate::modules::logger::log_info("[Codex Close] 本地 remote-control app-server 已全部退出");
+        return Ok(());
+    }
+
+    crate::modules::logger::log_info(&format!(
+        "[Codex Close] 清理 {} 个本地 remote-control app-server: {}",
+        pids.len(),
+        summarize_pid_list_for_log(&pids)
+    ));
+    close_pids(&pids, timeout_secs)?;
+    let remaining = collect_running_pids(&pids);
+    if !remaining.is_empty() {
+        return Err(format!(
+            "本地 Codex remote-control app-server 未完全退出: {}",
+            summarize_pid_list_for_log(&remaining)
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn collect_codex_process_entries_from_powershell(
     expected_exe_path: &str,
@@ -10332,8 +10493,20 @@ pub fn close_codex_instances(codex_homes: &[String], timeout_secs: u64) -> Resul
             .collect();
         pids.sort();
         pids.dedup();
+        let tracked_local_app_server_pids = managed_local_app_server_pids(
+            &collect_codex_local_app_server_processes(),
+            &pids,
+            &target_homes,
+            &default_home,
+        );
         if pids.is_empty() {
             crate::modules::logger::log_info("受管 Codex 实例未在运行，无需关闭");
+            close_codex_local_app_servers(
+                &tracked_local_app_server_pids,
+                &target_homes,
+                &default_home,
+                timeout_secs,
+            )?;
             return Ok(());
         }
 
@@ -10355,6 +10528,12 @@ pub fn close_codex_instances(codex_homes: &[String], timeout_secs: u64) -> Resul
                         "[Codex Close] graceful close finished, targets={}",
                         summarize_pid_list_for_log(&pids)
                     ));
+                    close_codex_local_app_servers(
+                        &tracked_local_app_server_pids,
+                        &target_homes,
+                        &default_home,
+                        timeout_secs,
+                    )?;
                     return Ok(());
                 }
             }
@@ -10388,6 +10567,12 @@ pub fn close_codex_instances(codex_homes: &[String], timeout_secs: u64) -> Resul
         if still_running {
             return Err("无法关闭受管 Codex 实例进程，请手动关闭后重试".to_string());
         }
+        close_codex_local_app_servers(
+            &tracked_local_app_server_pids,
+            &target_homes,
+            &default_home,
+            timeout_secs,
+        )?;
         return Ok(());
     }
 
@@ -13057,7 +13242,11 @@ mod legacy_platform_adapter_cleanup_tests {
 
 #[cfg(all(test, target_os = "macos"))]
 mod codex_macos_launch_tests {
-    use super::is_codex_macos_main_process_command_line;
+    use super::{
+        is_codex_macos_main_process_command_line, managed_local_app_server_pids,
+        parse_codex_local_app_server_ps_line, CodexLocalAppServerProcess,
+    };
+    use std::collections::HashSet;
 
     #[test]
     fn matches_chatgpt_and_legacy_codex_main_processes() {
@@ -13070,6 +13259,66 @@ mod codex_macos_launch_tests {
         assert!(!is_codex_macos_main_process_command_line(
             "/applications/chatgpt.app/contents/resources/codex app-server"
         ));
+    }
+
+    #[test]
+    fn parses_only_embedded_local_app_server_processes() {
+        let parsed = parse_codex_local_app_server_ps_line(
+            "48399 48288 /Applications/ChatGPT.app/Contents/Resources/codex -c features.code_mode_host=true app-server --analytics-default-enabled",
+        )
+        .expect("local app-server should match");
+        assert_eq!(parsed.pid, 48399);
+        assert_eq!(parsed.ppid, 48288);
+        assert_eq!(parsed.codex_home, None);
+
+        assert!(parse_codex_local_app_server_ps_line(
+            "48766 48288 ssh host codex app-server proxy"
+        )
+        .is_none());
+        assert!(parse_codex_local_app_server_ps_line(
+            "49000 1 /Applications/ChatGPT.app/Contents/Resources/codex app-server proxy"
+        )
+        .is_none());
+        assert!(parse_codex_local_app_server_ps_line(
+            "49001 1 /Users/test/.local/bin/codex app-server"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn keeps_profile_scope_and_accepts_owned_or_orphaned_app_servers() {
+        let default_home = "/Users/test/.codex";
+        let target_homes = HashSet::from([
+            default_home.to_string(),
+            "/Users/test/.codex-instance-a".to_string(),
+        ]);
+        let processes = vec![
+            CodexLocalAppServerProcess {
+                pid: 10,
+                ppid: 100,
+                codex_home: None,
+            },
+            CodexLocalAppServerProcess {
+                pid: 11,
+                ppid: 1,
+                codex_home: Some("/Users/test/.codex-instance-a".to_string()),
+            },
+            CodexLocalAppServerProcess {
+                pid: 12,
+                ppid: 200,
+                codex_home: None,
+            },
+            CodexLocalAppServerProcess {
+                pid: 13,
+                ppid: 1,
+                codex_home: Some("/Users/test/.codex-instance-b".to_string()),
+            },
+        ];
+
+        assert_eq!(
+            managed_local_app_server_pids(&processes, &[100], &target_homes, default_home,),
+            vec![10, 11]
+        );
     }
 }
 

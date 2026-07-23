@@ -7,13 +7,6 @@ All notable changes to CPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
-## [1.3.15-cps.1] - 2026-07-23
-
-### Fixed
-
-- **Restarting the Mac Codex client after an account switch now cleans up the previous local remote-control app-server**: before launching the replacement client, CPS identifies official embedded app-server processes owned by the current GUI or already orphaned, scoped to the Codex profile, and closes them so iOS cannot remain attached to the previous instance. This hotfix does not clean up local SSH transports or change remote SSH/proxy synchronization.
-
----
 ## [0.26.8] - 2026-07-21
 
 ### Changed
@@ -91,6 +84,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - **Fixed custom Responses API Key accounts with “Sync model catalog to Codex” enabled being rejected by Codex API Service**: model-catalog synchronization continues to affect only direct account switching and instance-specific gateways, no longer changes API Service pool eligibility, and keeps Chat Completions accounts isolated behind instance-specific gateways.
+- **Restarting the Mac Codex client after an account switch now cleans up the previous local remote-control app-server**: before launching the replacement client, CPS identifies official embedded app-server processes owned by the current GUI or already orphaned, scoped to the Codex profile, and closes them so iOS cannot remain attached to the previous instance. This fix does not clean up local SSH transports or change remote SSH/proxy synchronization.
 
 ## [1.3.13] - 2026-07-22
 

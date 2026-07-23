@@ -7,13 +7,6 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
-## [1.3.15-cps.1] - 2026-07-23
-
-### 修复
-
-- **切换 Codex 账号并重启 Mac 客户端时会清理旧的本地 remote-control app-server**：CPS 在启动新客户端前，按 Codex profile 精确识别并关闭当前 GUI 所属或已经孤立的官方内嵌 app-server，避免 iOS 继续连接旧实例；本修订不清理本地 SSH transport，也不改变远端 SSH/proxy 同步逻辑。
-
----
 ## [0.26.8] - 2026-07-21
 
 ### 变更
@@ -91,6 +84,7 @@
 ### 修复
 
 - **修复开启“同步模型目录到 Codex”的自定义 Responses API Key 无法加入 Codex API 服务的问题**：模型目录同步继续只影响单账号切号与实例专属网关，不再改变 API 服务账号池准入；Chat Completions 账号仍保持实例专属网关隔离。
+- **切换 Codex 账号并重启 Mac 客户端时会清理旧的本地 remote-control app-server**：CPS 在启动新客户端前，按 Codex profile 精确识别并关闭当前 GUI 所属或已经孤立的官方内嵌 app-server，避免 iOS 继续连接旧实例；本修复不清理本地 SSH transport，也不改变远端 SSH/proxy 同步逻辑。
 
 ## [1.3.13] - 2026-07-22
 

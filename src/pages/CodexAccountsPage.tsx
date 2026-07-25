@@ -129,6 +129,7 @@ import {
   readCodexImportSyncApiService,
   writeCodexImportSyncApiService,
 } from "../utils/codexImportPreferences";
+import { recoverCodexBatchImportStartFromPreview } from "../utils/codexBatchImportQueue";
 import {
   CODEX_OPEN_ADD_ACCOUNT_EVENT,
   type CodexOpenAddAccountDetail,
@@ -268,6 +269,7 @@ import {
 import {
   isModelProviderUsageUnavailableError,
   listModelProviderModels,
+  resolveNewApiQuotaSnapshot,
 } from "../services/modelProviderUsageService";
 import { useSponsorStore } from "../stores/useSponsorStore";
 import type { Sponsor } from "../types/sponsor";
@@ -5934,6 +5936,28 @@ export function CodexAccountsPage() {
       } catch {
         // ignore storage failures
       }
+      // The backend starts scanning before this invoke resolves. A fast scan can
+      // therefore emit its terminal event while the listener still filters on
+      // __pending__. Re-read the now-addressable session to recover that event.
+      try {
+        const recoveredPreview =
+          await codexService.getCodexBatchImportPreview(started.sessionId);
+        const recovery = recoverCodexBatchImportStartFromPreview(
+          batchImportSessionIdRef.current,
+          started.sessionId,
+          recoveredPreview,
+          batchImportSelectedIds,
+        );
+        if (recovery) {
+          setBatchImportPreview(recovery.preview);
+          setBatchImportCheckQuota(recovery.preview.checkQuota);
+          setBatchImportSelectedIds(recovery.selectedIds);
+          setBatchImportBusy(false);
+        }
+      } catch {
+        // If this read fails, only later listener events follow their normal path;
+        // it cannot recover terminal or error events that were already missed.
+      }
     } catch (e) {
       cleanupBatchImportListeners();
       batchImportSessionIdRef.current = null;
@@ -7490,17 +7514,8 @@ export function CodexAccountsPage() {
   const formatApiKeyUsagePercent = useCallback(
     (summary?: CodexModelProviderUsageSummary): number => {
       if (summary?.mode === "new_api") {
-        const granted = Number(
-          summary.details?.find((item) => item.key === "totalGranted")?.value,
-        );
-        const available = Number(
-          summary.details?.find((item) => item.key === "totalAvailable")?.value,
-        );
-        if (
-          Number.isFinite(granted) &&
-          Number.isFinite(available) &&
-          granted > 0
-        ) {
+        const { granted, available } = resolveNewApiQuotaSnapshot(summary);
+        if (granted != null && available != null && granted > 0) {
           return Math.max(
             0,
             Math.min(100, Math.round(((granted - available) / granted) * 100)),
@@ -7690,19 +7705,19 @@ export function CodexAccountsPage() {
       const isSub2ApiUsage = usageMode === "sub2api";
       const usedPercent = formatApiKeyUsagePercent(summary);
       if (variant === "card" && summary && isNewApiUsage) {
-        const grantedRaw = Number(
-          findApiKeyUsageDetail(summary, "totalGranted")?.value ?? NaN,
+        const quota = resolveNewApiQuotaSnapshot(summary);
+        const grantedText = formatApiKeyUsageMoney(quota.granted, summary.unit);
+        const availableText = formatApiKeyUsageMoney(
+          quota.available,
+          summary.unit,
         );
-        const availableRaw = Number(
-          findApiKeyUsageDetail(summary, "totalAvailable")?.value ?? NaN,
-        );
-        const grantedText = Number.isFinite(grantedRaw)
-          ? formatApiKeyUsageMoney(grantedRaw, summary.unit)
-          : formatApiKeyUsageDetailByKey(summary, "totalGranted");
-        const availableText = Number.isFinite(availableRaw)
-          ? formatApiKeyUsageMoney(availableRaw, summary.unit)
-          : formatApiKeyUsageDetailByKey(summary, "totalAvailable");
-        const expiresText = formatApiKeyUsageDetailByKey(summary, "expiresAt");
+        const expiresText =
+          quota.expiresAt != null
+            ? formatApiKeyUsageDetailValue({
+                key: "expiresAt",
+                value: String(quota.expiresAt),
+              })
+            : "-";
         const unlimitedText = t("codex.newApi.quota.unlimited", "不限量");
         const quotaValueText =
           summary.quotaUnlimited === true
@@ -12711,6 +12726,7 @@ export function CodexAccountsPage() {
     const baseUrl =
       provider?.baseUrl.trim() || (account.api_base_url || "").trim() || "-";
     const usedPercent = formatApiKeyUsagePercent(summary);
+    const newApiQuota = resolveNewApiQuotaSnapshot(summary);
     const summaryDetails =
       usageMode === "new_api"
         ? [
@@ -12720,14 +12736,10 @@ export function CodexAccountsPage() {
                 "codex.modelProviders.usage.fields.totalGranted",
                 "授予额度",
               ),
-              value: (() => {
-                const raw = Number(
-                  findApiKeyUsageDetail(summary, "totalGranted")?.value ?? NaN,
-                );
-                return Number.isFinite(raw)
-                  ? formatApiKeyUsageMoney(raw, summary?.unit)
-                  : formatApiKeyUsageDetailByKey(summary, "totalGranted");
-              })(),
+              value: formatApiKeyUsageMoney(
+                newApiQuota.granted,
+                summary?.unit,
+              ),
             },
             {
               key: "totalAvailable",
@@ -12735,15 +12747,10 @@ export function CodexAccountsPage() {
                 "codex.modelProviders.usage.fields.totalAvailable",
                 "可用额度",
               ),
-              value: (() => {
-                const raw = Number(
-                  findApiKeyUsageDetail(summary, "totalAvailable")?.value ??
-                    NaN,
-                );
-                return Number.isFinite(raw)
-                  ? formatApiKeyUsageMoney(raw, summary?.unit)
-                  : formatApiKeyUsageDetailByKey(summary, "totalAvailable");
-              })(),
+              value: formatApiKeyUsageMoney(
+                newApiQuota.available,
+                summary?.unit,
+              ),
             },
             {
               key: "expiresAt",
@@ -12751,7 +12758,13 @@ export function CodexAccountsPage() {
                 "codex.modelProviders.usage.fields.expiresAt",
                 "过期时间",
               ),
-              value: formatApiKeyUsageDetailByKey(summary, "expiresAt"),
+              value:
+                newApiQuota.expiresAt != null
+                  ? formatApiKeyUsageDetailValue({
+                      key: "expiresAt",
+                      value: String(newApiQuota.expiresAt),
+                    })
+                  : "-",
             },
           ]
         : usageMode === "sub2api"

@@ -219,6 +219,11 @@
       "loginSuccess": "Đăng nhập thành công",
       "switchAccount": "Chuyển tài khoản"
     },
+    "sessionSharing": {
+      "title": "Chia sẻ phiên cục bộ khi chuyển tài khoản",
+      "fullDesc": "Khi chuyển tài khoản, hợp nhất phiên cục bộ và trạng thái khôi phục giữa các tài khoản {{platform}} trên thiết bị này. Tệp chỉ được xử lý cục bộ và nội dung không được tải lên.",
+      "workspaceDesc": "Khi chuyển tài khoản, sao chép và hợp nhất chỉ mục phiên workspace cùng trạng thái khôi phục giữa các tài khoản {{platform}} trên thiết bị này. Cơ sở dữ liệu phiên Builder/Agent đã mã hóa không bị sửa đổi và nội dung không được tải lên."
+    },
     "topRightAd": {
       "ariaLabel": "Vị trí quảng cáo toàn cục góc trên bên phải",
       "badge": "QUẢNG CÁO",
@@ -706,9 +711,9 @@
       "codebuddyAutoRefresh": "Tự động làm mới hạn ngạch CodeBuddy",
       "codebuddyAutoRefreshDesc": "Tần suất tự động cập nhật nền",
       "codebuddyShareSessionsOnSwitch": "Chia sẻ phiên cục bộ khi chuyển tài khoản",
-    "codebuddyShareSessionsOnSwitchDesc": "Hợp nhất phiên cục bộ và trạng thái khôi phục giữa các tài khoản CodeBuddy trên thiết bị này. Nội dung chỉ được đọc và ghi cục bộ, không được tải lên.",
-    "workbuddyShareSessionsOnSwitch": "Chia sẻ phiên cục bộ khi chuyển tài khoản",
-    "workbuddyShareSessionsOnSwitchDesc": "Hợp nhất phiên cục bộ và trạng thái khôi phục giữa các tài khoản WorkBuddy trên thiết bị này. Nội dung chỉ được đọc và ghi cục bộ, không được tải lên.",
+      "codebuddyShareSessionsOnSwitchDesc": "Hợp nhất phiên cục bộ và trạng thái khôi phục giữa các tài khoản CodeBuddy trên thiết bị này. Nội dung chỉ được đọc và ghi cục bộ, không được tải lên.",
+      "workbuddyShareSessionsOnSwitch": "Chia sẻ phiên cục bộ khi chuyển tài khoản",
+      "workbuddyShareSessionsOnSwitchDesc": "Hợp nhất phiên cục bộ và trạng thái khôi phục giữa các tài khoản WorkBuddy trên thiết bị này. Nội dung chỉ được đọc và ghi cục bộ, không được tải lên.",
       "codebuddyAppPath": "Đường dẫn khởi động CodeBuddy",
       "codebuddyAppPathDesc": "Để trống để dùng đường dẫn mặc định",
       "codebuddyAppPathPlaceholder": "Đường dẫn mặc định",
@@ -750,7 +755,7 @@
       "antigravityDualSwitchNoRestart": "Chuyển đôi không cần khởi động lại",
       "antigravityDualSwitchNoRestartDesc": "Khi chuyển tài khoản, việc ghi dữ liệu cục bộ và chuyển đổi liền mạch qua tiện ích mở rộng được thực hiện trong một luồng, không cần khởi động lại Antigravity IDE.",
       "appAutoLaunch": "Khởi chạy CPS khi đăng nhập",
-      "appAutoLaunchDesc": "Tự động khởi chạy ứng dụng sau khi đăng nhập hệ thống",
+      "appAutoLaunchDesc": "Tự khởi động sau đăng nhập. Nếu Windows báo lỗi PowerShell lúc boot, hãy tắt.",
       "startupWakeupDisabled": "Tắt",
       "startupWakeupImmediate": "Đánh thức ngay",
       "startupWakeupDelayed": "Đánh thức sau độ trễ",
@@ -851,7 +856,22 @@
       "externalNetwork": "Cho phép mạng ngoài",
       "externalNetworkDesc": "Tắt: chặn WebDAV, usage OpenRouter, thông báo và kiểm tra cập nhật (tính năng local vẫn chạy).",
       "webdavAllowedDomains": "Danh sách domain WebDAV",
-      "webdavAllowedDomainsDesc": "Cách nhau bằng dấu phẩy; trống = không giới hạn"
+      "webdavAllowedDomainsDesc": "Cách nhau bằng dấu phẩy; trống = không giới hạn",
+      "claudeQuotaDisplayRemaining": "Claude hiển thị % còn lại",
+      "claudeQuotaDisplayRemainingDesc": "Mặc định % đã dùng. Bật = % còn lại. Tự chuyển và cảnh báo vẫn theo đã dùng.",
+      "menuBarQuota": "Hạn mức trực tiếp trên thanh menu",
+      "menuBarQuotaDesc": "Khi bật, hiển thị hạn mức còn lại của tài khoản hiện tại nền tảng đã chọn cạnh biểu tượng. Tùy chọn nền tảng trong hộp thoại.",
+      "menuBarQuotaEnabledDesc": "Đang bật · {{platform}} · còn lại của tài khoản hiện tại nền tảng đó (thấp nhất trong các hạn mức)",
+      "menuBarQuotaConfigure": "Cấu hình",
+      "menuBarQuotaModalTitle": "Hạn mức thanh menu",
+      "menuBarQuotaModalDesc": "Chỉ tùy chọn của tính năng này: theo tài khoản hiện tại. Dịch vụ API Codex: “API + % còn lại của pool”; tài khoản API Key: “API + số dư còn lại”; thường: tiền tố email + % (thấp nhất; đỏ/cam/xanh).",
+      "menuBarQuotaPlatform": "Nền tảng tài khoản",
+      "menuBarQuotaPlatformDesc": "Dùng tài khoản đang dùng của nền tảng đó; cập nhật sau làm mới hoặc chuyển",
+      "menuBarAccountPrefix": "4 ký tự đầu email",
+      "menuBarAccountPrefixDesc": "Chỉ tài khoản thường: tắt sẽ ẩn tiền tố email. Dịch vụ API Codex / API Key vẫn hiện nhãn API",
+      "menuBarQuotaConfirmEnable": "Bật",
+      "codexHideRelayQuota": "Ẩn hạn mức relay",
+      "codexHideRelayQuotaDesc": "Ẩn bảng hạn mức relay / New API trên tổng quan tài khoản Codex."
     },
     "network": {
       "apiTitle": "API Antigravity Cockpit",
@@ -1835,21 +1855,25 @@
       "formatBatchLabel": "Ví dụ hàng loạt"
     },
     "agentIdentityRegistration": {
-      "noticeTitle": "Lưu ý khi nhập Web Session",
-      "noticeMessage": "Đã phát hiện {{count}} tài khoản Web Session. Khi tiếp tục, các tài khoản sẽ tự động được đăng ký dưới dạng Agent Identity.",
-      "noticeApiOnly": "Các tài khoản này chỉ dành cho Dịch vụ API và sẽ tự động được thêm vào nhóm tài khoản của dịch vụ.",
-      "noticeNoSwitch": "Không thể dùng chúng để chuyển tài khoản Codex thông thường, khởi chạy trực tiếp ứng dụng chính thức hay CLI hoặc làm tài khoản liên kết OAuth.",
-      "noticeCredential": "Ứng dụng tạo và lưu cục bộ khóa riêng Agent Identity. Hãy bảo vệ bản sao xuất ra như mật khẩu.",
-      "noticeConfirm": "Tôi đã hiểu, tiếp tục",
       "apiOnlyActionError": "Tài khoản Agent Identity chỉ khả dụng qua Dịch vụ API và không thể chuyển sang hoặc khởi chạy trực tiếp.",
       "oauthBindingUnsupported": "Tài khoản Agent Identity chỉ dành cho Dịch vụ API và không thể dùng làm tài khoản liên kết OAuth."
+    },
+    "webSessionImport": {
+      "noticeTitle": "Lưu ý Web Session",
+      "noticeMessage": "{{count}} Web Session. Không dùng thật; chỉ xem hạn mức.",
+      "noticeQuotaOnly": "Chỉ hạn mức. Không client/CLI/đổi tài khoản.",
+      "noticeNoApi": "Không vào API hay OAuth.",
+      "noticeConfirm": "Đã hiểu, tiếp tục",
+      "actionBlocked": "Web Session chỉ xem hạn mức.",
+      "apiIneligible": "Web Session chỉ hạn mức, không API",
+      "oauthBindingUnsupported": "Web Session không dùng OAuth."
     },
     "exportFormat": {
       "label": "Định dạng xuất",
       "cockpitTools": "CPS​",
       "sub2api": "Định dạng sub2api",
       "cpa": "Định dạng cpa",
-      "agentIdentityCpaUnsupported": "Không thể xuất tài khoản Agent Identity ở định dạng cpa. Hãy dùng Cockpit Tools hoặc sub2api.",
+      "agentIdentityCpaUnsupported": "Không thể xuất tài khoản Agent Identity ở định dạng cpa. Hãy dùng CPS hoặc sub2api.",
       "agentIdentityPrivateKeyNotice": "Bản xuất này chứa khóa riêng Agent Identity có thể khôi phục tài khoản trên thiết bị khác. Hãy bảo vệ khóa như mật khẩu.",
       "downloadAll": "Tải xuống tất cả",
       "cpaCardTitle": "Tài khoản {{index}}",
@@ -1954,6 +1978,11 @@
       "summaryMeta": "{{count}} tài khoản · {{scope}}",
       "summaryMetaUnconfigured": "Chưa cấu hình · {{scope}}",
       "memberTitle": "Thành viên bộ sưu tập",
+      "memberPriorityLabel": "Ưu tiên",
+      "memberPriorityLowest": "Thấp nhất",
+      "memberPriorityNormal": "Bình thường",
+      "memberPriorityHighest": "Cao nhất",
+      "memberPriorityDesc": "Cao nhất được dùng trước, Bình thường theo quy tắc hiện tại, còn Thấp nhất chỉ dùng khi các tài khoản khác không khả dụng.",
       "stats": {
         "requests": "Yêu cầu",
         "requestsDetail": "OK {{success}} / Lỗi {{failed}} / Hủy {{canceled}} / Nguồn {{upstreamFailed}} / Chưa xong {{incomplete}}",
@@ -1971,7 +2000,8 @@
         "images": "Yêu cầu ảnh",
         "imagesDetail": "Tạo {{generate}} / Sửa {{edit}} / Quyền {{blocked}}",
         "estimatedCost": "Giá trị ước tính",
-        "estimatedCostDetail": "Cộng dồn từ ảnh chụp giá của từng yêu cầu"
+        "estimatedCostDetail": "Cộng dồn từ ảnh chụp giá của từng yêu cầu",
+        "successRateLabel": "Tỷ lệ thành công"
       },
       "routingLabel": "Định tuyến",
       "routingSaveSuccess": "Đã cập nhật định tuyến dịch vụ API",
@@ -3037,7 +3067,12 @@
           "pending": "Đang chờ",
           "completed": "Hoàn tất"
         },
-        "officialClientOnlyError": "Nhà cung cấp này chỉ nhận yêu cầu từ ứng dụng Codex chính thức. Kiểm thử một lần bấm hiện dùng gateway cục bộ, nhưng upstream vẫn từ chối yêu cầu kiểm thử này. Hãy dựa vào hành vi khi chạy trong Codex chính thức."
+        "officialClientOnlyError": "Nhà cung cấp này chỉ nhận yêu cầu từ ứng dụng Codex chính thức. Kiểm thử một lần bấm hiện dùng gateway cục bộ, nhưng upstream vẫn từ chối yêu cầu kiểm thử này. Hãy dựa vào hành vi khi chạy trong Codex chính thức.",
+        "modelAuto": "Tự động (danh mục / phát hiện)",
+        "modelCustom": "Mô hình tùy chỉnh…",
+        "modelLabel": "Mô hình kiểm tra",
+        "modelCustomPlaceholder": "ID mô hình, vd. gpt-4.1-mini",
+        "modelHint": "Tùy chọn: mô hình chung. Để trống sẽ tự chọn từ danh mục."
       },
       "enableAndStart": "Chạy",
       "instance": {
@@ -3131,7 +3166,8 @@
       },
       "renameApiKeyPrompt": "Đổi tên API key",
       "renameApiKeySuccess": "Đã đổi tên API key",
-      "renameApiKeyFailed": "Đổi tên API key thất bại: {{error}}"
+      "renameApiKeyFailed": "Đổi tên API key thất bại: {{error}}",
+      "existingApiKeysSearch": "Tìm API Key…"
     },
     "quickSwitch": {
       "action": "Chuyển nhanh nhà cung cấp",
@@ -3383,7 +3419,9 @@
         "excludedModels": "Mô hình loại trừ",
         "excludedModelsPlaceholder": "Mỗi dòng một mô hình hoặc mẫu",
         "savePolicy": "Lưu chính sách",
-        "policySaved": "Đã lưu chính sách mô hình của Key"
+        "policySaved": "Đã lưu chính sách mô hình của Key",
+        "lastUsed": "Dùng gần nhất",
+        "routingAccounts": "Tài khoản định tuyến"
       },
       "routing": {
         "optionsTitle": "Tùy chọn định tuyến",
@@ -3420,7 +3458,14 @@
         "loading": "Đang tải nhật ký",
         "gatewayModeUnknown": "Che do khong xac dinh",
         "requestIdShort": "ID yêu cầu {{id}}",
-        "httpStatus": "Trạng thái HTTP {{status}}"
+        "httpStatus": "Trạng thái HTTP {{status}}",
+        "allInstances": "Mọi instance",
+        "instanceFilter": "Phiên bản",
+        "instanceUnknown": "Phiên bản không rõ",
+        "reasoningEffort": "Cường độ suy luận",
+        "reasoningEffortValue": "Suy {{effort}}",
+        "serviceTier": "Hạng dịch vụ",
+        "serviceTierValue": "Hạng {{tier}}"
       },
       "timeouts": {
         "entryLabel": "Nâng cao",
@@ -3481,6 +3526,10 @@
         "clearSelection": "Bỏ chọn",
         "saveSuccess": "Đã lưu chặn mô hình tài khoản",
         "cardCount": "Chặn {{count}}"
+      },
+      "usage": {
+        "title": "Thống kê dùng",
+        "lastRecorded": "Ghi nhận gần nhất"
       }
     },
     "apiKey": {
@@ -3695,7 +3744,11 @@
       "autoSyncBadge": "Tự động"
     },
     "exportAuthFailed": "Xuất lỗi",
-    "exportAuthFailedTitle": "Xuất tất cả tài khoản auth lỗi"
+    "exportAuthFailedTitle": "Xuất tất cả tài khoản auth lỗi",
+    "accounts": {
+      "showRelayQuota": "Hiện hạn mức relay",
+      "hideRelayQuota": "Ẩn hạn mức relay"
+    }
   },
   "githubCopilot": {
     "title": "Quản lý tài khoản GitHub Copilot",
@@ -4897,7 +4950,19 @@
       "queryFailed": "Truy vấn thất bại",
       "retry": "Thử lại",
       "inactive": "Không khả dụng",
-      "inactiveHint": "Check-in không hoạt động với tài khoản này"
+      "inactiveHint": "Check-in không hoạt động với tài khoản này",
+      "autoCheckinSettings": "Cài đặt điểm danh tự động",
+      "autoCheckinLabel": "Điểm danh tự động",
+      "autoCheckinOff": "Điểm danh tự động tắt",
+      "autoCheckinEnabledHint": "Điểm danh tự động bật: Điểm danh ngẫu nhiên từ {{start}} đến {{end}}",
+      "autoCheckinDisabledHint": "Điểm danh tự động tắt",
+      "enableAutoCheckin": "Bật điểm danh tự động",
+      "enableAutoCheckinDesc": "Tự động điểm danh ngẫu nhiên mỗi ngày trong khoảng thời gian quy định",
+      "randomTimeRange": "Khoảng thời gian điểm danh ngẫu nhiên",
+      "startTime": "Thời gian bắt đầu",
+      "endTime": "Thời gian kết thúc",
+      "timeRangeHint": "Tự động chọn một thời điểm ngẫu nhiên mỗi ngày trong khoảng này để điểm danh chạy ngầm.",
+      "timeRangeError": "Thời gian bắt đầu không thể sau thời gian kết thúc"
     }
   },
   "zcode": {
@@ -5150,7 +5215,13 @@
     "saveAccountName": "Lưu tên tài khoản",
     "cancelEditAccountName": "Hủy chỉnh sửa",
     "accountNameRequired": "Tên tài khoản là bắt buộc.",
-    "copySecret": "Sao chép mã bí mật"
+    "copySecret": "Sao chép mã bí mật",
+    "migrationBatchProgress": "Quét {{current}}/{{total}}",
+    "migrationBatchIncomplete": "Chưa xong; lưu một phần hoặc tiếp tục.",
+    "continueMigrationScan": "Tiếp tục quét",
+    "savePartialMigrationBatch": "Lưu một phần",
+    "saveCompleteMigrationBatch": "Lưu toàn bộ",
+    "clearMigrationBatch": "Xóa lô"
   },
   "logViewer": {
     "fileLabel": "Tệp nhật ký",
@@ -5353,9 +5424,20 @@
       "localDesc": "Nhập từ ~/.grok/auth.json, hoặc chọn auth.json chính thức / JSON xuất đầy đủ của ứng dụng này.",
       "localClient": "Nhập từ Grok CLI cục bộ",
       "apiKeyTab": "Khóa API",
-      "apiKeyDesc": "Dán khóa API xAI (XAI_API_KEY / xai-… chính thức). Được inject thành biến môi trường khi khởi chạy CLI; không ghi đè đăng nhập OAuth chính thức.",
+      "apiKeyDesc": "Dán khóa API xAI (XAI_API_KEY / xai-… chính thức). Khóa được đưa vào qua GROK_HOME riêng của tài khoản khi khởi chạy CLI và không ghi đè đăng nhập OAuth chính thức.",
       "apiKeyPlaceholder": "dán xai-…",
-      "apiKeyAction": "Thêm API Key"
+      "apiKeyAction": "Thêm API Key",
+      "apiMode": "Loại API",
+      "apiModeOfficial": "xAI chính thức",
+      "apiModeCustom": "Bên thứ ba",
+      "customApiDesc": "Cấu hình Base URL tương thích OpenAI, ID mô hình và khóa API. Khi khởi chạy, config.toml riêng của tài khoản được ghi và khóa chỉ được đưa vào tiến trình CLI đó.",
+      "customApiKeyPlaceholder": "Dán khóa API bên thứ ba",
+      "apiBaseUrl": "URL cơ sở",
+      "apiBaseUrlPlaceholder": "Ví dụ: https://api.example.com/v1",
+      "apiModel": "ID mô hình",
+      "apiModelPlaceholder": "Ví dụ: grok-4.1-fast",
+      "apiFieldRequired": "Nhập {{field}}",
+      "apiBaseUrlInvalid": "Nhập URL http:// hoặc https:// đầy đủ, không chứa thông tin xác thực, tham số truy vấn hay phân đoạn"
     },
     "instances": {
       "unsupported": "Đa phiên bản Grok CLI chỉ được hỗ trợ trên macOS, Windows và Linux.",

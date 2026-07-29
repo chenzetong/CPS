@@ -63,6 +63,7 @@ import { GroupAccountPickerModal } from '../components/GroupAccountPickerModal'
 import { ModalErrorMessage, useModalErrorState } from '../components/ModalErrorMessage'
 import { MfaQuickCodeSelect } from '../components/MfaQuickCodeSelect'
 import { useEscClose } from '../hooks/useEscClose'
+import { useEnterConfirm } from '../hooks/useEnterConfirm'
 import {
   AccountGroup,
   getAccountGroups,
@@ -1807,6 +1808,27 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
 
   useEscClose(showAddModal, closeAddModal);
   useEscClose(showSwitchHistoryModal, () => setShowSwitchHistoryModal(false));
+  useEscClose(Boolean(deleteConfirm) && !deleting, () => {
+    setDeleteConfirm(null)
+    setDeleteConfirmError(null)
+  });
+  useEnterConfirm(Boolean(deleteConfirm) && !deleting, () => {
+    void confirmDelete()
+  });
+  useEscClose(Boolean(groupDeleteConfirm) && !deletingGroup, () => {
+    setGroupDeleteConfirm(null)
+    setGroupDeleteError(null)
+  });
+  useEnterConfirm(Boolean(groupDeleteConfirm) && !deletingGroup, () => {
+    void confirmDeleteGroup()
+  });
+  useEscClose(Boolean(tagDeleteConfirm) && !deletingTag, () => {
+    setTagDeleteConfirm(null)
+    setTagDeleteConfirmError(null)
+  });
+  useEnterConfirm(Boolean(tagDeleteConfirm) && !deletingTag, () => {
+    void confirmDeleteTag()
+  });
 
   const runModalAction = async (
     label: string,
@@ -3010,18 +3032,6 @@ export function AccountsPage({ onNavigate }: AccountsPageProps) {
   const renderGridView = () => {
     return (
       <div className="grid-view-container">
-        {paginatedAccounts.length > 0 && (
-          <div className="grid-view-header" style={{ marginBottom: '12px', paddingLeft: '4px' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-color)' }}>
-              <input
-                type="checkbox"
-                checked={allPaginatedSelected}
-                onChange={toggleSelectAll}
-              />
-              {t('common.selectAll', '全选')}
-            </label>
-          </div>
-        )}
         {!groupByTag ? (
           <div className="accounts-grid">
             {renderInlineFolderCards()}

@@ -37,6 +37,7 @@ import { QuickSettingsPopover } from '../components/QuickSettingsPopover';
 import { MultiSelectFilterDropdown, type MultiSelectFilterOption } from '../components/MultiSelectFilterDropdown';
 import { SingleSelectFilterDropdown } from '../components/SingleSelectFilterDropdown';
 import { useEscClose } from '../hooks/useEscClose';
+import { useEnterConfirm } from '../hooks/useEnterConfirm';
 import {
   PlatformOverviewTab,
   PlatformOverviewTabsHeader,
@@ -991,6 +992,14 @@ export function QoderAccountsPage() {
     }
   }, [accounts, deletingTag, store, t, tagDeleteConfirm]);
 
+  useEscClose(Boolean(tagDeleteConfirm) && !deletingTag, () => {
+    setTagDeleteConfirm(null);
+    setTagDeleteConfirmError(null);
+  });
+  useEnterConfirm(Boolean(tagDeleteConfirm) && !deletingTag, () => {
+    void confirmDeleteTag();
+  });
+
   const handleImportLocal = useCallback(async () => {
     if (addStatus === 'loading') return;
     setAddStatus('loading');
@@ -1776,14 +1785,6 @@ export function QoderAccountsPage() {
     if (viewMode === 'grid') {
       return (
         <div className="grid-view-container">
-          {paginatedAccounts.length > 0 && (
-            <div className="grid-view-header" style={{ marginBottom: '12px', paddingLeft: '4px' }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-color)' }}>
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
-                {t('common.selectAll', '全选')}
-              </label>
-            </div>
-          )}
           {!groupByTag ? (
             <div className="ghcp-accounts-grid">{renderGridCards(paginatedAccounts)}</div>
           ) : (

@@ -26,6 +26,11 @@
     "detail": "詳情",
     "editable": "可編輯",
     "preview": "預覽",
+    "sessionSharing": {
+      "title": "切換帳號時共享本機對話",
+      "fullDesc": "切換帳號時合併此裝置上 {{platform}} 帳號的本機對話與還原狀態；只會在本機讀寫檔案，不會上傳對話內容。",
+      "workspaceDesc": "切換帳號時複製並合併此裝置上 {{platform}} 帳號的 workspace 對話索引與還原狀態；不會修改加密的 Builder/Agent 對話資料庫，也不會上傳內容。"
+    },
     "shared": {
       "addAccount": "新增帳號",
       "columns": {
@@ -702,9 +707,9 @@
       "codebuddyAutoRefresh": "CodeBuddy 自動刷新配額",
       "codebuddyAutoRefreshDesc": "背景自動更新頻率",
       "codebuddyShareSessionsOnSwitch": "切換帳號時共享本機對話",
-    "codebuddyShareSessionsOnSwitchDesc": "切換帳號時合併此裝置上 CodeBuddy 帳號的本機對話與恢復狀態；只會在本機讀寫檔案，不會上傳對話內容。",
-    "workbuddyShareSessionsOnSwitch": "切換帳號時共享本機對話",
-    "workbuddyShareSessionsOnSwitchDesc": "切換帳號時合併此裝置上 WorkBuddy 帳號的本機對話與恢復狀態；只會在本機讀寫檔案，不會上傳對話內容。",
+      "codebuddyShareSessionsOnSwitchDesc": "切換帳號時合併此裝置上 CodeBuddy 帳號的本機對話與恢復狀態；只會在本機讀寫檔案，不會上傳對話內容。",
+      "workbuddyShareSessionsOnSwitch": "切換帳號時共享本機對話",
+      "workbuddyShareSessionsOnSwitchDesc": "切換帳號時合併此裝置上 WorkBuddy 帳號的本機對話與恢復狀態；只會在本機讀寫檔案，不會上傳對話內容。",
       "codebuddyAppPath": "CodeBuddy 啟動路徑",
       "codebuddyAppPathDesc": "留空則使用預設路徑",
       "codebuddyAppPathPlaceholder": "預設路徑",
@@ -746,7 +751,7 @@
       "antigravityDualSwitchNoRestart": "無感雙通道切號（不重啟）",
       "antigravityDualSwitchNoRestartDesc": "切號時同時執行本地落盤與擴充套件無感切號，不再自動重啟 Antigravity IDE。",
       "appAutoLaunch": "開機時啟動 CPS",
-      "appAutoLaunchDesc": "系統登入後自動啟動應用程式",
+      "appAutoLaunchDesc": "系統登入後自動啟動應用。若 Windows 開機時出現 PowerShell 錯誤，請先關閉此選項。",
       "startupWakeupDisabled": "關閉",
       "startupWakeupImmediate": "立即喚醒",
       "startupWakeupDelayed": "延遲喚醒",
@@ -851,7 +856,22 @@
       "externalNetwork": "允許外連",
       "externalNetworkDesc": "關閉後阻斷 WebDAV 同步、OpenRouter 用量刷新、遠端公告與自動更新檢查（不影響本機功能）",
       "webdavAllowedDomains": "WebDAV 網域白名單",
-      "webdavAllowedDomainsDesc": "逗號分隔；留空不限制"
+      "webdavAllowedDomainsDesc": "逗號分隔；留空不限制",
+      "claudeQuotaDisplayRemaining": "Claude 額度顯示剩餘%",
+      "claudeQuotaDisplayRemainingDesc": "預設顯示已用百分比；開啟後改為顯示剩餘百分比。自動切號與預警仍依已用比例計算。",
+      "menuBarQuota": "選單列顯示即時額度",
+      "menuBarQuotaDesc": "啟用後在選單列圖示旁顯示所選平台目前帳號的剩餘額度；平台等專屬選項在彈窗中設定",
+      "menuBarQuotaEnabledDesc": "已啟用 · {{platform}} · 顯示該平台目前帳號剩餘額度（多條取最低）",
+      "menuBarQuotaConfigure": "設定",
+      "menuBarQuotaModalTitle": "選單列額度",
+      "menuBarQuotaModalDesc": "以下為選單列額度的專屬選項：跟隨所選平台目前帳號。Codex 目前為 API 服務時顯示「API + 池剩餘%」；API Key 帳號顯示「API + 剩餘額度」；一般帳號顯示信箱前綴與剩餘%（多條取最低；低紅、中橙、高綠）。",
+      "menuBarQuotaPlatform": "額度帳號平台",
+      "menuBarQuotaPlatformDesc": "跟隨該平台目前正在使用的帳號，重新整理或切換後自動更新",
+      "menuBarAccountPrefix": "顯示帳號信箱前 4 碼",
+      "menuBarAccountPrefixDesc": "僅一般帳號：關閉後不顯示信箱前綴。Codex API 服務 / API Key 仍會顯示 API 標籤",
+      "menuBarQuotaConfirmEnable": "啟用",
+      "codexHideRelayQuota": "隱藏中轉站額度",
+      "codexHideRelayQuotaDesc": "開啟後，Codex 帳號總覽隱藏中轉 / New API 類額度面板，減輕列表重疊與視覺干擾。"
     },
     "network": {
       "apiTitle": "反重力駕駛艙 API",
@@ -1835,21 +1855,25 @@
       "formatBatchLabel": "批次範例"
     },
     "agentIdentityRegistration": {
-      "noticeTitle": "Web Session 匯入須知",
-      "noticeMessage": "偵測到 {{count}} 個 Web Session 帳號。繼續後將自動註冊為 Agent Identity。",
-      "noticeApiOnly": "這類帳號僅供 API 服務使用，確認後會自動加入 API 服務帳號池。",
-      "noticeNoSwitch": "無法作為一般 Codex 帳號切換，不能直接啟動官方用戶端或 CLI，也不能作為 OAuth 綁定帳號。",
-      "noticeCredential": "應用程式會在本機產生並儲存 Agent Identity 私密金鑰；匯出備份時請像密碼一樣保護。",
-      "noticeConfirm": "已知悉，繼續匯入",
       "apiOnlyActionError": "Agent Identity 帳號僅支援 API 服務，無法作為一般帳號切換或啟動。",
       "oauthBindingUnsupported": "Agent Identity 帳號僅供 API 服務使用，不能作為 OAuth 綁定帳號。"
+    },
+    "webSessionImport": {
+      "noticeTitle": "Web Session 匯入須知",
+      "noticeMessage": "偵測到 {{count}} 個 Web Session 帳號。此格式不支援實際使用，僅支援查看額度。",
+      "noticeQuotaOnly": "僅支援查看額度，不能啟動官方用戶端或 CLI，也不能切換帳號。",
+      "noticeNoApi": "不能加入 Codex API 服務帳號池，也不能作為 OAuth 綁定帳號。",
+      "noticeConfirm": "已知悉，繼續匯入",
+      "actionBlocked": "Web Session 帳號僅支援查看額度，無法切換或啟動。",
+      "apiIneligible": "Web Session 僅支援查看額度，不能加入 API 服務",
+      "oauthBindingUnsupported": "Web Session 帳號僅支援查看額度，不能作為 OAuth 綁定帳號。"
     },
     "exportFormat": {
       "label": "匯出格式",
       "cockpitTools": "CPS",
       "sub2api": "sub2api 格式",
       "cpa": "cpa 格式",
-      "agentIdentityCpaUnsupported": "Agent Identity 帳號不支援 cpa 格式，請使用 Cockpit Tools 或 sub2api 格式匯出。",
+      "agentIdentityCpaUnsupported": "Agent Identity 帳號不支援 cpa 格式，請使用 CPS 或 sub2api 格式匯出。",
       "agentIdentityPrivateKeyNotice": "匯出內容包含 Agent Identity 私密金鑰，可用於在其他裝置還原帳號。請像密碼一樣妥善保管。",
       "downloadAll": "一鍵下載全部",
       "cpaCardTitle": "帳號 {{index}}",
@@ -1954,6 +1978,11 @@
       "summaryMeta": "{{count}} 個帳號 · {{scope}}",
       "summaryMetaUnconfigured": "未設定 · {{scope}}",
       "memberTitle": "集合成員",
+      "memberPriorityLabel": "優先級",
+      "memberPriorityLowest": "最低",
+      "memberPriorityNormal": "一般",
+      "memberPriorityHighest": "最高",
+      "memberPriorityDesc": "最高會優先使用，一般依目前規則排程，最低僅在其他帳號無法使用時採用。",
       "stats": {
         "requests": "總請求數",
         "requestsDetail": "成功 {{success}} / 失敗 {{failed}} / 取消 {{canceled}} / 上游失敗 {{upstreamFailed}} / 未完成 {{incomplete}}",
@@ -1971,7 +2000,8 @@
         "images": "圖片請求",
         "imagesDetail": "生成 {{generate}} / 編輯 {{edit}} / 權限 {{blocked}}",
         "estimatedCost": "估算價值",
-        "estimatedCostDetail": "依每次請求的價格快照累計"
+        "estimatedCostDetail": "依每次請求的價格快照累計",
+        "successRateLabel": "成功率"
       },
       "routingLabel": "調度策略",
       "routingSaveSuccess": "API 服務調度策略已更新",
@@ -3037,7 +3067,12 @@
           "pending": "等待中",
           "completed": "已完成"
         },
-        "officialClientOnlyError": "此供應商限制只允許 Codex 官方用戶端請求；目前一鍵測試已走本地閘道，但上游仍拒絕了這次測試請求。請以官方 Codex 實際啟動後的表現為準。"
+        "officialClientOnlyError": "此供應商限制只允許 Codex 官方用戶端請求；目前一鍵測試已走本地閘道，但上游仍拒絕了這次測試請求。請以官方 Codex 實際啟動後的表現為準。",
+        "modelAuto": "自動選擇（依目錄/探測）",
+        "modelCustom": "自訂模型…",
+        "modelLabel": "測試模型",
+        "modelCustomPlaceholder": "輸入模型 ID，例如 gpt-4.1-mini",
+        "modelHint": "可選統一模型。留空則依各供應商目錄或探測結果自動選擇。"
       },
       "enableAndStart": "啟動",
       "instance": {
@@ -3131,7 +3166,8 @@
       },
       "renameApiKeyPrompt": "重新命名 API Key",
       "renameApiKeySuccess": "API Key 已重新命名",
-      "renameApiKeyFailed": "重新命名 API Key 失敗：{{error}}"
+      "renameApiKeyFailed": "重新命名 API Key 失敗：{{error}}",
+      "existingApiKeysSearch": "搜尋既有 API Key…"
     },
     "quickSwitch": {
       "action": "快速切換供應商",
@@ -3383,7 +3419,9 @@
         "excludedModels": "排除模型",
         "excludedModelsPlaceholder": "每行一個模型或萬用字元",
         "savePolicy": "儲存策略",
-        "policySaved": "Key 策略已儲存"
+        "policySaved": "Key 策略已儲存",
+        "lastUsed": "最近使用",
+        "routingAccounts": "路由帳號"
       },
       "routing": {
         "optionsTitle": "調度選項",
@@ -3420,7 +3458,14 @@
         "loading": "正在載入請求日誌",
         "gatewayModeUnknown": "模式未知",
         "requestIdShort": "請求 ID {{id}}",
-        "httpStatus": "HTTP 狀態 {{status}}"
+        "httpStatus": "HTTP 狀態 {{status}}",
+        "allInstances": "全部實例",
+        "instanceFilter": "實例",
+        "instanceUnknown": "實例 -",
+        "reasoningEffort": "思考強度",
+        "reasoningEffortValue": "思考 {{effort}}",
+        "serviceTier": "服務等級",
+        "serviceTierValue": "等級 {{tier}}"
       },
       "timeouts": {
         "entryLabel": "進階參數",
@@ -3481,6 +3526,10 @@
         "clearSelection": "清除選取",
         "saveSuccess": "帳號模型停用規則已儲存",
         "cardCount": "停用 {{count}}"
+      },
+      "usage": {
+        "title": "用量統計",
+        "lastRecorded": "最近記錄"
       }
     },
     "apiKey": {
@@ -3695,7 +3744,11 @@
       "autoSyncBadge": "汽車"
     },
     "exportAuthFailed": "匯出失敗帳號",
-    "exportAuthFailedTitle": "匯出全部授權失敗帳號"
+    "exportAuthFailedTitle": "匯出全部授權失敗帳號",
+    "accounts": {
+      "showRelayQuota": "顯示中轉額度",
+      "hideRelayQuota": "隱藏中轉額度"
+    }
   },
   "githubCopilot": {
     "title": "GitHub Copilot 帳號管理",
@@ -4897,7 +4950,19 @@
       "queryFailed": "狀態查詢失敗",
       "retry": "重試",
       "inactive": "不可用",
-      "inactiveHint": "簽到活動未開啟或不適用目前帳號"
+      "inactiveHint": "簽到活動未開啟或不適用目前帳號",
+      "autoCheckinSettings": "自動簽到設定",
+      "autoCheckinLabel": "自動簽到",
+      "autoCheckinOff": "自動簽到未開啟",
+      "autoCheckinEnabledHint": "自動簽到已開啟：將在 {{start}} 至 {{end}} 隨機簽到",
+      "autoCheckinDisabledHint": "自動簽到未開啟",
+      "enableAutoCheckin": "開啟自動簽到",
+      "enableAutoCheckinDesc": "每天在指定時間段內隨機選取一個時間完成自動簽到",
+      "randomTimeRange": "隨機簽到時間段",
+      "startTime": "開始時間",
+      "endTime": "結束時間",
+      "timeRangeHint": "應用程式保持執行時，會在這個時間段內隨機選取一個時間點完成背景自動簽到。",
+      "timeRangeError": "開始時間不能晚於結束時間"
     }
   },
   "zcode": {
@@ -5150,7 +5215,13 @@
     "saveAccountName": "儲存帳號名",
     "cancelEditAccountName": "取消編輯",
     "accountNameRequired": "帳號名不能為空。",
-    "copySecret": "複製秘鑰"
+    "copySecret": "複製秘鑰",
+    "migrationBatchProgress": "已掃描 {{current}}/{{total}}",
+    "migrationBatchIncomplete": "批次未完成；可先儲存部分或繼續掃描。",
+    "continueMigrationScan": "繼續掃描",
+    "savePartialMigrationBatch": "儲存部分批次",
+    "saveCompleteMigrationBatch": "儲存完整批次",
+    "clearMigrationBatch": "清除批次"
   },
   "logViewer": {
     "fileLabel": "日誌檔案",
@@ -5353,9 +5424,20 @@
       "localDesc": "從預設 ~/.grok/auth.json 匯入；也可選擇官方 auth.json 或本應用匯出的完整帳號 JSON 檔案。",
       "localClient": "從本機 Grok CLI 匯入",
       "apiKeyTab": "API 金鑰",
-      "apiKeyDesc": "貼上 xAI API Key（官方 XAI_API_KEY / xai-…）。啟動 CLI 時注入為環境變數，不會覆蓋官方 OAuth 登入。",
+      "apiKeyDesc": "貼上 xAI API Key（官方 XAI_API_KEY / xai-…）。啟動 CLI 時透過帳號專屬 GROK_HOME 注入，不會覆蓋官方 OAuth 登入。",
       "apiKeyPlaceholder": "貼上 xai- 開頭的金鑰",
-      "apiKeyAction": "新增 API Key"
+      "apiKeyAction": "新增 API Key",
+      "apiMode": "API 類型",
+      "apiModeOfficial": "xAI 官方",
+      "apiModeCustom": "第三方相容",
+      "customApiDesc": "設定 OpenAI 相容的 Base URL、模型 ID 與 API Key。啟動時寫入帳號專屬 config.toml，並只向該 CLI 程序注入金鑰。",
+      "customApiKeyPlaceholder": "貼上第三方 API Key",
+      "apiBaseUrl": "介面位址",
+      "apiBaseUrlPlaceholder": "例如 https://api.example.com/v1",
+      "apiModel": "模型 ID",
+      "apiModelPlaceholder": "例如 grok-4.1-fast",
+      "apiFieldRequired": "請填寫{{field}}",
+      "apiBaseUrlInvalid": "請輸入完整的 http:// 或 https:// 位址，且不要包含使用者名稱、查詢參數或片段"
     },
     "instances": {
       "unsupported": "Grok CLI 多開僅支援 macOS、Windows 與 Linux。",

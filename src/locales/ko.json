@@ -26,6 +26,11 @@
     "detail": "상세",
     "editable": "편집 가능",
     "preview": "미리보기",
+    "sessionSharing": {
+      "title": "계정 전환 시 로컬 대화 공유",
+      "fullDesc": "계정 전환 시 이 기기의 {{platform}} 계정 간에 로컬 대화와 복원 상태를 병합합니다. 파일은 로컬에서만 읽고 쓰며 대화 내용은 업로드하지 않습니다.",
+      "workspaceDesc": "계정 전환 시 이 기기의 {{platform}} 계정 간에 workspace 대화 인덱스와 복원 상태를 복사하고 병합합니다. 암호화된 Builder/Agent 대화 데이터베이스는 수정하지 않으며 내용을 업로드하지 않습니다."
+    },
     "shared": {
       "addAccount": "계정 추가",
       "columns": {
@@ -706,9 +711,9 @@
       "codebuddyAutoRefresh": "CodeBuddy 자동 할당량 새로고침",
       "codebuddyAutoRefreshDesc": "백그라운드 자동 업데이트 주기",
       "codebuddyShareSessionsOnSwitch": "계정 전환 시 로컬 대화 공유",
-    "codebuddyShareSessionsOnSwitchDesc": "이 기기의 CodeBuddy 계정 간에 로컬 대화와 복원 상태를 병합합니다. 대화 내용은 로컬에서만 읽고 쓰며 업로드하지 않습니다.",
-    "workbuddyShareSessionsOnSwitch": "계정 전환 시 로컬 대화 공유",
-    "workbuddyShareSessionsOnSwitchDesc": "이 기기의 WorkBuddy 계정 간에 로컬 대화와 복원 상태를 병합합니다. 대화 내용은 로컬에서만 읽고 쓰며 업로드하지 않습니다.",
+      "codebuddyShareSessionsOnSwitchDesc": "이 기기의 CodeBuddy 계정 간에 로컬 대화와 복원 상태를 병합합니다. 대화 내용은 로컬에서만 읽고 쓰며 업로드하지 않습니다.",
+      "workbuddyShareSessionsOnSwitch": "계정 전환 시 로컬 대화 공유",
+      "workbuddyShareSessionsOnSwitchDesc": "이 기기의 WorkBuddy 계정 간에 로컬 대화와 복원 상태를 병합합니다. 대화 내용은 로컬에서만 읽고 쓰며 업로드하지 않습니다.",
       "codebuddyAppPath": "CodeBuddy 실행 경로",
       "codebuddyAppPathDesc": "비워 두면 기본 경로를 사용합니다",
       "codebuddyAppPathPlaceholder": "기본 경로",
@@ -750,7 +755,7 @@
       "antigravityDualSwitchNoRestart": "재시작 없이 이중 전환",
       "antigravityDualSwitchNoRestartDesc": "계정 전환 시 로컬 계정 데이터 기록과 확장 프로그램의 원활한 전환을 한 번에 수행하며, Antigravity IDE를 재시작하지 않습니다.",
       "appAutoLaunch": "로그인 시 CPS 시작",
-      "appAutoLaunchDesc": "시스템 로그인 후 앱을 자동으로 시작합니다",
+      "appAutoLaunchDesc": "로그인 후 자동 실행. Windows 부팅 시 PowerShell 오류가 나면 끄세요.",
       "startupWakeupDisabled": "비활성화",
       "startupWakeupImmediate": "즉시 깨우기",
       "startupWakeupDelayed": "지연 후 깨우기",
@@ -851,7 +856,22 @@
       "externalNetwork": "외부 네트워크 허용",
       "externalNetworkDesc": "끄면 WebDAV, OpenRouter 사용량, 공지, 자동 업데이트 확인을 차단합니다(로컬 기능은 유지).",
       "webdavAllowedDomains": "WebDAV 도메인 허용 목록",
-      "webdavAllowedDomainsDesc": "쉼표 구분; 비우면 제한 없음"
+      "webdavAllowedDomainsDesc": "쉼표 구분; 비우면 제한 없음",
+      "claudeQuotaDisplayRemaining": "Claude 잔여 % 표시",
+      "claudeQuotaDisplayRemainingDesc": "기본은 사용 %. 켜면 잔여 %. 자동 전환·경고는 사용 비율 기준.",
+      "menuBarQuota": "메뉴 막대에 실시간 한도 표시",
+      "menuBarQuotaDesc": "켜면 선택한 플랫폼 현재 계정의 남은 한도를 메뉴 막대 아이콘 옆에 표시합니다. 플랫폼 등 전용 옵션은 대화상자에서 설정합니다.",
+      "menuBarQuotaEnabledDesc": "사용 중 · {{platform}} · 해당 플랫폼 현재 계정 남은 한도(여러 항목 중 최저)",
+      "menuBarQuotaConfigure": "설정",
+      "menuBarQuotaModalTitle": "메뉴 막대 한도",
+      "menuBarQuotaModalDesc": "메뉴 막대 한도 전용 옵션입니다. 선택한 플랫폼의 현재 계정을 따릅니다. Codex API 서비스면 「API + 풀 남은 %」, API Key 계정이면 「API + 잔여 한도」, 일반 계정은 이메일 접두사 + 남은 %(여러 항목 중 최저, 낮음 빨강·중간 주황·높음 초록).",
+      "menuBarQuotaPlatform": "한도 계정 플랫폼",
+      "menuBarQuotaPlatformDesc": "해당 플랫폼의 사용 중 계정을 따르며, 새로고침 또는 전환 후 자동 갱신",
+      "menuBarAccountPrefix": "이메일 앞 4자 표시",
+      "menuBarAccountPrefixDesc": "일반 계정만: 끄면 이메일 접두사 숨김. Codex API 서비스 / API Key는 API 라벨 유지",
+      "menuBarQuotaConfirmEnable": "사용",
+      "codexHideRelayQuota": "중계 한도 숨기기",
+      "codexHideRelayQuotaDesc": "켜면 Codex 계정 개요에서 중계/New API 잔액 패널을 숨겨 겹침을 줄입니다."
     },
     "network": {
       "apiTitle": "반중력 조종석 API",
@@ -1835,21 +1855,25 @@
       "formatBatchLabel": "일괄 예시"
     },
     "agentIdentityRegistration": {
-      "noticeTitle": "Web Session 가져오기 안내",
-      "noticeMessage": "Web Session 계정 {{count}}개를 감지했습니다. 계속하면 Agent Identity로 자동 등록됩니다.",
-      "noticeApiOnly": "이 계정은 API 서비스 전용이며 해당 계정 풀에 자동으로 추가됩니다.",
-      "noticeNoSwitch": "일반 Codex 계정 전환, 공식 클라이언트 또는 CLI 직접 실행, OAuth 연결 계정으로는 사용할 수 없습니다.",
-      "noticeCredential": "앱이 Agent Identity 개인 키를 로컬에서 생성하고 저장합니다. 내보낸 백업은 비밀번호처럼 보호하세요.",
-      "noticeConfirm": "확인하고 계속",
       "apiOnlyActionError": "Agent Identity 계정은 API 서비스에서만 사용할 수 있으며 일반 전환이나 직접 실행은 지원하지 않습니다.",
       "oauthBindingUnsupported": "Agent Identity 계정은 API 서비스 전용이며 OAuth 연결 계정으로 사용할 수 없습니다."
+    },
+    "webSessionImport": {
+      "noticeTitle": "Web Session 가져오기 안내",
+      "noticeMessage": "Web Session {{count}}개 감지. 실제 사용 불가, 할당량 조회만.",
+      "noticeQuotaOnly": "할당량 조회만. 클라이언트/CLI 실행·전환 불가.",
+      "noticeNoApi": "API 서비스·OAuth 연결 불가.",
+      "noticeConfirm": "확인하고 계속",
+      "actionBlocked": "Web Session은 할당량 조회만 가능합니다.",
+      "apiIneligible": "Web Session은 할당량만, API 불가",
+      "oauthBindingUnsupported": "Web Session은 OAuth 연결 불가."
     },
     "exportFormat": {
       "label": "내보내기 형식",
       "cockpitTools": "CPS​",
       "sub2api": "sub2api 형식",
       "cpa": "cpa 형식",
-      "agentIdentityCpaUnsupported": "Agent Identity 계정은 cpa 형식으로 내보낼 수 없습니다. Cockpit Tools 또는 sub2api를 사용하세요.",
+      "agentIdentityCpaUnsupported": "Agent Identity 계정은 cpa 형식으로 내보낼 수 없습니다. CPS 또는 sub2api를 사용하세요.",
       "agentIdentityPrivateKeyNotice": "이 내보내기에는 다른 기기에서 계정을 복원할 수 있는 Agent Identity 개인 키가 포함됩니다. 비밀번호처럼 안전하게 보관하세요.",
       "downloadAll": "모두 다운로드",
       "cpaCardTitle": "계정 {{index}}",
@@ -1954,6 +1978,11 @@
       "summaryMeta": "{{count}}개 계정 · {{scope}}",
       "summaryMetaUnconfigured": "미설정 · {{scope}}",
       "memberTitle": "컬렉션 멤버",
+      "memberPriorityLabel": "우선순위",
+      "memberPriorityLowest": "최저",
+      "memberPriorityNormal": "보통",
+      "memberPriorityHighest": "최고",
+      "memberPriorityDesc": "최고는 우선 사용하고, 보통은 현재 규칙에 따라 배정하며, 최저는 다른 계정을 사용할 수 없을 때만 사용합니다.",
       "stats": {
         "requests": "요청",
         "requestsDetail": "성공 {{success}} / 실패 {{failed}} / 취소 {{canceled}} / 업스트림 {{upstreamFailed}} / 미완료 {{incomplete}}",
@@ -1971,7 +2000,8 @@
         "images": "이미지 요청",
         "imagesDetail": "생성 {{generate}} / 편집 {{edit}} / 권한 {{blocked}}",
         "estimatedCost": "예상 가치",
-        "estimatedCostDetail": "각 요청의 가격 스냅샷 기준 누적"
+        "estimatedCostDetail": "각 요청의 가격 스냅샷 기준 누적",
+        "successRateLabel": "성공률"
       },
       "routingLabel": "라우팅",
       "routingSaveSuccess": "API 서비스 라우팅을 업데이트했습니다",
@@ -3037,7 +3067,12 @@
           "pending": "대기 중",
           "completed": "완료"
         },
-        "officialClientOnlyError": "이 공급자는 공식 Codex 클라이언트의 요청만 허용합니다. 원클릭 테스트는 이제 로컬 게이트웨이를 사용하지만, 업스트림이 이 테스트 요청을 여전히 거부했습니다. 공식 Codex에서 실행한 결과를 기준으로 확인하세요."
+        "officialClientOnlyError": "이 공급자는 공식 Codex 클라이언트의 요청만 허용합니다. 원클릭 테스트는 이제 로컬 게이트웨이를 사용하지만, 업스트림이 이 테스트 요청을 여전히 거부했습니다. 공식 Codex에서 실행한 결과를 기준으로 확인하세요.",
+        "modelAuto": "자동(목록/탐지)",
+        "modelCustom": "사용자 지정 모델…",
+        "modelLabel": "테스트 모델",
+        "modelCustomPlaceholder": "모델 ID (예: gpt-4.1-mini)",
+        "modelHint": "선택: 공통 테스트 모델. 비우면 공급자 목록에서 자동 선택합니다."
       },
       "enableAndStart": "시작",
       "instance": {
@@ -3131,7 +3166,8 @@
       },
       "renameApiKeyPrompt": "API 키 이름 변경",
       "renameApiKeySuccess": "API 키 이름 변경됨",
-      "renameApiKeyFailed": "API 키 이름 변경 실패: {{error}}"
+      "renameApiKeyFailed": "API 키 이름 변경 실패: {{error}}",
+      "existingApiKeysSearch": "기존 API Key 검색…"
     },
     "quickSwitch": {
       "action": "공급자 빠른 전환",
@@ -3383,7 +3419,9 @@
         "excludedModels": "제외 모델",
         "excludedModelsPlaceholder": "줄마다 모델 또는 와일드카드",
         "savePolicy": "정책 저장",
-        "policySaved": "Key 모델 정책 저장됨"
+        "policySaved": "Key 모델 정책 저장됨",
+        "lastUsed": "최근 사용",
+        "routingAccounts": "라우팅 계정"
       },
       "routing": {
         "optionsTitle": "라우팅 옵션",
@@ -3420,7 +3458,14 @@
         "loading": "요청 로그 로드 중",
         "gatewayModeUnknown": "알 수 없는 모드",
         "requestIdShort": "요청 ID {{id}}",
-        "httpStatus": "HTTP 상태 {{status}}"
+        "httpStatus": "HTTP 상태 {{status}}",
+        "allInstances": "전체 인스턴스",
+        "instanceFilter": "인스턴스",
+        "instanceUnknown": "인스턴스 -",
+        "reasoningEffort": "추론 강도",
+        "reasoningEffortValue": "추론 {{effort}}",
+        "serviceTier": "서비스 등급",
+        "serviceTierValue": "등급 {{tier}}"
       },
       "timeouts": {
         "entryLabel": "고급",
@@ -3481,6 +3526,10 @@
         "clearSelection": "선택 해제",
         "saveSuccess": "계정 모델 차단 규칙이 저장되었습니다",
         "cardCount": "{{count}}개 차단"
+      },
+      "usage": {
+        "title": "사용 통계",
+        "lastRecorded": "최근 기록"
       }
     },
     "apiKey": {
@@ -3695,7 +3744,11 @@
       "autoSyncBadge": "자동"
     },
     "exportAuthFailed": "실패 내보내기",
-    "exportAuthFailedTitle": "인증 실패 계정 모두 내보내기"
+    "exportAuthFailedTitle": "인증 실패 계정 모두 내보내기",
+    "accounts": {
+      "showRelayQuota": "중계 한도 표시",
+      "hideRelayQuota": "중계 한도 숨기기"
+    }
   },
   "githubCopilot": {
     "title": "GitHub Copilot 계정 관리",
@@ -4897,7 +4950,19 @@
       "queryFailed": "조회 실패",
       "retry": "재시도",
       "inactive": "사용 불가",
-      "inactiveHint": "이 계정에서는 출석체크를 사용할 수 없습니다"
+      "inactiveHint": "이 계정에서는 출석체크를 사용할 수 없습니다",
+      "autoCheckinSettings": "자동 출석 체크 설정",
+      "autoCheckinLabel": "자동 출석 체크",
+      "autoCheckinOff": "자동 출석 체크 꺼짐",
+      "autoCheckinEnabledHint": "자동 출석 체크 활성화: {{start}} ~ {{end}} 사이 무작위 체크인",
+      "autoCheckinDisabledHint": "자동 출석 체크 비활성화",
+      "enableAutoCheckin": "자동 출석 체크 활성화",
+      "enableAutoCheckinDesc": "지정된 시간 내에서 매일 무작위로 자동 출석 체크를 진행합니다",
+      "randomTimeRange": "무작위 출석 체크 시간대",
+      "startTime": "시작 시간",
+      "endTime": "종료 시간",
+      "timeRangeHint": "매일 이 시간대 내에서 무작위 시간을 선택하여 백그라운드 출석 체크를 완료합니다.",
+      "timeRangeError": "시작 시간은 종료 시간보다 늦을 수 없습니다"
     }
   },
   "zcode": {
@@ -5150,7 +5215,13 @@
     "saveAccountName": "계정 이름 저장",
     "cancelEditAccountName": "편집 취소",
     "accountNameRequired": "계정 이름은 필수입니다.",
-    "copySecret": "시크릿 복사"
+    "copySecret": "시크릿 복사",
+    "migrationBatchProgress": "스캔 {{current}}/{{total}}",
+    "migrationBatchIncomplete": "미완료. 일부 저장 또는 계속.",
+    "continueMigrationScan": "스캔 계속",
+    "savePartialMigrationBatch": "일부 저장",
+    "saveCompleteMigrationBatch": "전체 저장",
+    "clearMigrationBatch": "배치 지우기"
   },
   "logViewer": {
     "fileLabel": "로그 파일",
@@ -5353,9 +5424,20 @@
       "localDesc": "기본 ~/.grok/auth.json에서 가져오거나, 공식 auth.json / 이 앱의 전체 내보내기 JSON 파일을 선택하세요.",
       "localClient": "로컬 Grok CLI에서 가져오기",
       "apiKeyTab": "API 키",
-      "apiKeyDesc": "xAI API 키(공식 XAI_API_KEY / xai-…)를 붙여넣으세요. CLI 실행 시 환경 변수로 주입되며 공식 OAuth 로그인을 덮어쓰지 않습니다.",
+      "apiKeyDesc": "xAI API 키(공식 XAI_API_KEY / xai-…)를 붙여넣으세요. CLI 실행 시 계정 전용 GROK_HOME을 통해 주입되며 공식 OAuth 로그인을 덮어쓰지 않습니다.",
       "apiKeyPlaceholder": "xai-로 시작하는 키",
-      "apiKeyAction": "API Key 추가"
+      "apiKeyAction": "API Key 추가",
+      "apiMode": "API 유형",
+      "apiModeOfficial": "xAI 공식",
+      "apiModeCustom": "타사 호환",
+      "customApiDesc": "OpenAI 호환 Base URL, 모델 ID, API 키를 설정합니다. 실행 시 계정 전용 config.toml을 기록하고 키는 해당 CLI 프로세스에만 주입합니다.",
+      "customApiKeyPlaceholder": "타사 API 키 붙여넣기",
+      "apiBaseUrl": "기본 URL",
+      "apiBaseUrlPlaceholder": "예: https://api.example.com/v1",
+      "apiModel": "모델 ID",
+      "apiModelPlaceholder": "예: grok-4.1-fast",
+      "apiFieldRequired": "{{field}}을(를) 입력하세요",
+      "apiBaseUrlInvalid": "인증 정보, 쿼리 매개변수 또는 프래그먼트가 없는 전체 http:// 또는 https:// URL을 입력하세요"
     },
     "instances": {
       "unsupported": "Grok CLI 다중 인스턴스는 macOS, Windows, Linux에서만 지원됩니다.",

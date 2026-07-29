@@ -26,6 +26,11 @@
     "detail": "Detalles",
     "editable": "Editable​",
     "preview": "Vista previa",
+    "sessionSharing": {
+      "title": "Compartir sesiones locales al cambiar",
+      "fullDesc": "Combina las sesiones locales y el estado de restauración entre cuentas de {{platform}} de este dispositivo al cambiar. Los archivos permanecen locales y el contenido no se sube.",
+      "workspaceDesc": "Copia y combina los índices de sesiones del workspace y el estado de restauración entre cuentas de {{platform}} de este dispositivo. No modifica la base cifrada de sesiones Builder/Agent ni sube contenido."
+    },
     "shared": {
       "addAccount": "Agregar cuenta",
       "columns": {
@@ -702,9 +707,9 @@
       "codebuddyAutoRefresh": "Actualización automática de cuota de CodeBuddy",
       "codebuddyAutoRefreshDesc": "Frecuencia de actualización en segundo plano",
       "codebuddyShareSessionsOnSwitch": "Compartir sesiones locales al cambiar",
-    "codebuddyShareSessionsOnSwitchDesc": "Combina las sesiones locales y el estado de restauración entre las cuentas de CodeBuddy de este dispositivo. El contenido solo se lee y escribe localmente y no se sube.",
-    "workbuddyShareSessionsOnSwitch": "Compartir sesiones locales al cambiar",
-    "workbuddyShareSessionsOnSwitchDesc": "Combina las sesiones locales y el estado de restauración entre las cuentas de WorkBuddy de este dispositivo. El contenido solo se lee y escribe localmente y no se sube.",
+      "codebuddyShareSessionsOnSwitchDesc": "Combina las sesiones locales y el estado de restauración entre las cuentas de CodeBuddy de este dispositivo. El contenido solo se lee y escribe localmente y no se sube.",
+      "workbuddyShareSessionsOnSwitch": "Compartir sesiones locales al cambiar",
+      "workbuddyShareSessionsOnSwitchDesc": "Combina las sesiones locales y el estado de restauración entre las cuentas de WorkBuddy de este dispositivo. El contenido solo se lee y escribe localmente y no se sube.",
       "codebuddyAppPath": "Ruta de inicio de CodeBuddy",
       "codebuddyAppPathDesc": "Déjelo vacío para usar la ruta predeterminada",
       "codebuddyAppPathPlaceholder": "Ruta predeterminada",
@@ -746,7 +751,7 @@
       "antigravityDualSwitchNoRestart": "Cambio dual sin reinicio",
       "antigravityDualSwitchNoRestartDesc": "Al cambiar cuenta, se escriben los datos locales y se ejecuta el cambio fluido de la extensión en un solo flujo, sin reiniciar Antigravity IDE.",
       "appAutoLaunch": "Iniciar CPS al iniciar sesión",
-      "appAutoLaunchDesc": "Iniciar la aplicación automáticamente después de iniciar sesión en el sistema",
+      "appAutoLaunchDesc": "Iniciar tras el inicio de sesión. Si PowerShell falla al arrancar Windows, desactívelo.",
       "startupWakeupDisabled": "Desactivado",
       "startupWakeupImmediate": "Despertar inmediatamente",
       "startupWakeupDelayed": "Despertar con retraso",
@@ -851,7 +856,22 @@
       "externalNetwork": "Permitir red externa",
       "externalNetworkDesc": "Desactivado: bloquea WebDAV, uso de OpenRouter, anuncios y comprobaciones de actualización (lo local sigue).",
       "webdavAllowedDomains": "Lista blanca WebDAV",
-      "webdavAllowedDomainsDesc": "Separado por comas; vacío = sin límite"
+      "webdavAllowedDomainsDesc": "Separado por comas; vacío = sin límite",
+      "claudeQuotaDisplayRemaining": "Cuota Claude como % restante",
+      "claudeQuotaDisplayRemainingDesc": "Por defecto: % usado. Activar = % restante. Cambio automático y alertas siguen el uso.",
+      "menuBarQuota": "Cuota en vivo en la barra de menús",
+      "menuBarQuotaDesc": "Al activarlo, muestra la cuota restante de la cuenta actual de la plataforma elegida junto al icono. Las opciones de plataforma van en un diálogo.",
+      "menuBarQuotaEnabledDesc": "Activo · {{platform}} · restante de la cuenta actual de esa plataforma (la más baja)",
+      "menuBarQuotaConfigure": "Configurar",
+      "menuBarQuotaModalTitle": "Cuota de la barra de menús",
+      "menuBarQuotaModalDesc": "Opciones solo de esta función: sigue la cuenta actual. Servicio API de Codex: «API + % restante del pool»; cuenta API Key: «API + saldo restante»; normal: prefijo de correo + % restante (la más baja; rojo/naranja/verde).",
+      "menuBarQuotaPlatform": "Plataforma de la cuenta",
+      "menuBarQuotaPlatformDesc": "Usa la cuenta activa de esa plataforma; se actualiza al refrescar o cambiar",
+      "menuBarAccountPrefix": "Primeros 4 del correo",
+      "menuBarAccountPrefixDesc": "Solo cuentas normales: desactivado oculta el prefijo de correo. El servicio API de Codex / API Key siguen mostrando API",
+      "menuBarQuotaConfirmEnable": "Activar",
+      "codexHideRelayQuota": "Ocultar cuota relay",
+      "codexHideRelayQuotaDesc": "Oculta los paneles de cuota relay / New API en la vista de cuentas Codex."
     },
     "network": {
       "apiTitle": "API de cabina antigravedad",
@@ -1835,21 +1855,25 @@
       "formatBatchLabel": "Ejemplo por lotes"
     },
     "agentIdentityRegistration": {
-      "noticeTitle": "Aviso de importación de Web Session",
-      "noticeMessage": "Se detectaron {{count}} cuentas Web Session. Al continuar se registrarán automáticamente como Agent Identity.",
-      "noticeApiOnly": "Estas cuentas son solo para el Servicio API y se añadirán automáticamente a su grupo de cuentas.",
-      "noticeNoSwitch": "No se pueden usar para cambiar cuentas normales de Codex, iniciar directamente el cliente oficial o la CLI ni como cuenta vinculada mediante OAuth.",
-      "noticeCredential": "La aplicación genera y guarda localmente una clave privada de Agent Identity. Protege las copias exportadas como contraseñas.",
-      "noticeConfirm": "Entiendo, continuar",
       "apiOnlyActionError": "Las cuentas Agent Identity solo están disponibles mediante el Servicio API y no se pueden cambiar ni iniciar directamente.",
       "oauthBindingUnsupported": "Las cuentas Agent Identity son exclusivas del Servicio API y no se pueden usar como cuentas vinculadas mediante OAuth."
+    },
+    "webSessionImport": {
+      "noticeTitle": "Aviso importación Web Session",
+      "noticeMessage": "{{count}} Web Session. Sin uso real; solo cuota.",
+      "noticeQuotaOnly": "Solo cuota. Sin cliente/CLI/cambio de cuenta.",
+      "noticeNoApi": "Sin pool API ni enlace OAuth.",
+      "noticeConfirm": "Entendido, continuar",
+      "actionBlocked": "Web Session solo cuota; no cambiar ni iniciar.",
+      "apiIneligible": "Web Session solo cuota; sin API",
+      "oauthBindingUnsupported": "Web Session no sirve para OAuth."
     },
     "exportFormat": {
       "label": "Formato de exportación",
       "cockpitTools": "CPS​",
       "sub2api": "Formato sub2api",
       "cpa": "Formato cpa",
-      "agentIdentityCpaUnsupported": "Las cuentas Agent Identity no se pueden exportar en formato cpa. Usa Cockpit Tools o sub2api.",
+      "agentIdentityCpaUnsupported": "Las cuentas Agent Identity no se pueden exportar en formato cpa. Usa CPS o sub2api.",
       "agentIdentityPrivateKeyNotice": "Esta exportación contiene una clave privada de Agent Identity que permite restaurar la cuenta en otro dispositivo. Protégela como una contraseña.",
       "downloadAll": "Descargar todo",
       "cpaCardTitle": "Cuenta {{index}}",
@@ -1954,6 +1978,11 @@
       "summaryMeta": "{{count}} cuentas · {{scope}}",
       "summaryMetaUnconfigured": "Sin configurar · {{scope}}",
       "memberTitle": "Miembros de la colección",
+      "memberPriorityLabel": "Prioridad",
+      "memberPriorityLowest": "Mínima",
+      "memberPriorityNormal": "Estándar",
+      "memberPriorityHighest": "Máxima",
+      "memberPriorityDesc": "Máxima se usa primero; Estándar sigue las reglas actuales; Mínima solo se usa si las demás cuentas no están disponibles.",
       "stats": {
         "requests": "Solicitudes",
         "requestsDetail": "OK {{success}} / Fallo {{failed}} / Canc. {{canceled}} / Origen {{upstreamFailed}} / Incomp. {{incomplete}}",
@@ -1971,7 +2000,8 @@
         "images": "Solicitudes de imagen",
         "imagesDetail": "Generar {{generate}} / Editar {{edit}} / Permiso {{blocked}}",
         "estimatedCost": "Valor estimado",
-        "estimatedCostDetail": "Acumulado desde la instantánea de precio de cada solicitud"
+        "estimatedCostDetail": "Acumulado desde la instantánea de precio de cada solicitud",
+        "successRateLabel": "Tasa de éxito"
       },
       "routingLabel": "Enrutamiento",
       "routingSaveSuccess": "Se actualizó el enrutamiento del servicio API",
@@ -3037,7 +3067,12 @@
           "pending": "Pendiente",
           "completed": "Completado"
         },
-        "officialClientOnlyError": "Este proveedor solo acepta solicitudes del cliente oficial de Codex. La prueba de un clic ahora usa el gateway local, pero el upstream aún rechazó esta solicitud de prueba. Toma como referencia el comportamiento al abrir Codex oficial."
+        "officialClientOnlyError": "Este proveedor solo acepta solicitudes del cliente oficial de Codex. La prueba de un clic ahora usa el gateway local, pero el upstream aún rechazó esta solicitud de prueba. Toma como referencia el comportamiento al abrir Codex oficial.",
+        "modelAuto": "Auto (catálogo / detectar)",
+        "modelCustom": "Modelo personalizado…",
+        "modelLabel": "Modelo de prueba",
+        "modelCustomPlaceholder": "ID de modelo, p. ej. gpt-4.1-mini",
+        "modelHint": "Opcional: modelo común. Vacío = auto del catálogo."
       },
       "enableAndStart": "Iniciar",
       "instance": {
@@ -3131,7 +3166,8 @@
       },
       "renameApiKeyPrompt": "Renombrar API key",
       "renameApiKeySuccess": "API key renombrada",
-      "renameApiKeyFailed": "Error al renombrar API key: {{error}}"
+      "renameApiKeyFailed": "Error al renombrar API key: {{error}}",
+      "existingApiKeysSearch": "Buscar API keys…"
     },
     "quickSwitch": {
       "action": "Cambio rápido de proveedor",
@@ -3383,7 +3419,9 @@
         "excludedModels": "Modelos excluidos",
         "excludedModelsPlaceholder": "Un modelo o patrón por línea",
         "savePolicy": "Guardar política",
-        "policySaved": "Política de modelos del Key guardada"
+        "policySaved": "Política de modelos del Key guardada",
+        "lastUsed": "Último uso",
+        "routingAccounts": "Cuentas de enrutado"
       },
       "routing": {
         "optionsTitle": "Opciones de ruta",
@@ -3420,7 +3458,14 @@
         "loading": "Cargando registros",
         "gatewayModeUnknown": "Modo desconocido",
         "requestIdShort": "Solicitud ID {{id}}",
-        "httpStatus": "Estado HTTP {{status}}"
+        "httpStatus": "Estado HTTP {{status}}",
+        "allInstances": "Todas las instancias",
+        "instanceFilter": "Instancia",
+        "instanceUnknown": "Instancia -",
+        "reasoningEffort": "Razonamiento",
+        "reasoningEffortValue": "Raz. {{effort}}",
+        "serviceTier": "Nivel de servicio",
+        "serviceTierValue": "Nivel {{tier}}"
       },
       "timeouts": {
         "entryLabel": "Avanzado",
@@ -3481,6 +3526,10 @@
         "clearSelection": "Borrar selección",
         "saveSuccess": "Bloqueos de modelo guardados",
         "cardCount": "{{count}} bloqueados"
+      },
+      "usage": {
+        "title": "Estadísticas de uso",
+        "lastRecorded": "Último registro"
       }
     },
     "apiKey": {
@@ -3695,7 +3744,11 @@
       "autoSyncBadge": "Automático"
     },
     "exportAuthFailed": "Exportar fallos",
-    "exportAuthFailedTitle": "Exportar todas las cuentas con fallo de auth"
+    "exportAuthFailedTitle": "Exportar todas las cuentas con fallo de auth",
+    "accounts": {
+      "showRelayQuota": "Mostrar cuota relay",
+      "hideRelayQuota": "Ocultar cuota relay"
+    }
   },
   "githubCopilot": {
     "title": "Gestión de cuentas de GitHub Copilot",
@@ -4897,7 +4950,19 @@
       "queryFailed": "Consulta fallida",
       "retry": "Reintentar",
       "inactive": "No disponible",
-      "inactiveHint": "El check-in no está activo en esta cuenta"
+      "inactiveHint": "El check-in no está activo en esta cuenta",
+      "autoCheckinSettings": "Configuración de registro automático",
+      "autoCheckinLabel": "Registro automático",
+      "autoCheckinOff": "Registro automático desactivado",
+      "autoCheckinEnabledHint": "Registro automático activado: registro aleatorio entre {{start}} y {{end}}",
+      "autoCheckinDisabledHint": "Registro automático desactivado",
+      "enableAutoCheckin": "Habilitar registro automático",
+      "enableAutoCheckinDesc": "Realiza un registro diario aleatorio dentro del rango de tiempo especificado",
+      "randomTimeRange": "Rango de tiempo de registro aleatorio",
+      "startTime": "Hora de inicio",
+      "endTime": "Hora de finalización",
+      "timeRangeHint": "Selecciona diariamente una hora aleatoria dentro de este rango para completar el registro.",
+      "timeRangeError": "La hora de inicio no puede ser posterior a la hora de finalización"
     }
   },
   "zcode": {
@@ -5150,7 +5215,13 @@
     "saveAccountName": "Guardar nombre de cuenta",
     "cancelEditAccountName": "Cancelar edición",
     "accountNameRequired": "El nombre de la cuenta es obligatorio.",
-    "copySecret": "Copiar secreto"
+    "copySecret": "Copiar secreto",
+    "migrationBatchProgress": "Escaneo {{current}}/{{total}}",
+    "migrationBatchIncomplete": "Incompleto; guardar parcial o continuar.",
+    "continueMigrationScan": "Continuar escaneo",
+    "savePartialMigrationBatch": "Guardar parcial",
+    "saveCompleteMigrationBatch": "Guardar completo",
+    "clearMigrationBatch": "Vaciar lote"
   },
   "logViewer": {
     "fileLabel": "Archivo de registro",
@@ -5353,9 +5424,20 @@
       "localDesc": "Importa desde ~/.grok/auth.json o elige un auth.json oficial / JSON de exportación completa de esta app.",
       "localClient": "Importar desde Grok CLI local",
       "apiKeyTab": "Clave API",
-      "apiKeyDesc": "Pega una API key de xAI (XAI_API_KEY / xai-… oficial). Se inyecta como variable de entorno al iniciar el CLI; no sobrescribe el inicio de sesión OAuth oficial.",
+      "apiKeyDesc": "Pega una API key de xAI (XAI_API_KEY / xai-… oficial). Se inyecta mediante un GROK_HOME específico de la cuenta al iniciar el CLI, sin sobrescribir el inicio de sesión OAuth oficial.",
       "apiKeyPlaceholder": "pegar xai-…",
-      "apiKeyAction": "Añadir API Key"
+      "apiKeyAction": "Añadir API Key",
+      "apiMode": "Tipo de API",
+      "apiModeOfficial": "xAI oficial",
+      "apiModeCustom": "Terceros",
+      "customApiDesc": "Configura una Base URL compatible con OpenAI, el ID del modelo y la API key. Al iniciar se escribe un config.toml específico de la cuenta y la clave solo se inyecta en ese proceso CLI.",
+      "customApiKeyPlaceholder": "Pega la API key de terceros",
+      "apiBaseUrl": "URL base",
+      "apiBaseUrlPlaceholder": "Ej.: https://api.example.com/v1",
+      "apiModel": "ID del modelo",
+      "apiModelPlaceholder": "Por ejemplo, grok-4.1-fast",
+      "apiFieldRequired": "Introduce {{field}}",
+      "apiBaseUrlInvalid": "Introduce una URL http:// o https:// completa sin credenciales, parámetros de consulta ni fragmentos"
     },
     "instances": {
       "unsupported": "Las instancias múltiples de Grok CLI solo están disponibles en macOS, Windows y Linux.",

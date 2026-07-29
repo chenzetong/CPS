@@ -219,6 +219,11 @@
       "loginSuccess": "تسجيل الدخول ناجح",
       "switchAccount": "تبديل الحساب"
     },
+    "sessionSharing": {
+      "title": "مشاركة الجلسات المحلية عند التبديل",
+      "fullDesc": "عند تبديل الحساب، يدمج الجلسات المحلية وحالة الاستعادة بين حسابات {{platform}} على هذا الجهاز. تبقى الملفات محلية ولا يتم رفع المحتوى.",
+      "workspaceDesc": "عند تبديل الحساب، ينسخ ويدمج فهارس جلسات workspace وحالة الاستعادة بين حسابات {{platform}} على هذا الجهاز. لا يتم تعديل قاعدة جلسات Builder/Agent المشفرة ولا رفع أي محتوى."
+    },
     "topRightAd": {
       "ariaLabel": "موضع إعلان عام أعلى اليمين",
       "badge": "إعلان",
@@ -749,9 +754,9 @@
       "codebuddyAutoRefresh": "التحديث التلقائي لحصة CodeBuddy",
       "codebuddyAutoRefreshDesc": "فاصل التحديث التلقائي في الخلفية",
       "codebuddyShareSessionsOnSwitch": "مشاركة الجلسات المحلية عند التبديل",
-    "codebuddyShareSessionsOnSwitchDesc": "يدمج الجلسات المحلية وحالة الاستعادة بين حسابات CodeBuddy على هذا الجهاز. تتم قراءة محتوى الجلسات وكتابته محليًا فقط ولا يتم رفعه.",
-    "workbuddyShareSessionsOnSwitch": "مشاركة الجلسات المحلية عند التبديل",
-    "workbuddyShareSessionsOnSwitchDesc": "يدمج الجلسات المحلية وحالة الاستعادة بين حسابات WorkBuddy على هذا الجهاز. تتم قراءة محتوى الجلسات وكتابته محليًا فقط ولا يتم رفعه.",
+      "codebuddyShareSessionsOnSwitchDesc": "يدمج الجلسات المحلية وحالة الاستعادة بين حسابات CodeBuddy على هذا الجهاز. تتم قراءة محتوى الجلسات وكتابته محليًا فقط ولا يتم رفعه.",
+      "workbuddyShareSessionsOnSwitch": "مشاركة الجلسات المحلية عند التبديل",
+      "workbuddyShareSessionsOnSwitchDesc": "يدمج الجلسات المحلية وحالة الاستعادة بين حسابات WorkBuddy على هذا الجهاز. تتم قراءة محتوى الجلسات وكتابته محليًا فقط ولا يتم رفعه.",
       "codebuddyAppPath": "مسار تشغيل CodeBuddy",
       "codebuddyAppPathDesc": "اتركه فارغًا لاستخدام المسار الافتراضي",
       "codebuddyAppPathPlaceholder": "المسار الافتراضي",
@@ -793,7 +798,7 @@
       "antigravityDualSwitchNoRestart": "تبديل ثنائي بدون إعادة تشغيل",
       "antigravityDualSwitchNoRestartDesc": "عند تبديل الحساب، يتم تنفيذ كتابة بيانات الحساب محليًا والتبديل السلس عبر الإضافة في تدفق واحد، دون إعادة تشغيل Antigravity IDE.",
       "appAutoLaunch": "تشغيل CPS عند تسجيل الدخول",
-      "appAutoLaunchDesc": "تشغيل التطبيق تلقائيًا بعد تسجيل الدخول إلى النظام",
+      "appAutoLaunchDesc": "تشغيل بعد تسجيل الدخول. إذا ظهر خطأ PowerShell عند إقلاع Windows فعطّله.",
       "startupWakeupDisabled": "معطل",
       "startupWakeupImmediate": "تنبيه فوري",
       "startupWakeupDelayed": "تنبيه بعد تأخير",
@@ -898,7 +903,22 @@
       "externalNetwork": "السماح بالشبكة الخارجية",
       "externalNetworkDesc": "عند الإيقاف: يمنع WebDAV واستخدام OpenRouter والإعلانات وفحص التحديث التلقائي (المحلي يستمر).",
       "webdavAllowedDomains": "قائمة نطاقات WebDAV",
-      "webdavAllowedDomainsDesc": "مفصولة بفواصل؛ فارغ = بلا حد"
+      "webdavAllowedDomainsDesc": "مفصولة بفواصل؛ فارغ = بلا حد",
+      "claudeQuotaDisplayRemaining": "حصة Claude كنسبة متبقية",
+      "claudeQuotaDisplayRemainingDesc": "الافتراضي: % مستخدم. التفعيل = % متبقي. التبديل والتنبيهات حسب الاستخدام.",
+      "menuBarQuota": "عرض الحصة الحية في شريط القوائم",
+      "menuBarQuotaDesc": "عند التفعيل، تُعرض الحصة المتبقية للحساب الحالي للمنصة المختارة بجانب أيقونة شريط القوائم. خيارات المنصة في مربع حوار.",
+      "menuBarQuotaEnabledDesc": "مفعّل · {{platform}} · المتبقي لحساب هذه المنصة الحالي (الأدنى بين الحصص)",
+      "menuBarQuotaConfigure": "تهيئة",
+      "menuBarQuotaModalTitle": "حصة شريط القوائم",
+      "menuBarQuotaModalDesc": "خيارات مخصصة لهذه الميزة فقط: تتبع الحساب الحالي. خدمة API لـ Codex: «API + نسبة متبقية من المجموعة»؛ حساب مفتاح API: «API + الرصيد المتبقي»؛ عادي: بادئة البريد + النسبة (الأدنى؛ أحمر/برتقالي/أخضر).",
+      "menuBarQuotaPlatform": "منصة حساب الحصة",
+      "menuBarQuotaPlatformDesc": "تستخدم الحساب النشط لتلك المنصة؛ تُحدَّث بعد التحديث أو التبديل",
+      "menuBarAccountPrefix": "أول 4 أحرف من البريد",
+      "menuBarAccountPrefixDesc": "للحسابات العادية فقط: عند الإيقاف تُخفى بادئة البريد. خدمة API لـ Codex / مفتاح API ما زالا يعرضان تسمية API",
+      "menuBarQuotaConfirmEnable": "تفعيل",
+      "codexHideRelayQuota": "إخفاء حصة الترحيل",
+      "codexHideRelayQuotaDesc": "يخفي لوحات حصة الترحيل / New API في نظرة حسابات Codex."
     },
     "network": {
       "apiTitle": "واجهة برمجة تطبيقات قمرة القيادة المضادة للجاذبية",
@@ -1882,21 +1902,25 @@
       "formatBatchLabel": "مثال دفعي"
     },
     "agentIdentityRegistration": {
-      "noticeTitle": "تنبيه استيراد Web Session",
-      "noticeMessage": "تم اكتشاف {{count}} من حسابات Web Session. عند المتابعة ستُسجّل تلقائيًا كـ Agent Identity.",
-      "noticeApiOnly": "هذه الحسابات مخصصة لخدمة API فقط وستُضاف تلقائيًا إلى مجموعة حساباتها.",
-      "noticeNoSwitch": "لا يمكن استخدامها لتبديل حساب Codex العادي أو لتشغيل العميل الرسمي أو CLI مباشرةً أو كحساب مرتبط عبر OAuth.",
-      "noticeCredential": "ينشئ التطبيق مفتاح Agent Identity خاصًا ويحفظه محليًا. احمِ النسخ الاحتياطية المصدّرة مثل كلمات المرور.",
-      "noticeConfirm": "أفهم ذلك، متابعة",
       "apiOnlyActionError": "حسابات Agent Identity متاحة عبر خدمة API فقط ولا يمكن التبديل إليها أو تشغيلها مباشرةً.",
       "oauthBindingUnsupported": "حسابات Agent Identity مخصصة لخدمة API فقط ولا يمكن استخدامها كحسابات مرتبطة عبر OAuth."
+    },
+    "webSessionImport": {
+      "noticeTitle": "تنبيه استيراد Web Session",
+      "noticeMessage": "{{count}} Web Session. غير مدعوم للاستخدام؛ عرض الحصة فقط.",
+      "noticeQuotaOnly": "عرض الحصة فقط. بلا عميل/CLI/تبديل.",
+      "noticeNoApi": "لا إلى خدمة API ولا OAuth.",
+      "noticeConfirm": "فهمت، متابعة",
+      "actionBlocked": "Web Session لعرض الحصة فقط.",
+      "apiIneligible": "Web Session حصة فقط؛ بلا API",
+      "oauthBindingUnsupported": "Web Session ليس لـ OAuth."
     },
     "exportFormat": {
       "label": "تنسيق التصدير",
       "cockpitTools": "CPS​",
       "sub2api": "تنسيق sub2api",
       "cpa": "تنسيق cpa",
-      "agentIdentityCpaUnsupported": "لا يمكن تصدير حسابات Agent Identity بتنسيق cpa. استخدم Cockpit Tools أو sub2api.",
+      "agentIdentityCpaUnsupported": "لا يمكن تصدير حسابات Agent Identity بتنسيق cpa. استخدم CPS أو sub2api.",
       "agentIdentityPrivateKeyNotice": "يتضمن هذا التصدير مفتاح Agent Identity خاصًا يمكن استخدامه لاستعادة الحساب على جهاز آخر. احفظه كما تحفظ كلمة المرور.",
       "downloadAll": "تنزيل الكل",
       "cpaCardTitle": "الحساب {{index}}",
@@ -2001,6 +2025,11 @@
       "summaryMeta": "{{count}} حسابًا · {{scope}}",
       "summaryMetaUnconfigured": "غير مهيأ · {{scope}}",
       "memberTitle": "أعضاء المجموعة",
+      "memberPriorityLabel": "الأولوية",
+      "memberPriorityLowest": "الأدنى",
+      "memberPriorityNormal": "عادية",
+      "memberPriorityHighest": "الأعلى",
+      "memberPriorityDesc": "تُستخدم الأعلى أولًا، والعادية وفق قواعد التوجيه الحالية، والأدنى فقط عند تعذّر استخدام الحسابات الأخرى.",
       "stats": {
         "requests": "الطلبات",
         "requestsDetail": "نجاح {{success}} / فشل {{failed}} / إلغاء {{canceled}} / فشل المصدر {{upstreamFailed}} / غير مكتمل {{incomplete}}",
@@ -2018,7 +2047,8 @@
         "images": "طلبات الصور",
         "imagesDetail": "إنشاء {{generate}} / تعديل {{edit}} / صلاحية {{blocked}}",
         "estimatedCost": "القيمة المقدرة",
-        "estimatedCostDetail": "مجموع لقطات سعر كل طلب"
+        "estimatedCostDetail": "مجموع لقطات سعر كل طلب",
+        "successRateLabel": "معدل النجاح"
       },
       "routingLabel": "توجيه",
       "routingSaveSuccess": "تم تحديث توجيه خدمة API",
@@ -3084,7 +3114,12 @@
           "pending": "قيد الانتظار",
           "completed": "اكتمل"
         },
-        "officialClientOnlyError": "يقبل هذا المزوّد طلبات عميل Codex الرسمي فقط؛ اختبار النقرة الواحدة يستخدم الآن البوابة المحلية، لكن المنبع ما زال يرفض طلب الاختبار هذا. اعتمد على نتيجة التشغيل الفعلي داخل Codex الرسمي."
+        "officialClientOnlyError": "يقبل هذا المزوّد طلبات عميل Codex الرسمي فقط؛ اختبار النقرة الواحدة يستخدم الآن البوابة المحلية، لكن المنبع ما زال يرفض طلب الاختبار هذا. اعتمد على نتيجة التشغيل الفعلي داخل Codex الرسمي.",
+        "modelAuto": "تلقائي (كتالوج / اكتشاف)",
+        "modelCustom": "نموذج مخصص…",
+        "modelLabel": "نموذج الاختبار",
+        "modelCustomPlaceholder": "معرّف النموذج، مثل gpt-4.1-mini",
+        "modelHint": "اختياري: نموذج موحّد. فارغ = اختيار تلقائي من الكتالوج."
       },
       "enableAndStart": "تشغيل",
       "instance": {
@@ -3178,7 +3213,8 @@
       },
       "renameApiKeyPrompt": "إعادة تسمية مفتاح API",
       "renameApiKeySuccess": "تمت إعادة تسمية مفتاح API",
-      "renameApiKeyFailed": "فشل إعادة تسمية مفتاح API: {{error}}"
+      "renameApiKeyFailed": "فشل إعادة تسمية مفتاح API: {{error}}",
+      "existingApiKeysSearch": "بحث عن مفاتيح API…"
     },
     "quickSwitch": {
       "action": "تبديل المزوّد سريعًا",
@@ -3430,7 +3466,9 @@
         "excludedModels": "النماذج المستبعدة",
         "excludedModelsPlaceholder": "نموذج أو نمط في كل سطر",
         "savePolicy": "حفظ السياسة",
-        "policySaved": "تم حفظ سياسة نماذج Key"
+        "policySaved": "تم حفظ سياسة نماذج Key",
+        "lastUsed": "آخر استخدام",
+        "routingAccounts": "حسابات التوجيه"
       },
       "routing": {
         "optionsTitle": "خيارات التوجيه",
@@ -3467,7 +3505,14 @@
         "loading": "جار تحميل سجلات الطلبات",
         "gatewayModeUnknown": "وضع غير معروف",
         "requestIdShort": "المعرّف {{id}}",
-        "httpStatus": "حالة HTTP {{status}}"
+        "httpStatus": "حالة HTTP {{status}}",
+        "allInstances": "كل المثيلات",
+        "instanceFilter": "المثيل",
+        "instanceUnknown": "مثيل -",
+        "reasoningEffort": "شدة التفكير",
+        "reasoningEffortValue": "تفكير {{effort}}",
+        "serviceTier": "مستوى الخدمة",
+        "serviceTierValue": "مستوى {{tier}}"
       },
       "timeouts": {
         "entryLabel": "متقدم",
@@ -3528,6 +3573,10 @@
         "clearSelection": "مسح التحديد",
         "saveSuccess": "تم حفظ حظر نماذج الحساب",
         "cardCount": "{{count}} محظور"
+      },
+      "usage": {
+        "title": "إحصاءات الاستخدام",
+        "lastRecorded": "آخر تسجيل"
       }
     },
     "apiKey": {
@@ -3742,7 +3791,11 @@
       "autoSyncBadge": "آلي"
     },
     "exportAuthFailed": "تصدير الفاشل",
-    "exportAuthFailedTitle": "تصدير كل الحسابات ذات فشل المصادقة"
+    "exportAuthFailedTitle": "تصدير كل الحسابات ذات فشل المصادقة",
+    "accounts": {
+      "showRelayQuota": "إظهار حصة الترحيل",
+      "hideRelayQuota": "إخفاء حصة الترحيل"
+    }
   },
   "githubCopilot": {
     "title": "إدارة حسابات GitHub Copilot",
@@ -4944,7 +4997,19 @@
       "queryFailed": "فشل الاستعلام",
       "retry": "إعادة",
       "inactive": "غير متاح",
-      "inactiveHint": "تسجيل الحضور غير مفعّل لهذا الحساب"
+      "inactiveHint": "تسجيل الحضور غير مفعّل لهذا الحساب",
+      "autoCheckinSettings": "إعدادات تسجيل الوصول التلقائي",
+      "autoCheckinLabel": "تسجيل الوصول التلقائي",
+      "autoCheckinOff": "إيقاف تسجيل الوصول التلقائي",
+      "autoCheckinEnabledHint": "تم تمكين تسجيل الوصول التلقائي: تسجيل عشوائي بين {{start}} و {{end}}",
+      "autoCheckinDisabledHint": "تم تعطيل تسجيل الوصول التلقائي",
+      "enableAutoCheckin": "تمكين تسجيل الوصول التلقائي",
+      "enableAutoCheckinDesc": "تسجيل الوصول يوميًا بشكل عشوائي ضمن النطاق الزمني المحدد",
+      "randomTimeRange": "النطاق الزمني لتسجيل الوصول العشوائي",
+      "startTime": "وقت البدء",
+      "endTime": "وقت الانتهاء",
+      "timeRangeHint": "يختار وقتًا عشوائيًا يوميًا ضمن هذا النطاق لإكمال تسجيل الوصول في الخلفية.",
+      "timeRangeError": "لا يمكن أن يكون وقت البدء متأخرًا عن وقت الانتهاء"
     }
   },
   "zcode": {
@@ -5150,7 +5215,13 @@
     "saveAccountName": "حفظ اسم الحساب",
     "cancelEditAccountName": "إلغاء التعديل",
     "accountNameRequired": "اسم الحساب مطلوب.",
-    "copySecret": "نسخ السر"
+    "copySecret": "نسخ السر",
+    "migrationBatchProgress": "مسح {{current}}/{{total}}",
+    "migrationBatchIncomplete": "غير مكتمل؛ احفظ جزئيًا أو تابع.",
+    "continueMigrationScan": "متابعة المسح",
+    "savePartialMigrationBatch": "حفظ جزئي",
+    "saveCompleteMigrationBatch": "حفظ كامل",
+    "clearMigrationBatch": "مسح الدفعة"
   },
   "logViewer": {
     "fileLabel": "ملف السجل",
@@ -5353,9 +5424,20 @@
       "localDesc": "استورد من ~/.grok/auth.json أو اختر auth.json رسميًا / JSON التصدير الكامل من هذا التطبيق.",
       "localClient": "الاستيراد من Grok CLI المحلي",
       "apiKeyTab": "مفتاح API",
-      "apiKeyDesc": "الصق مفتاح xAI API (XAI_API_KEY / xai-… الرسمي). يُحقن كمتغير بيئة عند تشغيل CLI ولا يستبدل تسجيل الدخول OAuth الرسمي.",
+      "apiKeyDesc": "الصق مفتاح xAI API (XAI_API_KEY / xai-… الرسمي). يُحقن عبر GROK_HOME خاص بالحساب عند تشغيل CLI ولا يستبدل تسجيل الدخول OAuth الرسمي.",
       "apiKeyPlaceholder": "الصق xai-…",
-      "apiKeyAction": "إضافة API Key"
+      "apiKeyAction": "إضافة API Key",
+      "apiMode": "نوع API",
+      "apiModeOfficial": "xAI الرسمي",
+      "apiModeCustom": "طرف ثالث",
+      "customApiDesc": "اضبط Base URL متوافقًا مع OpenAI ومعرّف النموذج ومفتاح API. عند التشغيل، يُكتب config.toml خاص بالحساب ويُحقن المفتاح في عملية CLI هذه فقط.",
+      "customApiKeyPlaceholder": "الصق مفتاح API للطرف الثالث",
+      "apiBaseUrl": "عنوان Base URL",
+      "apiBaseUrlPlaceholder": "مثال: https://api.example.com/v1",
+      "apiModel": "معرّف النموذج",
+      "apiModelPlaceholder": "مثال: grok-4.1-fast",
+      "apiFieldRequired": "أدخل {{field}}",
+      "apiBaseUrlInvalid": "أدخل عنوان http:// أو https:// كاملاً من دون بيانات اعتماد أو معلمات استعلام أو جزء"
     },
     "instances": {
       "unsupported": "تتوافر نسخ Grok CLI المتعددة على macOS وWindows وLinux فقط.",

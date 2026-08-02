@@ -1685,6 +1685,7 @@ pub async fn update_codex_account_note(
     account_password: Option<String>,
     phone_number: Option<String>,
     mail_url: Option<String>,
+    chatgpt_account_id: Option<String>,
 ) -> Result<CodexAccount, String> {
     codex_account::update_account_note(
         &account_id,
@@ -1695,6 +1696,7 @@ pub async fn update_codex_account_note(
             phone_number,
             mail_url,
         },
+        chatgpt_account_id,
     )
 }
 

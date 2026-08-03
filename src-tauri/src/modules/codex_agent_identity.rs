@@ -328,7 +328,7 @@ async fn register_agent_identity_task_with_base_url(
 ) -> Result<String, String> {
     let key = agent_identity_key(account)?;
     let (timestamp, signature) = sign_task_registration(&key, chrono::Utc::now());
-    let client = reqwest::Client::builder()
+    let client = codex_account::account_http_client_builder(account)?
         .timeout(AGENT_IDENTITY_TASK_REGISTRATION_TIMEOUT)
         .connect_timeout(Duration::from_secs(15))
         .build()

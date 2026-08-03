@@ -822,7 +822,9 @@ async fn fetch_remote_account_profile(
         return Err("API Key 账号不支持刷新远端资料".to_string());
     }
 
-    let client = reqwest::Client::new();
+    let client = account_http_client_builder(account)?
+        .build()
+        .map_err(|error| format!("创建账号信息客户端失败: {}", error))?;
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
@@ -1790,6 +1792,40 @@ fn normalize_optional_value(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+pub fn normalize_account_proxy_url(value: Option<String>) -> Result<Option<String>, String> {
+    let Some(proxy_url) = normalize_optional_value(value) else {
+        return Ok(None);
+    };
+    if proxy_url.eq_ignore_ascii_case("direct") || proxy_url.eq_ignore_ascii_case("none") {
+        return Ok(Some("direct".to_string()));
+    }
+    reqwest::Proxy::all(&proxy_url).map_err(|error| format!("账号代理地址无效: {}", error))?;
+    Ok(Some(proxy_url))
+}
+
+/// Builds an HTTP client builder that preserves reqwest's existing behavior unless this account
+/// explicitly opts into a proxy. `direct`/`none` explicitly disables inherited environment proxies.
+pub fn account_http_client_builder(
+    account: &CodexAccount,
+) -> Result<reqwest::ClientBuilder, String> {
+    let mut builder = reqwest::Client::builder();
+    let Some(proxy_url) = account
+        .proxy_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    else {
+        return Ok(builder);
+    };
+    if proxy_url.eq_ignore_ascii_case("direct") || proxy_url.eq_ignore_ascii_case("none") {
+        return Ok(builder.no_proxy());
+    }
+    let proxy =
+        reqwest::Proxy::all(proxy_url).map_err(|error| format!("账号代理地址无效: {}", error))?;
+    builder = builder.proxy(proxy);
+    Ok(builder)
 }
 
 fn normalize_optional_ref(value: Option<&str>) -> Option<String> {
@@ -2927,6 +2963,9 @@ fn apply_account_sensitive_note_metadata(account: &mut CodexAccount, value: &ser
     if let Some(mail_url) = read_account_mail_url(value) {
         account.mail_url = Some(mail_url);
     }
+    if let Some(proxy_url) = read_json_string(value, &["proxy_url", "proxyUrl", "proxy-url"]) {
+        account.proxy_url = Some(proxy_url);
+    }
 }
 
 fn read_codex_api_provider_mode(value: &serde_json::Value) -> Option<CodexApiProviderMode> {
@@ -3220,6 +3259,7 @@ fn load_account_with_summary(
 
 /// 保存单个账号详情
 pub fn save_account(account: &CodexAccount) -> Result<(), String> {
+    normalize_account_proxy_url(account.proxy_url.clone())?;
     let path = get_accounts_dir().join(format!("{}.json", &account.id));
     let content = crate::modules::secure_account_storage::serialize_account_file("codex", account)?;
     write_string_atomic(&path, &content).map_err(|e| format!("写入账号详情失败: {}", e))?;
@@ -5539,9 +5579,10 @@ async fn perform_managed_token_refresh(
         account.id, account.email, reason
     ));
 
-    match codex_oauth::refresh_access_token_with_fallback(
+    match codex_oauth::refresh_access_token_with_fallback_and_proxy(
         &refresh_token,
         Some(account.tokens.id_token.as_str()),
+        account.proxy_url.as_deref(),
     )
     .await
     {
@@ -6075,6 +6116,10 @@ fn import_account_struct(account: CodexAccount) -> Result<CodexAccount, String> 
             imported.account_note = Some(note);
             changed = true;
         }
+        if let Some(proxy_url) = account.proxy_url {
+            imported.proxy_url = normalize_account_proxy_url(Some(proxy_url))?;
+            changed = true;
+        }
         if changed {
             save_account(&imported)?;
         }
@@ -6136,6 +6181,10 @@ fn import_account_struct(account: CodexAccount) -> Result<CodexAccount, String> 
             api_acc.mail_url = Some(mail_url);
             changed = true;
         }
+        if let Some(proxy_url) = account.proxy_url {
+            api_acc.proxy_url = normalize_account_proxy_url(Some(proxy_url))?;
+            changed = true;
+        }
         if changed {
             save_account(&api_acc)?;
         }
@@ -6169,6 +6218,10 @@ fn import_account_struct(account: CodexAccount) -> Result<CodexAccount, String> 
     }
     if let Some(mail_url) = account.mail_url {
         imported.mail_url = Some(mail_url);
+        changed = true;
+    }
+    if let Some(proxy_url) = account.proxy_url {
+        imported.proxy_url = normalize_account_proxy_url(Some(proxy_url))?;
         changed = true;
     }
 
@@ -6217,6 +6270,7 @@ struct CodexAccessTokenImportHints {
     account_password: Option<String>,
     phone_number: Option<String>,
     mail_url: Option<String>,
+    proxy_url: Option<String>,
 }
 
 enum CodexJsonImportCandidate {
@@ -6265,6 +6319,7 @@ fn codex_account_note_update_from_value(value: &serde_json::Value) -> CodexAccou
             ],
         ),
         mail_url: read_account_mail_url(value),
+        proxy_url: read_json_string(value, &["proxy_url", "proxyUrl", "proxy-url"]),
     }
 }
 
@@ -6274,6 +6329,7 @@ fn has_codex_account_note_update(update: &CodexAccountNoteUpdate) -> bool {
         || update.account_password.is_some()
         || update.phone_number.is_some()
         || update.mail_url.is_some()
+        || update.proxy_url.is_some()
 }
 
 fn merge_codex_account_note_update(
@@ -6295,6 +6351,9 @@ fn merge_codex_account_note_update(
     if primary.mail_url.is_none() {
         primary.mail_url = fallback.mail_url;
     }
+    if primary.proxy_url.is_none() {
+        primary.proxy_url = fallback.proxy_url;
+    }
     primary
 }
 
@@ -6307,6 +6366,7 @@ fn codex_account_note_update_from_hints(
         account_password: hints.account_password.clone(),
         phone_number: hints.phone_number.clone(),
         mail_url: hints.mail_url.clone(),
+        proxy_url: hints.proxy_url.clone(),
     }
 }
 
@@ -6454,6 +6514,7 @@ fn codex_account_note_update_from_account(account: &CodexAccount) -> CodexAccoun
         account_password: account.account_password.clone(),
         phone_number: account.phone_number.clone(),
         mail_url: account.mail_url.clone(),
+        proxy_url: account.proxy_url.clone(),
     }
 }
 
@@ -6719,6 +6780,7 @@ fn extract_access_token_import_hints_from_value(
         account_password: note_update.account_password,
         phone_number: note_update.phone_number,
         mail_url: note_update.mail_url,
+        proxy_url: note_update.proxy_url,
     }
 }
 
@@ -7223,6 +7285,7 @@ fn try_parse_pending_oauth_delimited_line(line: &str) -> Option<(String, CodexAc
             account_password: normalize_optional_ref(Some(password)),
             phone_number: None,
             mail_url: normalize_optional_ref(Some(mail_url)),
+            proxy_url: None,
         },
     ))
 }
@@ -9040,7 +9103,7 @@ mod tests {
         format_refresh_error_for_user, get_accounts_dir, get_accounts_storage_path,
         get_current_account_from_loaded, import_from_json, is_loopback_http_base_url,
         is_managed_auth_refresh_due, is_pending_oauth_account, list_accounts_checked, load_account,
-        load_account_index, looks_like_sub2api_export, now_timestamp,
+        load_account_index, looks_like_sub2api_export, normalize_account_proxy_url, now_timestamp,
         parse_agent_identity_from_value, parse_auth_file_last_refresh, parse_codex_account_compat,
         parse_line_delimited_json_values, read_api_provider_from_config_toml,
         read_quick_config_from_config_toml, remove_accounts, resolve_api_provider_config,
@@ -9085,6 +9148,27 @@ mod tests {
         ];
         der.extend(1u8..=32u8);
         base64::engine::general_purpose::STANDARD.encode(der)
+    }
+
+    #[test]
+    fn normalizes_optional_account_proxy_without_changing_the_default() {
+        assert_eq!(normalize_account_proxy_url(None).expect("none"), None);
+        assert_eq!(
+            normalize_account_proxy_url(Some("   ".to_string())).expect("blank"),
+            None
+        );
+        assert_eq!(
+            normalize_account_proxy_url(Some(" socks5://127.0.0.1:10808 ".to_string()))
+                .expect("socks proxy")
+                .as_deref(),
+            Some("socks5://127.0.0.1:10808")
+        );
+        assert_eq!(
+            normalize_account_proxy_url(Some("none".to_string()))
+                .expect("direct")
+                .as_deref(),
+            Some("direct")
+        );
     }
 
     #[test]
@@ -13706,6 +13790,7 @@ pub struct CodexAccountNoteUpdate {
     pub account_password: Option<String>,
     pub phone_number: Option<String>,
     pub mail_url: Option<String>,
+    pub proxy_url: Option<String>,
 }
 
 fn apply_account_note_update(account: &mut CodexAccount, update: CodexAccountNoteUpdate) {
@@ -13724,6 +13809,9 @@ fn apply_account_note_update(account: &mut CodexAccount, update: CodexAccountNot
     if let Some(mail_url) = update.mail_url {
         account.mail_url = normalize_optional_value(Some(mail_url));
     }
+    if let Some(proxy_url) = update.proxy_url {
+        account.proxy_url = normalize_optional_value(Some(proxy_url));
+    }
 }
 
 pub fn update_account_note(
@@ -13734,6 +13822,11 @@ pub fn update_account_note(
     let mut account =
         load_account(account_id).ok_or_else(|| format!("账号不存在: {}", account_id))?;
 
+    let mut update = update;
+    let previous_proxy_url = account.proxy_url.clone();
+    if let Some(proxy_url) = update.proxy_url.take() {
+        account.proxy_url = normalize_account_proxy_url(Some(proxy_url))?;
+    }
     apply_account_note_update(&mut account, update);
     let previous_chatgpt_account_id = account.account_id.clone();
     if let Some(chatgpt_account_id) = chatgpt_account_id {
@@ -13755,7 +13848,8 @@ pub fn update_account_note(
     }
     save_account(&account)?;
 
-    if account.account_id != previous_chatgpt_account_id {
+    if account.account_id != previous_chatgpt_account_id || account.proxy_url != previous_proxy_url
+    {
         if let Err(error) =
             crate::modules::codex_local_access::sync_sidecar_auth_file_for_account(&account)
         {

@@ -118,6 +118,7 @@ export async function refreshCodexApiKeyUsageForAccounts(
         baseUrl,
         apiKey,
         integrationType: provider?.integrationType ?? null,
+        proxyUrl: account.proxy_url ?? null,
       });
       updates[account.id] = { loading: false, summary, updatedAt: Date.now() };
     } catch (error) {

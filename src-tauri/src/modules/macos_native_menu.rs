@@ -4857,6 +4857,7 @@ mod imp {
             base_url.clone(),
             api_key.to_string(),
             integration_type,
+            account.proxy_url.clone(),
         )
         .await?;
         let summary_value = serde_json::to_value(&summary)

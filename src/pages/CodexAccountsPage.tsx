@@ -423,6 +423,7 @@ type CodexAccountNoteFormState = {
   phoneNumber: string;
   mailUrl: string;
   chatgptAccountId: string;
+  proxyUrl: string;
 };
 
 type CodexAccountNoteMailPreviewState = MailVerificationCodePreview & {
@@ -447,6 +448,7 @@ const EMPTY_CODEX_ACCOUNT_NOTE_FORM: CodexAccountNoteFormState = {
   phoneNumber: "",
   mailUrl: "",
   chatgptAccountId: "",
+  proxyUrl: "",
 };
 
 function buildCodexAccountNoteForm(
@@ -459,6 +461,7 @@ function buildCodexAccountNoteForm(
     phoneNumber: account?.phone_number ?? "",
     mailUrl: account?.mail_url ?? "",
     chatgptAccountId: account?.account_id ?? "",
+    proxyUrl: account?.proxy_url ?? "",
   };
 }
 
@@ -468,7 +471,8 @@ function hasCodexAccountNoteDetails(account?: CodexAccount | null): boolean {
       account?.two_factor_secret?.trim() ||
       account?.account_password?.trim() ||
       account?.phone_number?.trim() ||
-      account?.mail_url?.trim(),
+      account?.mail_url?.trim() ||
+      account?.proxy_url?.trim(),
   );
 }
 
@@ -480,7 +484,8 @@ function hasCodexAccountNoteFormDetails(
       form?.twoFactorSecret.trim() ||
       form?.accountPassword.trim() ||
       form?.phoneNumber.trim() ||
-      form?.mailUrl.trim(),
+      form?.mailUrl.trim() ||
+      form?.proxyUrl.trim(),
   );
 }
 
@@ -3375,6 +3380,9 @@ export function CodexAccountsPage() {
         mailUrl: activeAccountNoteForm.mailUrl,
         ...(activeAccountUsesPersonalAccessToken
           ? { chatgptAccountId: activeAccountNoteForm.chatgptAccountId }
+          : {}),
+        ...(activeAccountNoteMode === "account"
+          ? { proxyUrl: activeAccountNoteForm.proxyUrl }
           : {}),
       };
 
@@ -18188,6 +18196,60 @@ export function CodexAccountsPage() {
                         {t(
                           "codex.accountNote.workspaceIdHint",
                           "仅用于 at-* 个人访问令牌；API 服务会将其作为 ChatGPT-Account-Id 发送。",
+                        )}
+                      </small>
+                    </label>
+                  ) : null}
+                  {activeAccountNoteMode === "account" ? (
+                    <label className="codex-account-note-field">
+                      <span>
+                        {t("codex.accountNote.proxyUrlLabel", "账号网络代理")}
+                      </span>
+                      <div className="codex-account-note-input-row">
+                        <input
+                          className="codex-account-note-input"
+                          type="text"
+                          value={activeAccountNoteForm.proxyUrl}
+                          onChange={(event) => {
+                            updateActiveAccountNoteForm({
+                              proxyUrl: event.target.value,
+                            });
+                          }}
+                          placeholder={t(
+                            "codex.accountNote.proxyUrlPlaceholder",
+                            "例如 socks5://127.0.0.1:10808；留空保持当前方式",
+                          )}
+                          autoComplete="off"
+                          spellCheck={false}
+                          disabled={activeAccountNoteSaving}
+                        />
+                        <button
+                          type="button"
+                          className="codex-account-note-icon-btn"
+                          onClick={() =>
+                            void copyAccountNoteValue(
+                              "modal:proxyUrl",
+                              activeAccountNoteForm.proxyUrl,
+                            )
+                          }
+                          disabled={
+                            activeAccountNoteSaving ||
+                            !activeAccountNoteForm.proxyUrl.trim()
+                          }
+                          aria-label={t("common.copy", "复制")}
+                          title={t("common.copy", "复制")}
+                        >
+                          {accountNoteCopiedKey === "modal:proxyUrl" ? (
+                            <Check size={14} />
+                          ) : (
+                            <Copy size={14} />
+                          )}
+                        </button>
+                      </div>
+                      <small className="codex-account-note-field-hint">
+                        {t(
+                          "codex.accountNote.proxyUrlHint",
+                          "仅此账号的请求、模型推理、Token 刷新和额度查询使用该代理；留空继续继承 API 服务、全局或系统代理。",
                         )}
                       </small>
                     </label>

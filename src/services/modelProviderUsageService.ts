@@ -112,6 +112,7 @@ export async function queryModelProviderUsage(input: {
   baseUrl: string;
   apiKey: string;
   integrationType?: ModelProviderUsageIntegrationType | null;
+  proxyUrl?: string | null;
 }): Promise<ModelProviderUsageSummary> {
   const candidates = buildUsageBaseUrlCandidates(input.baseUrl);
   let lastError: unknown = null;
@@ -121,6 +122,7 @@ export async function queryModelProviderUsage(input: {
         baseUrl,
         apiKey: input.apiKey,
         integrationType: input.integrationType ?? null,
+        proxyUrl: input.proxyUrl ?? null,
       });
     } catch (error) {
       lastError = error;

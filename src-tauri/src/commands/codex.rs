@@ -1686,8 +1686,10 @@ pub async fn update_codex_account_note(
     phone_number: Option<String>,
     mail_url: Option<String>,
     chatgpt_account_id: Option<String>,
+    proxy_url: Option<String>,
 ) -> Result<CodexAccount, String> {
-    codex_account::update_account_note(
+    let proxy_updated = proxy_url.is_some();
+    let account = codex_account::update_account_note(
         &account_id,
         codex_account::CodexAccountNoteUpdate {
             note,
@@ -1695,9 +1697,14 @@ pub async fn update_codex_account_note(
             account_password,
             phone_number,
             mail_url,
+            proxy_url,
         },
         chatgpt_account_id,
-    )
+    )?;
+    if proxy_updated {
+        codex_local_access::apply_account_proxy_change(&account).await?;
+    }
+    Ok(account)
 }
 
 #[tauri::command]
@@ -1717,6 +1724,7 @@ pub async fn create_pending_codex_oauth_account(
             account_password,
             phone_number,
             mail_url,
+            proxy_url: None,
         },
     )
 }
@@ -3097,13 +3105,25 @@ pub async fn codex_query_model_provider_usage(
     base_url: String,
     api_key: String,
     integration_type: Option<String>,
+    proxy_url: Option<String>,
 ) -> Result<CodexModelProviderUsageSummary, String> {
     let key = api_key.trim();
     if key.is_empty() {
         return Err("MISSING_API_KEY".to_string());
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(CODEX_MODEL_PROVIDER_TEST_TIMEOUT_SECS))
+    let mut client_builder = reqwest::Client::builder()
+        .timeout(Duration::from_secs(CODEX_MODEL_PROVIDER_TEST_TIMEOUT_SECS));
+    if let Some(proxy_url) = codex_account::normalize_account_proxy_url(proxy_url)? {
+        client_builder = if proxy_url == "direct" {
+            client_builder.no_proxy()
+        } else {
+            client_builder.proxy(
+                reqwest::Proxy::all(&proxy_url)
+                    .map_err(|error| format!("账号代理地址无效: {}", error))?,
+            )
+        };
+    }
+    let client = client_builder
         .build()
         .map_err(|e| format!("CREATE_HTTP_CLIENT_FAILED: {}", e))?;
 

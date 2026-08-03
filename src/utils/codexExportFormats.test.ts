@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { CodexAccount } from '../types/codex.ts';
 import {
   hasCodexExportAgentIdentity,
+  hasCodexExportSensitiveNotes,
   transformCodexExportJson,
 } from './codexExportFormats.ts';
 
@@ -101,6 +102,36 @@ test('regular token accounts keep their existing Cockpit Tools export shape', ()
   assert.equal(exported[0].access_token, 'access-token-fixture');
   assert.equal(exported[0].refresh_token, 'refresh-token-fixture');
   assert.equal(exported[0].agent_identity, undefined);
+});
+
+test('account proxy is exported only when sensitive notes are explicitly included', () => {
+  const account: CodexAccount = {
+    id: 'codex-proxy-fixture',
+    email: 'proxy@example.com',
+    proxy_url: '  socks5://user:password@127.0.0.1:10808  ',
+    tokens: {
+      id_token: 'id-token-fixture',
+      access_token: 'access-token-fixture',
+      refresh_token: 'refresh-token-fixture',
+    },
+    created_at: 1,
+    last_used: 1,
+  };
+  const raw = JSON.stringify([account]);
+
+  const defaultExport = JSON.parse(
+    transformCodexExportJson(raw, 'cockpit_tools'),
+  ) as Array<Record<string, unknown>>;
+  const sensitiveExport = JSON.parse(
+    transformCodexExportJson(raw, 'cockpit_tools', { includeSensitiveNotes: true }),
+  ) as Array<Record<string, unknown>>;
+
+  assert.equal(defaultExport[0].proxy_url, undefined);
+  assert.equal(
+    sensitiveExport[0].proxy_url,
+    'socks5://user:password@127.0.0.1:10808',
+  );
+  assert.equal(hasCodexExportSensitiveNotes(raw), true);
 });
 
 test('sub2api OAuth export preserves official expiry and login-provider fields', () => {

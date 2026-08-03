@@ -52,6 +52,8 @@ export interface CodexAccount {
   phone_number?: string;
   mail_url?: string;
   app_speed?: CodexAppSpeed;
+  /** Optional per-account outbound proxy; blank inherits the existing proxy behavior. */
+  proxy_url?: string;
   tokens: CodexTokens;
   token_generation?: number;
   token_updated_at?: number;
@@ -73,6 +75,7 @@ export interface CodexAccountNoteUpdate {
   phoneNumber?: string;
   mailUrl?: string;
   chatgptAccountId?: string;
+  proxyUrl?: string;
 }
 
 export interface CodexBatchDeleteError {

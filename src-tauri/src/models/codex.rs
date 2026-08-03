@@ -154,6 +154,9 @@ pub struct CodexAccount {
     pub mail_url: Option<String>,
     #[serde(default)]
     pub app_speed: CodexAppSpeed,
+    /// Optional per-account outbound proxy. When absent, existing global/service proxy behavior is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_url: Option<String>,
     pub tokens: CodexTokens,
     #[serde(default)]
     pub token_generation: u64,
@@ -434,6 +437,7 @@ impl CodexAccount {
             phone_number: None,
             mail_url: None,
             app_speed: CodexAppSpeed::Standard,
+            proxy_url: None,
             tokens,
             token_generation: 0,
             token_updated_at: Some(now),

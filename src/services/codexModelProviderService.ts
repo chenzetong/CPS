@@ -752,6 +752,7 @@ export async function queryCodexModelProviderUsage(input: {
   baseUrl: string;
   apiKey: string;
   integrationType?: 'sub2api' | 'new_api' | null;
+  proxyUrl?: string | null;
 }): Promise<CodexModelProviderUsageSummary> {
   return await queryModelProviderUsage(input);
 }

@@ -1212,8 +1212,14 @@ fn build_upstream_http_client(signature: &UpstreamHttpClientSignature) -> Result
     ));
 
     if let Some(proxy_url) = signature.proxy_url.as_deref() {
-        let proxy = Proxy::all(proxy_url).map_err(|e| format!("Codex 上游代理地址无效: {}", e))?;
-        builder = builder.proxy(proxy);
+        builder =
+            if proxy_url.eq_ignore_ascii_case("direct") || proxy_url.eq_ignore_ascii_case("none") {
+                builder.no_proxy()
+            } else {
+                let proxy =
+                    Proxy::all(proxy_url).map_err(|e| format!("Codex 上游代理地址无效: {}", e))?;
+                builder.proxy(proxy)
+            };
     }
 
     builder
@@ -2014,7 +2020,7 @@ pub async fn run_official_wakeup_chat(
             &upstream_target,
             &headers,
             &body,
-            upstream_proxy_url.as_deref(),
+            account_effective_proxy_url(&account, upstream_proxy_url.as_deref()),
             upstream_connect_timeout,
             &timeouts,
             UPSTREAM_CODEX_BASE_URL,
@@ -2030,7 +2036,7 @@ pub async fn run_official_wakeup_chat(
             &headers,
             &body,
             &account,
-            upstream_proxy_url.as_deref(),
+            account_effective_proxy_url(&account, upstream_proxy_url.as_deref()),
             upstream_connect_timeout,
             &timeouts,
             CodexLocalAccessImageGenerationMode::Disabled,
@@ -11026,6 +11032,18 @@ fn sidecar_account_last_refresh(account: &CodexAccount) -> String {
         .to_string()
 }
 
+fn account_effective_proxy_url<'a>(
+    account: &'a CodexAccount,
+    fallback_proxy_url: Option<&'a str>,
+) -> Option<&'a str> {
+    account
+        .proxy_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or(fallback_proxy_url)
+}
+
 fn sidecar_auth_json_for_account(
     account: &CodexAccount,
     collection: &CodexLocalAccessCollection,
@@ -11219,7 +11237,7 @@ fn sync_sidecar_auth_file_for_account_with_task_source(
     let auth_json = sidecar_auth_json_for_account(
         &effective_account,
         &collection,
-        proxy_signature.proxy_url.as_deref(),
+        account_effective_proxy_url(&effective_account, proxy_signature.proxy_url.as_deref()),
     );
     let auth_content = serde_json::to_string_pretty(&auth_json)
         .map_err(|e| format!("序列化 sidecar Codex OAuth 认证失败: {}", e))?;
@@ -11241,6 +11259,29 @@ pub fn sync_sidecar_auth_file_for_account_with_current_task(
     account: &CodexAccount,
 ) -> Result<(), String> {
     sync_sidecar_auth_file_for_account_with_task_source(account, true)
+}
+
+/// Applies a per-account proxy edit immediately. OAuth auth files are hot-reloaded by the sidecar;
+/// API-key accounts live in the generated YAML, so an enabled gateway must be regenerated.
+pub async fn apply_account_proxy_change(account: &CodexAccount) -> Result<(), String> {
+    if !account.is_api_key_auth() {
+        return Ok(());
+    }
+    ensure_runtime_loaded_without_start().await?;
+    let should_restart = {
+        let runtime = gateway_runtime().lock().await;
+        runtime.collection.as_ref().is_some_and(|collection| {
+            collection.enabled
+                && effective_sidecar_account_ids(collection)
+                    .iter()
+                    .any(|account_id| account_id == &account.id)
+        })
+    };
+    if should_restart {
+        stop_gateway().await;
+        ensure_gateway_matches_runtime().await?;
+    }
+    Ok(())
 }
 
 fn sidecar_quota_reserve_manifest_value(
@@ -12028,10 +12069,11 @@ fn prepare_sidecar_launch_config_in_dir_sync(
         }
 
         if account.is_api_key_auth() {
+            let account_proxy_url = account_effective_proxy_url(&account, effective_proxy_url_ref);
             if let Some(config_value) = sidecar_codex_key_config_value_with_metered_feature_patterns(
                 &account,
                 collection,
-                effective_proxy_url_ref,
+                account_proxy_url,
                 &metered_feature_patterns,
             ) {
                 codex_keys.push(config_value);
@@ -12052,7 +12094,7 @@ fn prepare_sidecar_launch_config_in_dir_sync(
         let auth_json = sidecar_auth_json_for_account_with_metered_feature_patterns(
             &account,
             collection,
-            effective_proxy_url_ref,
+            account_effective_proxy_url(&account, effective_proxy_url_ref),
             &metered_feature_patterns,
         );
         let auth_content = serde_json::to_string_pretty(&auth_json)
@@ -23512,7 +23554,7 @@ async fn proxy_request_with_account_pool(
                     &request.headers,
                     &upstream_request_body,
                     &account,
-                    collection.upstream_proxy_url.as_deref(),
+                    account_effective_proxy_url(&account, collection.upstream_proxy_url.as_deref()),
                     upstream_connect_timeout,
                     &timeouts,
                     image_generation_mode,
@@ -23648,7 +23690,10 @@ async fn proxy_request_with_account_pool(
                                 &request.headers,
                                 &upstream_request_body,
                                 &account,
-                                collection.upstream_proxy_url.as_deref(),
+                                account_effective_proxy_url(
+                                    &account,
+                                    collection.upstream_proxy_url.as_deref(),
+                                ),
                                 upstream_connect_timeout,
                                 &timeouts,
                                 image_generation_mode,
@@ -24356,6 +24401,9 @@ async fn connect_upstream_websocket_request(
     upstream_proxy_url: Option<&str>,
     connect_timeout: Duration,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, WebSocketConnectError> {
+    let upstream_proxy_url = upstream_proxy_url.filter(|proxy_url| {
+        !proxy_url.eq_ignore_ascii_case("direct") && !proxy_url.eq_ignore_ascii_case("none")
+    });
     let socket = connect_upstream_websocket_socket(&request, upstream_proxy_url, connect_timeout)
         .await
         .map_err(WebSocketConnectError::upstream)?;
@@ -24584,7 +24632,7 @@ async fn proxy_websocket_with_account_pool(
             request,
             &account,
             &upstream_target,
-            collection.upstream_proxy_url.as_deref(),
+            account_effective_proxy_url(&account, collection.upstream_proxy_url.as_deref()),
             websocket_connect_timeout,
         )
         .await
@@ -24653,7 +24701,10 @@ async fn proxy_websocket_with_account_pool(
                                 request,
                                 &account,
                                 &upstream_target,
-                                collection.upstream_proxy_url.as_deref(),
+                                account_effective_proxy_url(
+                                    &account,
+                                    collection.upstream_proxy_url.as_deref(),
+                                ),
                                 websocket_connect_timeout,
                             )
                             .await
@@ -26067,9 +26118,10 @@ mod tests {
     use ed25519_dalek::{pkcs8::EncodePrivateKey, SigningKey};
 
     use super::{
-        account_model_rule_blocks_model, account_requires_bound_oauth_local_gateway,
-        account_requires_provider_gateway, account_upstream_base_url, account_usage_priority,
-        align_codex_prompt_cache, api_key_inherits_account_pool, api_key_priority_account_ids,
+        account_effective_proxy_url, account_model_rule_blocks_model,
+        account_requires_bound_oauth_local_gateway, account_requires_provider_gateway,
+        account_upstream_base_url, account_usage_priority, align_codex_prompt_cache,
+        api_key_inherits_account_pool, api_key_priority_account_ids,
         append_eligible_local_access_account_ids, append_usage_event,
         apply_account_usage_priority_ids, apply_codex_official_headers, apply_routing_strategy,
         backup_current_profile_model_before_provider_gateway, bound_oauth_quota_refresh_failures,
@@ -26188,6 +26240,28 @@ mod tests {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     use tokio_tungstenite::tungstenite::Message;
     use toml_edit::{value, Document};
+
+    #[test]
+    fn account_proxy_overrides_service_proxy_and_blank_accounts_inherit() {
+        let mut account = CodexAccount::new(
+            "account-a".to_string(),
+            "a@example.com".to_string(),
+            CodexTokens {
+                id_token: "id".to_string(),
+                access_token: "access".to_string(),
+                refresh_token: Some("refresh".to_string()),
+            },
+        );
+        assert_eq!(
+            account_effective_proxy_url(&account, Some("http://127.0.0.1:10800")),
+            Some("http://127.0.0.1:10800")
+        );
+        account.proxy_url = Some("socks5://127.0.0.1:10808".to_string());
+        assert_eq!(
+            account_effective_proxy_url(&account, Some("http://127.0.0.1:10800")),
+            Some("socks5://127.0.0.1:10808")
+        );
+    }
 
     #[tokio::test]
     async fn read_http_request_rejects_declared_request_above_limit() {

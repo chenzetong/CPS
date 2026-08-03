@@ -954,9 +954,29 @@ pub async fn refresh_access_token_with_fallback(
     refresh_token: &str,
     current_id_token: Option<&str>,
 ) -> Result<CodexTokens, String> {
-    let client = reqwest::Client::builder()
+    refresh_access_token_with_fallback_and_proxy(refresh_token, current_id_token, None).await
+}
+
+pub async fn refresh_access_token_with_fallback_and_proxy(
+    refresh_token: &str,
+    current_id_token: Option<&str>,
+    proxy_url: Option<&str>,
+) -> Result<CodexTokens, String> {
+    let mut builder = reqwest::Client::builder()
         .connect_timeout(TOKEN_REFRESH_TIMEOUT)
-        .timeout(TOKEN_REFRESH_TIMEOUT)
+        .timeout(TOKEN_REFRESH_TIMEOUT);
+    if let Some(proxy_url) = proxy_url.map(str::trim).filter(|value| !value.is_empty()) {
+        builder =
+            if proxy_url.eq_ignore_ascii_case("direct") || proxy_url.eq_ignore_ascii_case("none") {
+                builder.no_proxy()
+            } else {
+                builder.proxy(
+                    reqwest::Proxy::all(proxy_url)
+                        .map_err(|error| format!("账号代理地址无效: {}", error))?,
+                )
+            };
+    }
+    let client = builder
         .build()
         .map_err(|e| format!("创建 Token 刷新客户端失败: {}", e))?;
 

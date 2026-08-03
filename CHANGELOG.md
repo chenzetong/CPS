@@ -7,10 +7,11 @@ All notable changes to CPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
-## [1.3.16] - 2026-08-02
+## [1.3.16] - 2026-08-03
 
 ### Added
 
+- **Codex supports per-account network proxies**: accounts A and B can use different HTTP, HTTPS, or SOCKS5 proxies. Once configured, the account's model inference (HTTP / WebSocket), token refreshes, quota and subscription queries, reset-credit requests, account profile, and API Key usage queries all use its dedicated proxy. Leaving it blank fully preserves the existing API Service, global, environment, or system proxy behavior. Because proxy URLs may contain credentials, they are excluded from exports by default and included only when sensitive-note export is explicitly enabled.
 - **Codex `at-*` personal-access-token accounts can set a ChatGPT Workspace ID**: Token / JSON imports recognize `account_id`, camelCase fields, and `ChatGPT-Account-Id` in headers / custom headers; the account-note dialog can view, copy, and edit the Team / Workspace UUID, then persist it and synchronize it to the API Service sidecar. When no real workspace ID is available, Cockpit no longer substitutes its local account ID as the upstream account ID.
 - **Codex sub2api export supports API Key and access-token-only accounts**: API Key accounts use native sub2api `apikey` credentials; access-token-only accounts carry the real token expiry and enable automatic pause on expiry; OAuth exports include the official client ID, user and organization identity, login provider, access-token and subscription expiry, with default concurrency 3 and priority 50.
 

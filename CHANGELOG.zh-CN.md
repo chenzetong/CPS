@@ -7,10 +7,11 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
-## [1.3.16] - 2026-08-02
+## [1.3.16] - 2026-08-03
 
 ### 新增
 
+- **Codex 支持账号级网络代理**：可为账号 A、账号 B 分别配置不同的 HTTP、HTTPS 或 SOCKS5 代理；配置后，该账号的模型推理（HTTP / WebSocket）、Token 刷新、额度与订阅查询、主动重置额度、账号资料和 API Key 用量查询均使用专属代理。留空时完全保持现有 API 服务、全局、环境或系统代理行为；代理地址可能包含凭据，因此默认从导出文件中排除，仅在明确启用敏感备注导出时写入。
 - **Codex `at-*` 个人访问令牌账号支持设置 ChatGPT 工作区 ID**：Token / JSON 导入会识别 `account_id`、camelCase 字段以及 headers / custom headers 中的 `ChatGPT-Account-Id`；账号备注弹框可查看、复制和修改 Team / Workspace UUID，保存后同步到 API 服务 sidecar。未提供真实工作区 ID 时不再使用 Cockpit 本地账号 ID 冒充上游账号 ID。
 - **Codex sub2api 导出支持 API Key 与仅 Access Token 账号**：API Key 账号使用 sub2api 原生 `apikey` credentials；仅 Access Token 账号写入真实 token 到期时间并启用到期自动暂停；OAuth 导出补齐官方 client ID、用户与组织身份、登录提供方、访问令牌及订阅到期时间，并使用默认并发数 3、优先级 50。
 

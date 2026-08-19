@@ -81,10 +81,6 @@ export interface CodexLocalAccessApiKey {
 }
 
 export interface CodexLocalAccessTimeouts {
-  legacyRequestReadTimeoutMs: number;
-  legacyUpstreamConnectTimeoutMs: number;
-  legacyStreamIdleTimeoutMs: number;
-  legacyStreamTotalTimeoutMs: number;
   sidecarStreamOpenTimeoutMs: number;
   sidecarStreamIdleTimeoutMs: number;
   sidecarImageStreamOpenTimeoutMs: number;
@@ -198,6 +194,24 @@ export interface CodexLocalAccessStatsWindow {
   accounts: CodexLocalAccessAccountStats[];
   models: CodexLocalAccessModelStats[];
   apiKeys: CodexLocalAccessApiKeyStats[];
+}
+
+export interface CodexLocalAccessAccountWindowQuery {
+  accountId: string;
+  windowKey: string;
+  startAt: number;
+  endAt: number;
+}
+
+export interface CodexLocalAccessAccountWindowStats {
+  accountId: string;
+  windowKey: string;
+  requestCount: number;
+  inputTokens: number;
+  cachedTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
 }
 
 export interface CodexTokenInputBreakdown {

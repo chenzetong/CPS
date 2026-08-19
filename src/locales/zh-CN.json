@@ -29,7 +29,7 @@
     "advancedSettings": "高级设置",
     "codexFingerprint": {
       "modeLabel": "设备指纹模式",
-      "modeHint": "仅 OAuth 账号生效；未设置时默认使用会话模式。",
+      "modeHint": "仅 OAuth；默认会话。按账号隔离安装/会话并改写工作区，避免同机多号被串。",
       "session": "会话（推荐）",
       "device": "设备",
       "full": "完整",
@@ -904,6 +904,18 @@
       "commonTitle": "通用",
       "antigravitySettingsTitle": "Antigravity IDE 设置",
       "codexSettingsTitle": "Codex 设置",
+      "codexClientPolicyTitle": "Codex app-server 全局放行",
+      "codexClientPolicyDesc": "开启后，已启用“仅允许官方客户端”的 OAuth 账号也允许第三方 app-server 客户端；关闭时仍可按账号单独放行。",
+      "codexAccountPolicies": "Codex OAuth 账号策略",
+      "codexAccountPoliciesDesc": "仅对标准 OpenAI OAuth 账号生效。策略保存在账号本地配置，并同步到本地 API 服务。",
+      "codexNoOauthAccounts": "暂无可配置的 OpenAI OAuth 账号",
+      "codexOfficialOnly": "仅官方客户端",
+      "codexAppServer": "允许 app-server",
+      "codexFingerprintMode": "指纹收敛模式",
+      "codexFingerprintOff": "关闭",
+      "codexFingerprintDevice": "仅设备",
+      "codexFingerprintSession": "设备 + 会话",
+      "codexFingerprintFull": "完整收敛",
       "githubCopilotSettingsTitle": "GitHub Copilot 设置",
       "ghcpAutoRefresh": "GitHub Copilot 自动刷新配额",
       "ghcpAutoRefreshDesc": "后台自动更新频率",
@@ -1503,7 +1515,7 @@
       "short": "账号备注",
       "addShort": "加备注",
       "fingerprintModeLabel": "设备指纹模式",
-      "fingerprintModeHint": "仅 OAuth 账号生效；未设置时默认使用会话模式。",
+      "fingerprintModeHint": "仅 OAuth；默认会话。按账号隔离安装/会话并改写工作区，避免同机多号被串。",
       "fingerprintModeSession": "会话（推荐）",
       "fingerprintModeDevice": "设备",
       "fingerprintModeFull": "完整",
@@ -2025,6 +2037,68 @@
   },
   "codex": {
     "title": "Codex 账号管理",
+    "oauthPolicy": {
+      "globalTitle": "允许第三方 app-server",
+      "globalDescription": "开启后显示当前账号策略摘要，点击“管理”可批量或单独配置。",
+      "manage": "设置",
+      "title": "Codex OAuth 账号策略",
+      "description": "可批量设置，也可以在账号行内单独修改。",
+      "noAccounts": "暂无可配置的 Codex OAuth 账号",
+      "selectAll": "全选",
+      "selectedCount": "已选 {{count}} 个账号",
+      "selectAccounts": "请先选择账号。",
+      "selectBatchPolicy": "请选择要批量修改的策略。",
+      "officialOnly": "仅官方客户端",
+      "officialOnlyShort": "仅官方",
+      "officialOnlyUnchanged": "官方客户端：不修改",
+      "officialOnlyOn": "官方客户端：开启",
+      "officialOnlyOff": "官方客户端：关闭",
+      "appServer": "允许 app-server",
+      "appServerShort": "允许 app-server",
+      "appServerUnchanged": "app-server：不修改",
+      "appServerOn": "app-server：开启",
+      "appServerOff": "app-server：关闭",
+      "fingerprint": "设备指纹",
+      "fingerprintMode": "指纹模式",
+      "fingerprintUnchanged": "指纹：不修改",
+      "fingerprintOn": "指纹：设置模式",
+      "fingerprintOff": "指纹：关闭",
+      "applyBatch": "应用到所选"
+    },
+    "experimentalModelCatalog": {
+      "title": "可见模型",
+      "description": "根据当前可用的官方模型和自定义条目生成 Cockpit 受管目录；不会覆盖用户自定义目录。",
+      "enabledHint": "启用后使用当前可见模型列表，重启 Codex 生效。",
+      "models": {
+        "title": "模型列表",
+        "model": "模型",
+        "default": "默认模型",
+        "add": "添加模型",
+        "remove": "删除模型",
+        "setDefault": "设为默认模型",
+        "modelId": "模型 ID",
+        "displayName": "展示名",
+        "reasoning": "推理强度",
+        "followOfficial": "跟随官方",
+        "operation": "操作",
+        "manage": "管理",
+        "inheritHint": "官方模型保留原有能力字段；自定义模型使用通用能力模板。可见模型可直接新增或删除。",
+        "validation": {
+          "required": "至少保留一个模型。",
+          "modelId": "模型 ID 只能包含字母、数字、点、横线、下划线、斜杠和冒号。",
+          "displayName": "请输入不超过 100 个字符的展示名。",
+          "duplicate": "模型 ID 不能重复。",
+          "reasoningEffort": "推理强度选项无效。",
+          "reserved": "模型 ID 与官方模型重复，请使用其他 ID。"
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "未找到 models_cache.json。请先启动一次 Codex 生成模型缓存；若仍缺失，当前 Codex 版本不支持此缓存格式。",
+        "modelNotCached": "无法读取本地模型目录。",
+        "catalogConflict": "已有其他 model_catalog_json，禁止覆盖。",
+        "cacheInvalid": "models_cache.json 无法读取或格式无效。"
+      }
+    },
     "newApi": {
       "quota": {
         "available": "额度",
@@ -3061,8 +3135,16 @@
     "quota": {
       "hourly": "5小时配额",
       "weekly": "周配额",
+      "monthlyCredits": "余额",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "额外额度",
       "weeklyBlocksHourly": "周额度为 0，5小时额度已不可用",
+      "windowStats": "已用 {{tokens}} · {{cost}}",
+      "windowStatsHint": "从本窗口满额到现在，该账号走 API 服务的请求数、token 和账号计费",
+      "windowUsed": "已用 {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} 次",
       "reset": "重置",
       "resetCredits": "重置 {{count}}",
       "resetCreditsTitle": "可用于重置当前 5 小时窗口的剩余次数：{{count}}",
@@ -3085,7 +3167,17 @@
       "resetCreditNoRecords": "暂无重置记录",
       "resetCreditRecordsLoadFailed": "加载重置记录失败：{{error}}",
       "resetCreditGrantedAt": "发放",
-      "resetCreditExpiresAt": "到期"
+      "resetCreditExpiresAt": "到期",
+      "windowAccountCostHint": "账号计费（按模型价格估算）",
+      "windowUserCostHint": "用户计费",
+      "windowWeeks": "{{count}} 周配额",
+      "windowDays": "{{count}} 天配额",
+      "windowHours": "{{count}} 小时配额",
+      "windowMinutes": "{{count}} 分钟配额",
+      "codeReview": "代码审查",
+      "codeReviewShort": "审阅",
+      "monthlyCreditsHint": "本月 credits 剩余",
+      "monthlyCreditsInline": "Credits：{{value}}"
     },
     "usage": {
       "open": "查看 OpenAI 用量",
@@ -3603,6 +3695,82 @@
         "all": "全部类型"
       },
       "pickInstancePrompt": "该会话存在于多个实例，请输入实例 ID（可在位置列查看）："
+    },
+    "sessionUsage": {
+      "tab": "会话用量",
+      "listTab": "会话列表",
+      "title": "会话用量",
+      "desc": "从本机 Codex 会话日志汇总真实 Token 用量，不依赖官方配额或 API 服务请求日志。",
+      "hint": "官方配额是套餐额度；API 服务日志只覆盖走本地网关的请求。这里按会话 JSONL 的每次请求用量增量汇总。",
+      "range": {
+        "label": "时间范围",
+        "7d": "近 7 天",
+        "30d": "近 30 天",
+        "month": "本月",
+        "all": "全部"
+      },
+      "instance": {
+        "label": "实例",
+        "all": "全部实例"
+      },
+      "actions": {
+        "refresh": "刷新",
+        "rebuild": "重新扫描"
+      },
+      "status": {
+        "idle": "尚未扫描",
+        "scanning": "正在扫描会话日志…",
+        "ready": "已扫描 {{files}} 个文件，累计 {{requests}} 次请求",
+        "lastSynced": "上次同步 {{time}}",
+        "deferred": "{{count}} 个分叉会话待父会话就绪",
+        "errors": "{{count}} 个文件解析失败"
+      },
+      "cards": {
+        "input": "输入 Tokens",
+        "cached": "缓存输入 Tokens",
+        "output": "输出 Tokens",
+        "total": "合计 Tokens",
+        "requests": "请求数",
+        "cost": "估算费用"
+      },
+      "tables": {
+        "model": "按模型",
+        "instance": "按实例",
+        "day": "按日期",
+        "modelName": "模型",
+        "instanceName": "实例",
+        "dayName": "日期",
+        "input": "输入 Tokens",
+        "cached": "缓存 Tokens",
+        "output": "输出 Tokens",
+        "total": "合计 Tokens",
+        "requests": "请求"
+      },
+      "empty": {
+        "title": "还没有会话用量",
+        "desc": "打开此页后会在后台扫描本机 Codex 会话日志及多开会话目录。若刚用过 Codex，点刷新即可。"
+      },
+      "rebuildConfirm": {
+        "title": "重新扫描",
+        "message": "会清空已汇总的会话用量缓存，再重新读取全部会话日志。官方配额和 API 服务日志不受影响。确认继续？"
+      },
+      "errors": {
+        "loadFailed": "读取会话用量失败：{{error}}",
+        "syncFailed": "扫描会话用量失败：{{error}}"
+      },
+      "summary": {
+        "title": "近 30 天",
+        "scanning": "扫描中",
+        "updating": "更新中",
+        "detail": "详情",
+        "back": "返回",
+        "input": "输入",
+        "cached": "缓存",
+        "output": "输出",
+        "total": "合计",
+        "requests": "请求",
+        "cost": "费用"
+      }
     },
     "groups": {
       "addToGroup": "添加至分组"
@@ -5813,7 +5981,7 @@
       "short": "账号备注",
       "addShort": "加备注",
       "fingerprintModeLabel": "设备指纹模式",
-      "fingerprintModeHint": "仅 OAuth 账号生效；未设置时默认使用会话模式。",
+      "fingerprintModeHint": "仅 OAuth；默认会话。按账号隔离安装/会话并改写工作区，避免同机多号被串。",
       "fingerprintModeSession": "会话（推荐）",
       "fingerprintModeDevice": "设备",
       "fingerprintModeFull": "完整",

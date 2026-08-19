@@ -29,15 +29,40 @@ const tracked = execFileSync(
 const findings = [];
 
 function isAllowedFixture(relativePath, rule, text, match) {
+  // Upstream v1.3.23 moved the vendored CLIProxyAPI tree from cdk/ to
+  // third_party/. Keep the existing narrow fixture allowlist valid across the
+  // directory migration without exempting the rest of the vendored source.
+  const canonicalRelativePath = relativePath.replace(
+    "sidecars/cockpit-cliproxy/third_party/CLIProxyAPI/",
+    "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/",
+  );
   const lineStart = text.lastIndexOf("\n", match.index) + 1;
   const lineEnd = text.indexOf("\n", match.index);
   const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
 
   if (
     rule === "developer-home-path" &&
-    ["demo", "me", "runner", "shared", "test", "zcode-round-trip-test", "zcode-test", "zcode-user"].includes(
-      match[1],
-    )
+    [
+      "cockpit-test",
+      "codex",
+      "demo",
+      "me",
+      "runner",
+      "shared",
+      "test",
+      "zcode-round-trip-test",
+      "zcode-test",
+      "zcode-user",
+    ].includes(match[1])
+  ) {
+    return true;
+  }
+
+  if (
+    rule === "developer-home-path" &&
+    canonicalRelativePath ===
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/runtime/executor/codex_fingerprint_test.go" &&
+    match[1] === "alice"
   ) {
     return true;
   }
@@ -51,7 +76,7 @@ function isAllowedFixture(relativePath, rule, text, match) {
       "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/sdk/api/handlers/openai/openai_responses_websocket_test.go",
       "src/components/codex/CodexSshServersPanel.tsx",
       "src/utils/codexApiServiceCompatibility.test.ts",
-    ].includes(relativePath)
+    ].includes(canonicalRelativePath)
   ) {
     return true;
   }
@@ -69,7 +94,7 @@ function isAllowedFixture(relativePath, rule, text, match) {
 
   if (
     rule === "github-token" &&
-    relativePath === "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/.env.example" &&
+    canonicalRelativePath === "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/.env.example" &&
     line.includes("GITSTORE_GIT_TOKEN=") &&
     /your|example|placeholder/i.test(match[0])
   ) {
@@ -89,7 +114,7 @@ function isAllowedFixture(relativePath, rule, text, match) {
 
   if (
     rule === "codex-thread-id" &&
-    relativePath ===
+    canonicalRelativePath ===
       "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/runtime/executor/codex_websockets_executor_test.go"
   ) {
     return true;

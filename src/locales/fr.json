@@ -29,7 +29,7 @@
     "advancedSettings": "Paramètres avancés",
     "codexFingerprint": {
       "modeLabel": "Mode d’empreinte d’appareil",
-      "modeHint": "Réservé aux comptes OAuth ; les comptes non définis utilisent le mode session par défaut.",
+      "modeHint": "OAuth uniquement ; Session par défaut. Isole l’installation et la session par compte et réécrit les espaces de travail pour ne pas lier les comptes locaux.",
       "session": "Session (recommandé)",
       "device": "Appareil",
       "full": "Complet",
@@ -692,6 +692,18 @@
       "commonTitle": "Général",
       "antigravitySettingsTitle": "Paramètres Antigravity IDE",
       "codexSettingsTitle": "Paramètres Codex",
+      "codexClientPolicyTitle": "Autoriser globalement les clients Codex app-server",
+      "codexClientPolicyDesc": "Une fois activé, les comptes OAuth limités aux clients officiels acceptent aussi les clients app-server tiers.",
+      "codexAccountPolicies": "Politiques des comptes Codex OAuth",
+      "codexAccountPoliciesDesc": "S’applique uniquement aux comptes OpenAI OAuth standards. Les valeurs sont conservées localement et synchronisées avec le service API local.",
+      "codexNoOauthAccounts": "Aucun compte OpenAI OAuth configurable",
+      "codexOfficialOnly": "Clients officiels uniquement",
+      "codexAppServer": "Autoriser app-server",
+      "codexFingerprintMode": "Convergence d’empreinte",
+      "codexFingerprintOff": "Désactivé",
+      "codexFingerprintDevice": "Appareil uniquement",
+      "codexFingerprintSession": "Appareil + session",
+      "codexFingerprintFull": "Convergence complète",
       "githubCopilotSettingsTitle": "Paramètres GitHub Copilot",
       "ghcpAutoRefresh": "Actualisation automatique du quota GitHub Copilot",
       "ghcpAutoRefreshDesc": "Fréquence de mise à jour en arrière-plan",
@@ -1264,7 +1276,7 @@
       "workspaceIdPlaceholder": "Saisissez l’UUID de l’équipe / espace de travail",
       "workspaceIdHint": "Uniquement pour les jetons d’accès personnels at-* ; le service API l’envoie comme ChatGPT-Account-Id.",
       "fingerprintModeLabel": "Mode empreinte de l’appareil",
-      "fingerprintModeHint": "Comptes OAuth uniquement ; les comptes non définis utilisent le mode session par défaut.",
+      "fingerprintModeHint": "OAuth uniquement ; Session par défaut. Isole l’installation et la session par compte et réécrit les espaces de travail pour ne pas lier les comptes locaux.",
       "fingerprintModeSession": "Session (recommandé)",
       "fingerprintModeDevice": "Appareil",
       "fingerprintModeFull": "Complet",
@@ -1825,7 +1837,69 @@
     "other_group": "Autres modèles"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "Autoriser l’app-server tiers",
+      "globalDescription": "L’activation affiche le résumé des stratégies actuelles ; utilisez Gérer pour configurer les comptes en groupe ou individuellement.",
+      "manage": "Réglages",
+      "title": "Stratégies des comptes Codex OAuth",
+      "description": "Appliquez une stratégie aux comptes sélectionnés ou modifiez directement un compte.",
+      "noAccounts": "Aucun compte Codex OAuth configurable",
+      "selectAll": "Tout sélectionner",
+      "selectedCount": "{{count}} comptes sélectionnés",
+      "selectAccounts": "Sélectionnez au moins un compte.",
+      "selectBatchPolicy": "Sélectionnez au moins une stratégie.",
+      "officialOnly": "Clients officiels uniquement",
+      "officialOnlyShort": "Officiel uniquement",
+      "officialOnlyUnchanged": "Clients officiels : inchangé",
+      "officialOnlyOn": "Clients officiels : activer",
+      "officialOnlyOff": "Clients officiels : désactiver",
+      "appServer": "Autoriser app-server",
+      "appServerShort": "Autoriser app-server",
+      "appServerUnchanged": "app-server : inchangé",
+      "appServerOn": "app-server : activer",
+      "appServerOff": "app-server : désactiver",
+      "fingerprint": "Empreinte de l’appareil",
+      "fingerprintMode": "Mode d’empreinte",
+      "fingerprintUnchanged": "Empreinte : inchangée",
+      "fingerprintOn": "Empreinte : définir le mode",
+      "fingerprintOff": "Empreinte : désactiver",
+      "applyBatch": "Appliquer à la sélection"
+    },
     "title": "Gestion des comptes Codex",
+    "experimentalModelCatalog": {
+      "title": "Modèles visibles",
+      "description": "Génère un catalogue géré par Cockpit avec les modèles officiels disponibles et vos entrées personnalisées, sans remplacer votre catalogue.",
+      "enabledHint": "Utilise la liste actuelle des modèles visibles. Redémarrez ensuite Codex.",
+      "models": {
+        "title": "Liste des modèles",
+        "model": "Modèle",
+        "default": "Modèle par défaut",
+        "add": "Ajouter un modèle",
+        "remove": "Supprimer le modèle",
+        "setDefault": "Définir par défaut",
+        "modelId": "ID du modèle",
+        "displayName": "Nom affiché",
+        "reasoning": "Niveau de raisonnement",
+        "followOfficial": "Suivre l’officiel",
+        "operation": "Actions",
+        "manage": "Gérer",
+        "inheritHint": "Les modèles officiels conservent leurs capacités ; les modèles personnalisés utilisent un modèle général. Vous pouvez ajouter ou supprimer des modèles visibles.",
+        "validation": {
+          "required": "Conservez au moins un modèle.",
+          "modelId": "L’ID du modèle ne peut contenir que des lettres, chiffres, points, tirets, traits de soulignement, barres obliques et deux-points.",
+          "displayName": "Saisissez un nom affiché de 100 caractères maximum.",
+          "duplicate": "Les ID de modèle doivent être uniques.",
+          "reasoningEffort": "Option de raisonnement invalide.",
+          "reserved": "Cet ID de modèle entre en conflit avec un modèle officiel. Utilisez un autre ID."
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "models_cache.json est introuvable.",
+        "modelNotCached": "Le catalogue de modèles local est illisible.",
+        "catalogConflict": "Un autre model_catalog_json est déjà configuré et ne sera pas écrasé.",
+        "cacheInvalid": "models_cache.json est illisible ou son format est invalide."
+      }
+    },
     "newApi": {
       "quota": {
         "available": "Crédit",
@@ -2311,9 +2385,17 @@
     "quota": {
       "hourly": "Quota de 5 heures",
       "weekly": "Quota hebdomadaire",
+      "monthlyCredits": "Solde",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "Quota supplémentaire",
       "reset": "Réinitialiser",
       "weeklyBlocksHourly": "Le quota hebdomadaire est à 0 ; le quota de 5 heures est donc indisponible",
+      "windowStats": "Consommé {{tokens}} · {{cost}}",
+      "windowStatsHint": "Requêtes, jetons et facturation compte de ce compte via le service API depuis que cette fenêtre était pleine",
+      "windowUsed": "Consommé {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} req.",
       "resetCredits": "Réinits {{count}}",
       "resetCreditsTitle": "Réinitialisations restantes pour la fenêtre de 5 heures : {{count}}",
       "resetCreditConfirm": "Confirmer ?",
@@ -2335,7 +2417,17 @@
       "resetCreditNoRecords": "Aucun historique de réinitialisation",
       "resetCreditRecordsLoadFailed": "Impossible de charger l’historique de réinitialisation : {{error}}",
       "resetCreditGrantedAt": "Attribué",
-      "resetCreditExpiresAt": "Expire"
+      "resetCreditExpiresAt": "Expire",
+      "windowAccountCostHint": "Facturation compte (estimée selon les prix du modèle)",
+      "windowUserCostHint": "Facturation utilisateur",
+      "windowWeeks": "Quota {{count}} sem.",
+      "windowDays": "Quota {{count}} j",
+      "windowHours": "Quota {{count}} h",
+      "windowMinutes": "Quota {{count}} min",
+      "codeReview": "Revue de code",
+      "codeReviewShort": "Revue",
+      "monthlyCreditsHint": "Crédits mensuels restants",
+      "monthlyCreditsInline": "Crédits : {{value}}"
     },
     "quotaError": {
       "badge": "Erreur de quota",
@@ -2834,6 +2926,82 @@
         "all": "Tous types"
       },
       "pickInstancePrompt": "Session présente sur plusieurs instances. Saisir l’ID d’instance :"
+    },
+    "sessionUsage": {
+      "tab": "Usage",
+      "listTab": "Sessions",
+      "title": "Usage des sessions",
+      "desc": "Agréger la consommation réelle de jetons depuis les journaux de session Codex locaux, sans quota officiel ni journaux du service API.",
+      "hint": "Le quota officiel est l’enveloppe du forfait. Les journaux du service API ne couvrent que la passerelle locale. Ici, on additionne les deltas JSONL par requête.",
+      "range": {
+        "label": "Période",
+        "7d": "7 jours",
+        "30d": "30 jours",
+        "month": "Ce mois",
+        "all": "Tout"
+      },
+      "instance": {
+        "label": "Profil",
+        "all": "Toutes"
+      },
+      "actions": {
+        "refresh": "Actualiser",
+        "rebuild": "Rescanner"
+      },
+      "status": {
+        "idle": "Pas encore scanné",
+        "scanning": "Analyse des journaux…",
+        "ready": "{{files}} fichiers, {{requests}} requêtes",
+        "lastSynced": "Dernière sync {{time}}",
+        "deferred": "{{count}} forks en attente du parent",
+        "errors": "{{count}} fichiers illisibles"
+      },
+      "cards": {
+        "input": "Jetons d’entrée",
+        "cached": "Jetons cache",
+        "output": "Jetons de sortie",
+        "total": "Jetons totaux",
+        "requests": "Requêtes",
+        "cost": "Coût estimé"
+      },
+      "tables": {
+        "model": "Par modèle",
+        "instance": "Par instance",
+        "day": "Par jour",
+        "modelName": "Modèle",
+        "instanceName": "Profil",
+        "dayName": "Date",
+        "input": "Jetons entrée",
+        "cached": "Jetons cache",
+        "output": "Jetons sortie",
+        "total": "Jetons totaux",
+        "requests": "Req."
+      },
+      "empty": {
+        "title": "Aucun usage de session",
+        "desc": "Ouvrir cette page analyse en arrière-plan les journaux Codex locaux et les instances extra. Après un usage récent, actualisez."
+      },
+      "rebuildConfirm": {
+        "title": "Rescanner",
+        "message": "Le cache d’usage des sessions sera vidé, puis tous les journaux relus. Le quota officiel et les journaux du service API restent inchangés. Continuer ?"
+      },
+      "errors": {
+        "loadFailed": "Échec du chargement de l’usage : {{error}}",
+        "syncFailed": "Échec de l’analyse de l’usage : {{error}}"
+      },
+      "summary": {
+        "title": "30 jours",
+        "scanning": "Analyse…",
+        "updating": "Maj…",
+        "detail": "Détails",
+        "back": "Retour",
+        "input": "Entrée",
+        "cached": "Cache",
+        "output": "Sortie",
+        "total": "Cumul",
+        "requests": "Req.",
+        "cost": "Coût"
+      }
     },
     "api": {
       "baseUrl": "URL de base",
@@ -5804,7 +5972,7 @@
       "short": "Note",
       "addShort": "Note",
       "fingerprintModeLabel": "Mode empreinte de l’appareil",
-      "fingerprintModeHint": "Comptes OAuth uniquement ; les comptes non définis utilisent le mode session par défaut.",
+      "fingerprintModeHint": "OAuth uniquement ; Session par défaut. Isole l’installation et la session par compte et réécrit les espaces de travail pour ne pas lier les comptes locaux.",
       "fingerprintModeSession": "Session (recommandé)",
       "fingerprintModeDevice": "Appareil",
       "fingerprintModeFull": "Complet",

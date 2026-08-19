@@ -3,7 +3,17 @@ import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import { Settings, RefreshCw, FolderOpen, Gauge, Terminal, Zap, X, EyeOff } from 'lucide-react';
+import {
+  Settings,
+  RefreshCw,
+  FolderOpen,
+  Gauge,
+  Terminal,
+  Zap,
+  X,
+  EyeOff,
+  ShieldCheck,
+} from 'lucide-react';
 import { useEscClose } from '../hooks/useEscClose';
 import * as accountService from '../services/accountService';
 import * as codexService from '../services/codexService';
@@ -45,7 +55,13 @@ import {
 } from '../utils/currentAccountRefresh';
 import { setClaudeQuotaDisplayRemainingEnabled } from '../utils/claudeQuotaDisplayPreference';
 import type { Account } from '../types/account';
-import type { CodexAccount, CodexQuickConfig } from '../types/codex';
+import type {
+  CodexAccount,
+  CodexExperimentalModelDefinition,
+  CodexQuickConfig,
+  CodexFingerprintMode,
+} from '../types/codex';
+import { isStandardCodexOAuthAccount } from '../types/codex';
 import { getDisplayGroups, type DisplayGroup } from '../services/groupService';
 import { usePlatformRuntimeSupport } from '../hooks/usePlatformRuntimeSupport';
 import {
@@ -54,6 +70,9 @@ import {
   setAccountsOverviewFilterPersistenceEnabled,
 } from '../utils/accountsOverviewFilterPersistence';
 import { CodexSshSyncSettingsControl } from './codex/CodexSshSyncSettingsControl';
+import { getCodexExperimentalModelErrorMessage } from '../utils/codexExperimentalModel';
+import { CodexExperimentalModelEditor } from './codex/CodexExperimentalModelEditor';
+import { CodexOAuthPolicyModal } from './codex/CodexOAuthPolicyModal';
 import './QuickSettingsPopover.css';
 
 /** GeneralConfig from backend */
@@ -66,6 +85,7 @@ interface GeneralConfig {
   claude_auto_refresh_minutes: number;
   codex_sync_wsl: boolean;
   codex_app_ui_injection_enabled?: boolean;
+  codex_cli_only_allow_app_server_clients?: boolean;
   codex_wsl_config_dir: string;
   ghcp_auto_refresh_minutes: number;
   windsurf_auto_refresh_minutes: number;
@@ -452,10 +472,24 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
   const [codexQuickCompactLimitInput, setCodexQuickCompactLimitInput] = useState(
     String(DEFAULT_AUTO_COMPACT_TOKEN_LIMIT),
   );
+  const [codexQuickCustomEdited, setCodexQuickCustomEdited] = useState(false);
+  const [
+    codexExperimentalModelCatalogEnabled,
+    setCodexExperimentalModelCatalogEnabled,
+  ] = useState(false);
+  const [codexExperimentalModels, setCodexExperimentalModels] = useState<
+    CodexExperimentalModelDefinition[]
+  >([]);
+  const [codexExperimentalDefaultModelId, setCodexExperimentalDefaultModelId] = useState<string | null>(null);
+  const [codexExperimentalModelsEdited, setCodexExperimentalModelsEdited] = useState(false);
+  const [codexExperimentalModelsError, setCodexExperimentalModelsError] = useState<string | null>(
+    null,
+  );
   const [codexQuickConfigLoading, setCodexQuickConfigLoading] = useState(false);
   const [codexQuickConfigSaving, setCodexQuickConfigSaving] = useState(false);
   const [codexQuickConfigError, setCodexQuickConfigError] = useState<string | null>(null);
   const [codexQuickConfigNotice, setCodexQuickConfigNotice] = useState<string | null>(null);
+  const [codexOAuthPolicyModalOpen, setCodexOAuthPolicyModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshEditing, setRefreshEditing] = useState(false);
   const [currentAccountRefreshEditing, setCurrentAccountRefreshEditing] = useState(false);
@@ -495,6 +529,8 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
   const configSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const configSaveVersionRef = useRef(0);
   const configLoadVersionRef = useRef(0);
+  const codexQuickConfigSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const codexQuickConfigSaveVersionRef = useRef(0);
   const refreshPresets = ['-1', '2', '5', '10', '15'];
   const thresholdPresets = ['0', '20', '40', '60'];
   const creditsThresholdPresets = ['0', '5', '10', '20'];
@@ -550,6 +586,19 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
       })),
     [codexAccountGroups],
   );
+  const codexOAuthPolicyAccounts = useMemo(
+    () => codexAccounts.filter((account) => isStandardCodexOAuthAccount(account)),
+    [codexAccounts],
+  );
+  const codexOAuthFingerprintLabels = useMemo<Record<CodexFingerprintMode, string>>(
+    () => ({
+      off: t('settings.general.codexFingerprintOff', '关闭'),
+      device: t('settings.general.codexFingerprintDevice', '仅设备'),
+      session: t('settings.general.codexFingerprintSession', '设备 + 会话'),
+      full: t('settings.general.codexFingerprintFull', '完整收敛'),
+    }),
+    [t],
+  );
   const applyCodexQuickConfig = useCallback((nextConfig: CodexQuickConfig) => {
     const detectedModelContextWindow = nextConfig.detected_model_context_window ?? null;
     const detectedAutoCompactTokenLimit = nextConfig.detected_auto_compact_token_limit ?? null;
@@ -565,6 +614,15 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     setCodexQuickCompactLimitInput(
       String(detectedAutoCompactTokenLimit ?? DEFAULT_AUTO_COMPACT_TOKEN_LIMIT),
     );
+    setCodexQuickCustomEdited(false);
+    setCodexExperimentalModelCatalogEnabled(
+      nextConfig.experimental_model_catalog_enabled,
+    );
+    setCodexExperimentalModels(nextConfig.experimental_model_catalog_models);
+    setCodexExperimentalDefaultModelId(
+      nextConfig.experimental_model_catalog_default_model_id ?? null,
+    );
+    setCodexExperimentalModelsEdited(false);
   }, []);
 
   const loadCodexQuickConfig = useCallback(async () => {
@@ -573,6 +631,11 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
       setCodexQuickConfigPresetId('default');
       setCodexQuickContextWindowInput(String(CONTEXT_WINDOW_1M));
       setCodexQuickCompactLimitInput(String(DEFAULT_AUTO_COMPACT_TOKEN_LIMIT));
+      setCodexExperimentalModelCatalogEnabled(false);
+      setCodexExperimentalModels([]);
+      setCodexExperimentalDefaultModelId(null);
+      setCodexExperimentalModelsEdited(false);
+      setCodexExperimentalModelsError(null);
       setCodexQuickConfigError(null);
       setCodexQuickConfigNotice(null);
       setCodexQuickConfigLoading(false);
@@ -680,67 +743,75 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
     codexQuickParsedCompactLimit,
     codexQuickParsedContextWindow,
   ]);
-  const codexQuickDetectedPresetId = useMemo(
-    () =>
-      resolveCodexQuickConfigPresetId(
-        codexQuickDetectedModelContextWindow,
-        codexQuickDetectedAutoCompactTokenLimit,
-      ),
-    [codexQuickDetectedAutoCompactTokenLimit, codexQuickDetectedModelContextWindow],
-  );
-  const codexQuickConfigDirty = useMemo(() => {
-    if (!codexQuickConfig) return false;
-    return (
-      codexQuickDetectedModelContextWindow !==
-        codexQuickTargetConfig.modelContextWindow ||
-      codexQuickDetectedAutoCompactTokenLimit !==
-        codexQuickTargetConfig.autoCompactTokenLimit
-    );
-  }, [
-    codexQuickConfig,
-    codexQuickDetectedAutoCompactTokenLimit,
-    codexQuickDetectedModelContextWindow,
-    codexQuickTargetConfig.autoCompactTokenLimit,
-    codexQuickTargetConfig.modelContextWindow,
-  ]);
-  const codexQuickConfigWarning = useMemo(() => {
-    if (!codexQuickConfig) return null;
-    if (
-      (codexQuickDetectedModelContextWindow == null) !==
-      (codexQuickDetectedAutoCompactTokenLimit == null)
-    ) {
-      return t('quickSettings.codex.quickConfig.partialDetected', {
-        defaultValue:
-          '检测到当前两个字段并不完整：model_context_window={{context}}，model_auto_compact_token_limit={{compact}}。保存后会按当前方案改写。',
-        context:
-          codexQuickDetectedModelContextWindow ??
-          t('quickSettings.codex.quickConfig.notSet', '未设置'),
-        compact:
-          codexQuickDetectedAutoCompactTokenLimit ??
-          t('quickSettings.codex.quickConfig.notSet', '未设置'),
-      });
-    }
-    if (codexQuickDetectedPresetId === 'custom' && codexQuickConfigPresetId !== 'custom') {
-      return t('quickSettings.codex.quickConfig.customDetected', {
-        defaultValue:
-          '检测到当前 config.toml 为自定义值：model_context_window={{context}}，model_auto_compact_token_limit={{compact}}。保存后会按你选择的预设改写。',
-        context:
-          codexQuickDetectedModelContextWindow ??
-          t('quickSettings.codex.quickConfig.notSet', '未设置'),
-        compact:
-          codexQuickDetectedAutoCompactTokenLimit ??
-          t('quickSettings.codex.quickConfig.notSet', '未设置'),
-      });
+  const codexExperimentalModelUnavailableMessage = useMemo(() => {
+    const reason = codexQuickConfig?.experimental_model_catalog_unavailable_reason;
+    if (!reason) return null;
+    if (reason === 'catalog_conflict') {
+      return t(
+        'codex.experimentalModelCatalog.unavailable.catalogConflict',
+        '已有其他 model_catalog_json，禁止覆盖。',
+      );
     }
     return null;
-  }, [
-    codexQuickConfig,
-    codexQuickConfigPresetId,
-    codexQuickDetectedAutoCompactTokenLimit,
-    codexQuickDetectedModelContextWindow,
-    codexQuickDetectedPresetId,
-    t,
-  ]);
+  }, [codexQuickConfig, t]);
+
+  const persistCodexQuickConfig = useCallback(
+    (
+      target: CodexQuickConfigTarget,
+      experimentalModelCatalogEnabled: boolean,
+      experimentalModels: CodexExperimentalModelDefinition[],
+      experimentalDefaultModelId: string | null,
+    ) => {
+      if (type !== 'codex' || codexQuickConfigLoading) return;
+
+      const saveVersion = codexQuickConfigSaveVersionRef.current + 1;
+      codexQuickConfigSaveVersionRef.current = saveVersion;
+      setCodexQuickConfigError(null);
+      setCodexQuickConfigNotice(null);
+      setCodexQuickConfigSaving(true);
+
+      const save = async () => {
+        try {
+          const saved = await codexService.saveCodexQuickConfig(
+            target.modelContextWindow ?? undefined,
+            target.autoCompactTokenLimit ?? undefined,
+            experimentalModelCatalogEnabled,
+            experimentalModels,
+            experimentalDefaultModelId,
+          );
+          if (saveVersion === codexQuickConfigSaveVersionRef.current) {
+            applyCodexQuickConfig(saved);
+            setCodexQuickConfigNotice(
+              t(
+                'quickSettings.codex.quickConfig.saveSuccess',
+                '当前 Codex 配置已保存',
+              ),
+            );
+            window.dispatchEvent(new Event('config-updated'));
+          }
+        } catch (err) {
+          if (saveVersion === codexQuickConfigSaveVersionRef.current) {
+            setCodexQuickConfigError(
+              getCodexExperimentalModelErrorMessage(t, err) ??
+                t('quickSettings.codex.quickConfig.saveFailed', {
+                  defaultValue: '保存当前 Codex 配置失败：{{error}}',
+                  error: String(err),
+                }),
+            );
+          }
+        } finally {
+          if (saveVersion === codexQuickConfigSaveVersionRef.current) {
+            setCodexQuickConfigSaving(false);
+          }
+        }
+      };
+
+      codexQuickConfigSaveQueueRef.current = codexQuickConfigSaveQueueRef.current
+        .catch(() => undefined)
+        .then(save);
+    },
+    [applyCodexQuickConfig, codexQuickConfigLoading, t, type],
+  );
 
   const handleCodexQuickPresetChange = useCallback(
     (nextPreset: CodexQuickConfigPresetId) => {
@@ -757,53 +828,106 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
             preset.autoCompactTokenLimit ?? DEFAULT_AUTO_COMPACT_TOKEN_LIMIT,
           ),
         );
+        persistCodexQuickConfig(
+          preset,
+          codexExperimentalModelCatalogEnabled,
+          codexExperimentalModels,
+          codexExperimentalDefaultModelId,
+        );
       }
     },
-    [],
+    [
+      codexExperimentalModelCatalogEnabled,
+      codexExperimentalDefaultModelId,
+      codexExperimentalModels,
+      persistCodexQuickConfig,
+    ],
   );
 
-  const handleSaveCodexQuickConfig = useCallback(async () => {
-    if (type !== 'codex' || codexQuickConfigLoading || codexQuickConfigSaving) {
+  useEffect(() => {
+    if (
+      type !== 'codex' ||
+      codexQuickConfigLoading ||
+      !codexQuickConfig ||
+      !codexQuickIsCustomPreset ||
+      !codexQuickCustomEdited ||
+      codexQuickValidationError ||
+      (codexQuickDetectedModelContextWindow === codexQuickParsedContextWindow &&
+        codexQuickDetectedAutoCompactTokenLimit === codexQuickParsedCompactLimit)
+    ) {
       return;
     }
-    setCodexQuickConfigError(null);
-    setCodexQuickConfigNotice(null);
-    if (codexQuickValidationError) {
-      setCodexQuickConfigError(codexQuickValidationError);
-      return;
-    }
-    setCodexQuickConfigSaving(true);
-    try {
-      const saved = await codexService.saveCodexQuickConfig(
-        codexQuickTargetConfig.modelContextWindow ?? undefined,
-        codexQuickTargetConfig.autoCompactTokenLimit ?? undefined,
+
+    const timer = window.setTimeout(() => {
+      persistCodexQuickConfig(
+        {
+          modelContextWindow: codexQuickParsedContextWindow,
+          autoCompactTokenLimit: codexQuickParsedCompactLimit,
+        },
+        codexExperimentalModelCatalogEnabled,
+        codexExperimentalModels,
+        codexExperimentalDefaultModelId,
       );
-      applyCodexQuickConfig(saved);
-      setCodexQuickConfigNotice(
-        t(
-          'quickSettings.codex.quickConfig.saveSuccess',
-          '当前 Codex 配置已保存',
-        ),
-      );
-      window.dispatchEvent(new Event('config-updated'));
-    } catch (err) {
-      setCodexQuickConfigError(
-        t('quickSettings.codex.quickConfig.saveFailed', {
-          defaultValue: '保存当前 Codex 配置失败：{{error}}',
-          error: String(err),
-        }),
-      );
-    } finally {
-      setCodexQuickConfigSaving(false);
-    }
+    }, 500);
+    return () => window.clearTimeout(timer);
   }, [
-    applyCodexQuickConfig,
+    codexExperimentalModelCatalogEnabled,
+    codexExperimentalDefaultModelId,
+    codexExperimentalModels,
+    codexQuickConfig,
     codexQuickConfigLoading,
-    codexQuickConfigSaving,
-    codexQuickTargetConfig.autoCompactTokenLimit,
-    codexQuickTargetConfig.modelContextWindow,
+    codexQuickCustomEdited,
+    codexQuickDetectedAutoCompactTokenLimit,
+    codexQuickDetectedModelContextWindow,
+    codexQuickIsCustomPreset,
+    codexQuickParsedCompactLimit,
+    codexQuickParsedContextWindow,
     codexQuickValidationError,
-    t,
+    persistCodexQuickConfig,
+    type,
+  ]);
+
+  useEffect(() => {
+    if (
+      type !== 'codex' ||
+      codexQuickConfigLoading ||
+      !codexQuickConfig ||
+      !codexExperimentalModelsEdited ||
+      codexExperimentalModelsError ||
+      JSON.stringify(codexQuickConfig.experimental_model_catalog_models) ===
+        JSON.stringify(codexExperimentalModels) &&
+      (codexQuickConfig.experimental_model_catalog_default_model_id ?? null) ===
+        codexExperimentalDefaultModelId
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      persistCodexQuickConfig(
+        codexQuickValidationError
+          ? {
+              modelContextWindow: codexQuickDetectedModelContextWindow,
+              autoCompactTokenLimit: codexQuickDetectedAutoCompactTokenLimit,
+            }
+          : codexQuickTargetConfig,
+        codexExperimentalModelCatalogEnabled,
+        codexExperimentalModels,
+        codexExperimentalDefaultModelId,
+      );
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [
+    codexExperimentalModelCatalogEnabled,
+    codexExperimentalDefaultModelId,
+    codexExperimentalModels,
+    codexExperimentalModelsEdited,
+    codexExperimentalModelsError,
+    codexQuickConfig,
+    codexQuickConfigLoading,
+    codexQuickDetectedAutoCompactTokenLimit,
+    codexQuickDetectedModelContextWindow,
+    codexQuickTargetConfig,
+    codexQuickValidationError,
+    persistCodexQuickConfig,
     type,
   ]);
 
@@ -1927,7 +2051,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
 
   const overlayContent = isOpen ? (
     <div className="qs-overlay">
-      <div className="qs-modal" ref={modalRef}>
+      <div className={`qs-modal qs-modal--${type}`} ref={modalRef}>
         <div className="qs-header">
           <span className="qs-title">{getTitle()}</span>
           <button className="qs-close" onClick={() => setIsOpen(false)} aria-label={t('common.close')}>
@@ -2041,6 +2165,184 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                   {t(
                     'settings.general.codexAppUiInjectionDesc',
                     '重启 Codex 实例后，在输入框下方显示 CPS API 服务的账号数、周额度和 5h 额度。需保持 CPS 在后台运行；完全退出或网络不可用时，额度不会继续刷新。',
+                  )}
+                </div>
+                <div className="qs-codex-experimental-model">
+                  <div className="qs-row qs-row--top">
+                    <div className="qs-row-label">
+                      <Zap size={15} />
+                      <span>
+                        {t(
+                          'codex.experimentalModelCatalog.title',
+                          '可见模型',
+                        )}
+                      </span>
+                    </div>
+                    <div className="qs-row-control">
+                      <label className="qs-switch">
+                        <input
+                          type="checkbox"
+                          checked={codexExperimentalModelCatalogEnabled}
+                          onChange={(event) => {
+                            const enabled = event.target.checked;
+                            setCodexQuickConfigError(null);
+                            setCodexQuickConfigNotice(null);
+                            setCodexExperimentalModelCatalogEnabled(enabled);
+                            const target =
+                              (codexQuickIsCustomPreset && !codexQuickCustomEdited) ||
+                              codexQuickValidationError
+                                ? {
+                                    modelContextWindow:
+                                      codexQuickDetectedModelContextWindow,
+                                    autoCompactTokenLimit:
+                                      codexQuickDetectedAutoCompactTokenLimit,
+                                  }
+                                : codexQuickTargetConfig;
+                            persistCodexQuickConfig(
+                              target,
+                              enabled,
+                              codexExperimentalModelsError
+                                ? (codexQuickConfig?.experimental_model_catalog_models ?? [])
+                                : codexExperimentalModels,
+                              codexExperimentalDefaultModelId,
+                            );
+                          }}
+                          disabled={
+                            codexQuickConfigLoading ||
+                            (!codexExperimentalModelCatalogEnabled &&
+                              !codexQuickConfig?.experimental_model_catalog_available)
+                          }
+                          aria-label={t(
+                            'codex.experimentalModelCatalog.title',
+                          '可见模型',
+                          )}
+                        />
+                        <span className="qs-switch-slider" />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="qs-hint">
+                    {t(
+                      'codex.experimentalModelCatalog.description',
+                      '根据当前可用官方模型和自定义条目生成 Cockpit 受管目录；不会覆盖用户自定义目录。',
+                    )}
+                  </div>
+                  {codexExperimentalModelCatalogEnabled && (
+                    <>
+                      <div className="qs-hint">
+                        {t(
+                          'codex.experimentalModelCatalog.enabledHint',
+                          '启用后使用当前可见模型列表，重启 Codex 生效。',
+                        )}
+                      </div>
+                      <CodexExperimentalModelEditor
+                        models={codexExperimentalModels}
+                        defaultModelId={codexExperimentalDefaultModelId}
+                        mode="summary"
+                        onChange={(models) => {
+                          setCodexExperimentalModels(models);
+                          setCodexExperimentalModelsEdited(true);
+                          setCodexQuickConfigError(null);
+                        }}
+                        onDefaultModelChange={(modelId) => {
+                          setCodexExperimentalDefaultModelId(modelId);
+                          setCodexExperimentalModelsEdited(true);
+                          setCodexQuickConfigError(null);
+                        }}
+                        onValidationChange={setCodexExperimentalModelsError}
+                        disabled={codexQuickConfigLoading}
+                      />
+                    </>
+                  )}
+                  {codexExperimentalModelUnavailableMessage && (
+                    <div className="qs-codex-quick-status error">
+                      {codexExperimentalModelUnavailableMessage}
+                    </div>
+                  )}
+                  <div className="qs-row qs-row--top qs-codex-oauth-policy-row">
+                    <div className="qs-row-label">
+                      <ShieldCheck size={15} />
+                      <span>{t('codex.oauthPolicy.globalTitle', '允许第三方 app-server')}</span>
+                    </div>
+                    <div className="qs-row-control qs-codex-oauth-policy-control">
+                      <label className="qs-switch">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.codex_cli_only_allow_app_server_clients)}
+                          onChange={(event) => {
+                            const enabled = event.target.checked;
+                            setCodexOAuthPolicyModalOpen(false);
+                            void saveConfig({
+                              codex_cli_only_allow_app_server_clients: enabled,
+                            });
+                          }}
+                        />
+                        <span className="qs-switch-slider" />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="qs-hint">
+                    {t(
+                      'codex.oauthPolicy.globalDescription',
+                      '开启后显示当前账号策略摘要，点击“管理”可批量或单独配置。',
+                    )}
+                  </div>
+                  {config.codex_cli_only_allow_app_server_clients && (
+                    <div className="qs-codex-oauth-policy-summary">
+                      <div className="qs-codex-oauth-policy-summary__header">
+                        <span>{t('codex.oauthPolicy.title', 'Codex OAuth 账号策略')}</span>
+                        <button
+                          type="button"
+                          className="qs-codex-oauth-policy-summary__manage"
+                          onClick={() => setCodexOAuthPolicyModalOpen(true)}
+                        >
+                          {t('codex.oauthPolicy.manage', '管理')}
+                        </button>
+                      </div>
+                      <div className="qs-codex-oauth-policy-summary__list">
+                        {codexOAuthPolicyAccounts.length === 0 ? (
+                          <div className="qs-codex-oauth-policy-summary__empty">
+                            {t(
+                              'codex.oauthPolicy.noAccounts',
+                              '暂无可配置的 Codex OAuth 账号',
+                            )}
+                          </div>
+                        ) : (
+                          codexOAuthPolicyAccounts.map((account) => {
+                            const fingerprintMode = account.codex_fingerprint_mode ?? 'session';
+                            return (
+                              <div
+                                className="qs-codex-oauth-policy-summary__row"
+                                key={account.id}
+                              >
+                                <span
+                                  className="qs-codex-oauth-policy-summary__account"
+                                  title={account.email}
+                                >
+                                  {account.email}
+                                </span>
+                                <span className="qs-codex-oauth-policy-summary__value">
+                                  {account.codex_cli_only === true
+                                    ? t('codex.oauthPolicy.officialOnlyShort', '仅官方')
+                                    : t(
+                                        'codex.oauthPolicy.officialOnlyOff',
+                                        '官方客户端：关闭',
+                                      )}
+                                </span>
+                                <span className="qs-codex-oauth-policy-summary__value">
+                                  {account.codex_cli_only_allow_app_server === true
+                                    ? t('codex.oauthPolicy.appServerShort', '允许 app-server')
+                                    : t('codex.oauthPolicy.appServerOff', 'app-server：关闭')}
+                                </span>
+                                <span className="qs-codex-oauth-policy-summary__value">
+                                  {codexOAuthFingerprintLabels[fingerprintMode]}
+                                </span>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
                 {isWindows && (
@@ -2469,6 +2771,8 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -2593,31 +2897,6 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                         )}
                       </span>
                     </div>
-                    <div className="qs-row-control">
-                      <button
-                        className="qs-btn"
-                        onClick={() => void loadCodexQuickConfig()}
-                        disabled={codexQuickConfigLoading || codexQuickConfigSaving}
-                      >
-                        {codexQuickConfigLoading
-                          ? t('common.loading', '加载中...')
-                          : t('common.refresh', '刷新')}
-                      </button>
-                      <button
-                        className="qs-btn qs-btn--primary"
-                        onClick={() => void handleSaveCodexQuickConfig()}
-                        disabled={
-                          codexQuickConfigLoading ||
-                          codexQuickConfigSaving ||
-                          !codexQuickConfigDirty ||
-                          Boolean(codexQuickValidationError)
-                        }
-                      >
-                        {codexQuickConfigSaving
-                          ? t('common.saving', '保存中...')
-                          : t('common.save', '保存')}
-                      </button>
-                    </div>
                   </div>
 
                   {codexQuickConfigLoading ? (
@@ -2642,7 +2921,7 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                               codexQuickConfigPresetId === option.id ? 'active' : ''
                             }`}
                             onClick={() => handleCodexQuickPresetChange(option.id)}
-                            disabled={codexQuickConfigSaving}
+                            disabled={codexQuickConfigLoading}
                           >
                             <span className="qs-codex-quick-preset-btn__label">
                               {option.label}
@@ -2676,9 +2955,10 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                             onChange={(event) => {
                               setCodexQuickConfigError(null);
                               setCodexQuickConfigNotice(null);
+                              setCodexQuickCustomEdited(true);
                               setCodexQuickContextWindowInput(event.target.value);
                             }}
-                            disabled={!codexQuickIsCustomPreset || codexQuickConfigSaving}
+                            disabled={!codexQuickIsCustomPreset || codexQuickConfigLoading}
                             placeholder={String(CONTEXT_WINDOW_1M)}
                           />
                           <div className="qs-hint">
@@ -2709,9 +2989,10 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                             onChange={(event) => {
                               setCodexQuickConfigError(null);
                               setCodexQuickConfigNotice(null);
+                              setCodexQuickCustomEdited(true);
                               setCodexQuickCompactLimitInput(event.target.value);
                             }}
-                            disabled={!codexQuickIsCustomPreset || codexQuickConfigSaving}
+                            disabled={!codexQuickIsCustomPreset || codexQuickConfigLoading}
                             placeholder={String(DEFAULT_AUTO_COMPACT_TOKEN_LIMIT)}
                           />
                           <div className="qs-hint">
@@ -2728,21 +3009,23 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
                         </div>
                       </div>
 
-                      {codexQuickConfigWarning && (
-                        <div className="qs-codex-quick-warning">
-                          {codexQuickConfigWarning}
-                        </div>
-                      )}
                     </>
                   )}
 
-                  {(codexQuickConfigError || codexQuickConfigNotice) && (
+                  {(codexQuickConfigError || codexQuickConfigSaving || codexQuickConfigNotice) && (
                     <div
                       className={`qs-codex-quick-status ${
-                        codexQuickConfigError ? 'error' : 'success'
+                        codexQuickConfigError
+                          ? 'error'
+                          : codexQuickConfigNotice
+                            ? 'success'
+                            : ''
                       }`}
                     >
-                      {codexQuickConfigError || codexQuickConfigNotice}
+                      {codexQuickConfigError ||
+                        (codexQuickConfigSaving
+                          ? t('common.saving', '保存中...')
+                          : codexQuickConfigNotice)}
                     </div>
                   )}
                 </div>
@@ -3090,8 +3373,6 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
 	              </div>
 	            </div>
 	          )}
-	        </div>
-	      )}
 
             {/* ─── GitHub Copilot: opencode sync ─── */}
             {type === 'github_copilot' && (
@@ -3518,6 +3799,13 @@ export function QuickSettingsPopover({ type }: QuickSettingsPopoverProps) {
         <Settings size={14} />
       </button>
       {overlayContent && createPortal(overlayContent, document.body)}
+      {type === 'codex' && codexOAuthPolicyModalOpen && (
+        <CodexOAuthPolicyModal
+          accounts={codexAccounts}
+          onAccountsChange={setCodexAccounts}
+          onClose={() => setCodexOAuthPolicyModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

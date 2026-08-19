@@ -3,6 +3,12 @@ export interface CodexApiProviderPreset {
   name: string;
   baseUrls: string[];
   modelCatalog?: string[];
+  /**
+   * Models from `modelCatalog` that accept image input. Models that are left out
+   * fall back to the provider-level default, so a preset can describe a catalog
+   * that mixes vision-capable and text-only models.
+   */
+  visionModelCatalog?: string[];
   website?: string;
   apiKeyUrl?: string;
   isOfficial?: boolean;
@@ -19,6 +25,45 @@ export const DEEPSEEK_API_BASE_URL = "https://api.deepseek.com";
 export const DEEPSEEK_CODEX_MODEL_CATALOG = [
   "deepseek-v4-flash",
   "deepseek-v4-pro",
+] as const;
+export const OPENCODE_GO_API_PROVIDER_ID = "opencode_go";
+export const OPENCODE_GO_API_BASE_URL = "https://opencode.ai/zen/go/v1";
+export const MINIMAX_API_PROVIDER_ID = "minimax";
+export const MINIMAX_EN_API_PROVIDER_ID = "minimax_en";
+export const MINIMAX_CODEX_MODEL_CATALOG = [
+  "MiniMax-M3",
+  "MiniMax-M2.7",
+] as const;
+/** MiniMax models whose published input modalities include images. */
+export const MINIMAX_CODEX_VISION_MODEL_CATALOG = ["MiniMax-M3"] as const;
+/** OpenCode Go models exposed through its OpenAI-compatible chat completions API. */
+export const OPENCODE_GO_CODEX_MODEL_CATALOG = [
+  "minimax-m3",
+  "minimax-m2.7",
+  "minimax-m2.5",
+  "kimi-k3",
+  "kimi-k2.7-code",
+  "kimi-k2.6",
+  "kimi-k2.5",
+  "glm-5.2",
+  "glm-5.3",
+  "glm-5.1",
+  "glm-5",
+  "deepseek-v4-pro",
+  "deepseek-v4-flash",
+  "qwen3.7-max",
+  "qwen3.8-max",
+  "qwen3.7-plus",
+  "qwen3.6-plus",
+  "qwen3.5-plus",
+  "mimo-v2-pro",
+  "mimo-v2-omni",
+  "mimo-v2.5-pro",
+  "mimo-v2.5",
+  "hy3",
+  "hy3-preview",
+  "gpt-5.6-luna",
+  "grok-4.5",
 ] as const;
 
 const COCKPIT_API_HIDDEN_BASE_URLS = [COCKPIT_API_BASE_URL] as const;
@@ -142,8 +187,17 @@ export const CODEX_API_PROVIDER_PRESETS: readonly CodexApiProviderPreset[] = [
     id: "openrouter",
     name: "OpenRouter",
     baseUrls: ["https://openrouter.ai/api/v1"],
+    modelCatalog: ["openai/gpt-5.6-luna-pro"],
     website: "https://openrouter.ai/",
     apiKeyUrl: "https://openrouter.ai/keys",
+  },
+  {
+    id: OPENCODE_GO_API_PROVIDER_ID,
+    name: "OpenCode Go",
+    baseUrls: [OPENCODE_GO_API_BASE_URL],
+    modelCatalog: [...OPENCODE_GO_CODEX_MODEL_CATALOG],
+    website: "https://opencode.ai/",
+    apiKeyUrl: "https://opencode.ai/auth",
   },
   {
     id: "aicodemirror",
@@ -270,17 +324,19 @@ export const CODEX_API_PROVIDER_PRESETS: readonly CodexApiProviderPreset[] = [
     website: "https://longcat.chat/",
   },
   {
-    id: "minimax",
+    id: MINIMAX_API_PROVIDER_ID,
     name: "MiniMax",
     baseUrls: ["https://api.minimaxi.com/v1"],
-    modelCatalog: ["MiniMax-M3", "MiniMax-M2.7"],
+    modelCatalog: [...MINIMAX_CODEX_MODEL_CATALOG],
+    visionModelCatalog: [...MINIMAX_CODEX_VISION_MODEL_CATALOG],
     website: "https://platform.minimaxi.com/docs",
   },
   {
-    id: "minimax_en",
+    id: MINIMAX_EN_API_PROVIDER_ID,
     name: "MiniMax en",
     baseUrls: ["https://api.minimax.io/v1"],
-    modelCatalog: ["MiniMax-M3", "MiniMax-M2.7"],
+    modelCatalog: [...MINIMAX_CODEX_MODEL_CATALOG],
+    visionModelCatalog: [...MINIMAX_CODEX_VISION_MODEL_CATALOG],
     website: "https://platform.minimax.io/docs",
   },
   {
@@ -402,4 +458,19 @@ export function resolveCodexApiProviderPresetId(rawBaseUrl: string): string {
     findCodexApiProviderPresetByBaseUrl(rawBaseUrl)?.id ??
     CODEX_API_PROVIDER_CUSTOM_ID
   );
+}
+
+/**
+ * Per-model image input support declared by a preset, keyed the same way the
+ * stored provider and account capability maps are keyed (trimmed, lowercased).
+ */
+export function codexApiProviderPresetVisionSupport(
+  preset: CodexApiProviderPreset | null | undefined,
+): Record<string, boolean> {
+  const support: Record<string, boolean> = {};
+  (preset?.visionModelCatalog ?? []).forEach((model) => {
+    const key = model.trim().toLowerCase();
+    if (key) support[key] = true;
+  });
+  return support;
 }

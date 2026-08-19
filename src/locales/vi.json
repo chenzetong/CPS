@@ -29,7 +29,7 @@
     "advancedSettings": "Cài đặt nâng cao",
     "codexFingerprint": {
       "modeLabel": "Chế độ dấu vân tay thiết bị",
-      "modeHint": "Chỉ áp dụng cho tài khoản OAuth; tài khoản chưa đặt sẽ dùng chế độ phiên theo mặc định.",
+      "modeHint": "Chỉ OAuth; mặc định Phiên. Tách cài đặt/phiên theo tài khoản và viết lại workspace để các tài khoản máy không bị nối.",
       "session": "Phiên (khuyến nghị)",
       "device": "Thiết bị",
       "full": "Đầy đủ",
@@ -696,6 +696,18 @@
       "commonTitle": "Chung",
       "antigravitySettingsTitle": "Cài đặt Antigravity IDE",
       "codexSettingsTitle": "Cài đặt Codex",
+      "codexClientPolicyTitle": "Cho phép máy khách Codex app-server toàn cục",
+      "codexClientPolicyDesc": "Khi bật, các tài khoản OAuth chỉ cho phép máy khách chính thức cũng chấp nhận máy khách app-server bên thứ ba.",
+      "codexAccountPolicies": "Chính sách tài khoản Codex OAuth",
+      "codexAccountPoliciesDesc": "Chỉ áp dụng cho tài khoản OpenAI OAuth tiêu chuẩn. Giá trị được lưu cục bộ và đồng bộ với dịch vụ API cục bộ.",
+      "codexNoOauthAccounts": "Không có tài khoản OpenAI OAuth để cấu hình",
+      "codexOfficialOnly": "Chỉ máy khách chính thức",
+      "codexAppServer": "Cho phép app-server",
+      "codexFingerprintMode": "Hợp nhất dấu vân tay",
+      "codexFingerprintOff": "Tắt",
+      "codexFingerprintDevice": "Chỉ thiết bị",
+      "codexFingerprintSession": "Thiết bị + phiên",
+      "codexFingerprintFull": "Hợp nhất đầy đủ",
       "githubCopilotSettingsTitle": "Cài đặt GitHub Copilot",
       "ghcpAutoRefresh": "Tự động làm mới quota GitHub Copilot",
       "ghcpAutoRefreshDesc": "Tần suất cập nhật nền",
@@ -1264,7 +1276,7 @@
       "workspaceIdPlaceholder": "Nhập UUID của nhóm / không gian làm việc",
       "workspaceIdHint": "Chỉ dành cho mã truy cập cá nhân at-*; Dịch vụ API gửi giá trị này dưới dạng ChatGPT-Account-Id.",
       "fingerprintModeLabel": "Chế độ dấu vân tay thiết bị",
-      "fingerprintModeHint": "Chỉ dành cho tài khoản OAuth; tài khoản chưa đặt sẽ mặc định dùng chế độ phiên.",
+      "fingerprintModeHint": "Chỉ OAuth; mặc định Phiên. Tách cài đặt/phiên theo tài khoản và viết lại workspace để các tài khoản máy không bị nối.",
       "fingerprintModeSession": "Phiên (khuyến nghị)",
       "fingerprintModeDevice": "Thiết bị",
       "fingerprintModeFull": "Đầy đủ",
@@ -1825,7 +1837,69 @@
     "other_group": "Mô hình khác"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "Cho phép app-server bên thứ ba",
+      "globalDescription": "Khi bật, bản tóm tắt chính sách hiện tại sẽ hiển thị; chọn Quản lý để cấu hình hàng loạt hoặc từng tài khoản.",
+      "manage": "Cài đặt",
+      "title": "Chính sách tài khoản Codex OAuth",
+      "description": "Áp dụng chính sách cho các tài khoản đã chọn hoặc sửa trực tiếp một tài khoản.",
+      "noAccounts": "Không có tài khoản Codex OAuth có thể cấu hình",
+      "selectAll": "Chọn tất cả",
+      "selectedCount": "Đã chọn {{count}} tài khoản",
+      "selectAccounts": "Hãy chọn ít nhất một tài khoản.",
+      "selectBatchPolicy": "Hãy chọn ít nhất một chính sách.",
+      "officialOnly": "Chỉ ứng dụng chính thức",
+      "officialOnlyShort": "Chỉ chính thức",
+      "officialOnlyUnchanged": "Ứng dụng chính thức: không đổi",
+      "officialOnlyOn": "Ứng dụng chính thức: bật",
+      "officialOnlyOff": "Ứng dụng chính thức: tắt",
+      "appServer": "Cho phép app-server",
+      "appServerShort": "Cho phép app-server",
+      "appServerUnchanged": "app-server: không đổi",
+      "appServerOn": "app-server: bật",
+      "appServerOff": "app-server: tắt",
+      "fingerprint": "Dấu vân tay thiết bị",
+      "fingerprintMode": "Chế độ dấu vân tay",
+      "fingerprintUnchanged": "Dấu vân tay: không đổi",
+      "fingerprintOn": "Dấu vân tay: đặt chế độ",
+      "fingerprintOff": "Dấu vân tay: tắt",
+      "applyBatch": "Áp dụng cho mục đã chọn"
+    },
     "title": "Quản lý tài khoản Codex",
+    "experimentalModelCatalog": {
+      "title": "Mô hình hiển thị",
+      "description": "Tạo danh mục do Cockpit quản lý gồm các mô hình chính thức hiện có và mục tùy chỉnh mà không ghi đè danh mục của người dùng.",
+      "enabledHint": "Sử dụng danh sách mô hình hiển thị hiện tại. Khởi động lại Codex để áp dụng.",
+      "models": {
+        "title": "Danh sách mô hình",
+        "model": "Mô hình",
+        "default": "Mô hình mặc định",
+        "add": "Thêm mô hình",
+        "remove": "Xóa mô hình",
+        "setDefault": "Đặt làm mặc định",
+        "modelId": "ID mô hình",
+        "displayName": "Tên hiển thị",
+        "reasoning": "Mức suy luận",
+        "followOfficial": "Theo chính thức",
+        "operation": "Thao tác",
+        "manage": "Quản lý",
+        "inheritHint": "Mô hình chính thức giữ nguyên khả năng; mô hình tùy chỉnh dùng mẫu khả năng chung. Bạn có thể thêm hoặc xóa mô hình hiển thị.",
+        "validation": {
+          "required": "Giữ lại ít nhất một mô hình.",
+          "modelId": "ID mô hình chỉ được chứa chữ cái, chữ số, dấu chấm, dấu gạch ngang, dấu gạch dưới, dấu gạch chéo và dấu hai chấm.",
+          "displayName": "Nhập tên hiển thị không quá 100 ký tự.",
+          "duplicate": "ID mô hình không được trùng lặp.",
+          "reasoningEffort": "Tùy chọn mức suy luận không hợp lệ.",
+          "reserved": "ID mô hình này trùng với mô hình chính thức. Hãy dùng ID khác."
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "Không tìm thấy models_cache.json.",
+        "modelNotCached": "Không thể đọc danh mục mô hình cục bộ.",
+        "catalogConflict": "Một model_catalog_json khác đã được cấu hình và sẽ không bị ghi đè.",
+        "cacheInvalid": "Không thể đọc models_cache.json hoặc định dạng không hợp lệ."
+      }
+    },
     "newApi": {
       "quota": {
         "available": "Hạn mức",
@@ -2311,9 +2385,17 @@
     "quota": {
       "hourly": "Hạn mức 5 giờ",
       "weekly": "Hạn mức tuần",
+      "monthlyCredits": "Số dư",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "Hạn mức bổ sung",
       "reset": "Đặt lại",
       "weeklyBlocksHourly": "Hạn mức tuần là 0 nên hạn mức 5 giờ không khả dụng",
+      "windowStats": "Đã dùng {{tokens}} · {{cost}}",
+      "windowStatsHint": "Số yêu cầu, token và phí tài khoản qua dịch vụ API từ lúc cửa sổ đầy",
+      "windowUsed": "Đã dùng {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} YC",
       "resetCredits": "Lượt đặt lại {{count}}",
       "resetCreditsTitle": "Lượt đặt lại còn lại cho cửa sổ 5 giờ: {{count}}",
       "resetCreditConfirm": "Xác nhận?",
@@ -2335,7 +2417,17 @@
       "resetCreditNoRecords": "Chưa có bản ghi đặt lại",
       "resetCreditRecordsLoadFailed": "Không tải được bản ghi đặt lại: {{error}}",
       "resetCreditGrantedAt": "Được cấp",
-      "resetCreditExpiresAt": "Hết hạn"
+      "resetCreditExpiresAt": "Hết hạn",
+      "windowAccountCostHint": "Phí tài khoản (ước theo giá mô hình)",
+      "windowUserCostHint": "Phí người dùng",
+      "windowWeeks": "Hạn mức {{count}} tuần",
+      "windowDays": "Hạn mức {{count}} ngày",
+      "windowHours": "Hạn mức {{count}} giờ",
+      "windowMinutes": "Hạn mức {{count}} phút",
+      "codeReview": "Rà soát mã",
+      "codeReviewShort": "Rà soát",
+      "monthlyCreditsHint": "Tín dụng tháng còn lại",
+      "monthlyCreditsInline": "Tín dụng: {{value}}"
     },
     "quotaError": {
       "badge": "Lỗi quota",
@@ -2834,6 +2926,82 @@
         "all": "Mọi loại"
       },
       "pickInstancePrompt": "Phiên tồn tại trên nhiều instance. Nhập ID instance:"
+    },
+    "sessionUsage": {
+      "tab": "Mức dùng",
+      "listTab": "Phiên",
+      "title": "Mức dùng phiên",
+      "desc": "Cộng dồn token thực từ nhật ký phiên Codex trên máy, không dùng hạn mức chính thức hay nhật ký dịch vụ API.",
+      "hint": "Hạn mức chính thức là gói. Nhật ký dịch vụ API chỉ gồm cổng cục bộ. Ở đây cộng phần tăng JSONL từng yêu cầu.",
+      "range": {
+        "label": "Khoảng",
+        "7d": "7 ngày",
+        "30d": "30 ngày",
+        "month": "Tháng này",
+        "all": "Tất cả"
+      },
+      "instance": {
+        "label": "Phiên bản",
+        "all": "Mọi phiên bản"
+      },
+      "actions": {
+        "refresh": "Làm mới",
+        "rebuild": "Quét lại"
+      },
+      "status": {
+        "idle": "Chưa quét",
+        "scanning": "Đang quét nhật ký…",
+        "ready": "{{files}} tệp, {{requests}} yêu cầu",
+        "lastSynced": "Đồng bộ lần cuối {{time}}",
+        "deferred": "{{count}} nhánh đang chờ phiên cha",
+        "errors": "{{count}} tệp không đọc được"
+      },
+      "cards": {
+        "input": "Token vào",
+        "cached": "Token cache",
+        "output": "Token ra",
+        "total": "Tổng token",
+        "requests": "Yêu cầu",
+        "cost": "Chi phí ước"
+      },
+      "tables": {
+        "model": "Theo mô hình",
+        "instance": "Theo phiên bản",
+        "day": "Theo ngày",
+        "modelName": "Mô hình",
+        "instanceName": "Phiên bản",
+        "dayName": "Ngày",
+        "input": "Token vào",
+        "cached": "Token cache",
+        "output": "Token ra",
+        "total": "Tổng token",
+        "requests": "YC"
+      },
+      "empty": {
+        "title": "Chưa có mức dùng phiên",
+        "desc": "Mở trang này sẽ quét nền nhật ký Codex cục bộ và các phiên bản thêm. Vừa dùng xong thì nhấn Làm mới."
+      },
+      "rebuildConfirm": {
+        "title": "Quét lại",
+        "message": "Sẽ xóa bộ nhớ đệm mức dùng phiên rồi đọc lại mọi nhật ký. Hạn mức chính thức và nhật ký dịch vụ API không đổi. Tiếp tục?"
+      },
+      "errors": {
+        "loadFailed": "Không đọc được mức dùng phiên: {{error}}",
+        "syncFailed": "Không quét được mức dùng phiên: {{error}}"
+      },
+      "summary": {
+        "title": "30 ngày",
+        "scanning": "Đang quét",
+        "updating": "Đang cập nhật",
+        "detail": "Chi tiết",
+        "back": "Quay lại",
+        "input": "Vào",
+        "cached": "Cache",
+        "output": "Ra",
+        "total": "Tổng",
+        "requests": "YC",
+        "cost": "Phí"
+      }
     },
     "api": {
       "baseUrl": "URL cơ sở",
@@ -5804,7 +5972,7 @@
       "short": "Ghi chú",
       "addShort": "Ghi chú",
       "fingerprintModeLabel": "Chế độ dấu vân tay thiết bị",
-      "fingerprintModeHint": "Chỉ dành cho tài khoản OAuth; tài khoản chưa đặt sẽ mặc định dùng chế độ phiên.",
+      "fingerprintModeHint": "Chỉ OAuth; mặc định Phiên. Tách cài đặt/phiên theo tài khoản và viết lại workspace để các tài khoản máy không bị nối.",
       "fingerprintModeSession": "Phiên (khuyến nghị)",
       "fingerprintModeDevice": "Thiết bị",
       "fingerprintModeFull": "Đầy đủ",

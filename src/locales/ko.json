@@ -29,7 +29,7 @@
     "advancedSettings": "고급 설정",
     "codexFingerprint": {
       "modeLabel": "기기 지문 모드",
-      "modeHint": "OAuth 계정에만 적용되며, 설정하지 않은 계정은 기본적으로 세션 모드를 사용합니다.",
+      "modeHint": "OAuth만 해당. 기본값은 세션. 계정별로 설치/세션을 분리하고 작업 영역을 바꿔 한 기기의 다중 계정 연결을 줄입니다.",
       "session": "세션(권장)",
       "device": "기기",
       "full": "전체",
@@ -696,6 +696,18 @@
       "commonTitle": "공통",
       "antigravitySettingsTitle": "Antigravity IDE 설정",
       "codexSettingsTitle": "Codex 설정",
+      "codexClientPolicyTitle": "Codex app-server 클라이언트 전역 허용",
+      "codexClientPolicyDesc": "켜면 공식 클라이언트만 허용된 OAuth 계정도 타사 app-server 클라이언트를 허용합니다.",
+      "codexAccountPolicies": "Codex OAuth 계정 정책",
+      "codexAccountPoliciesDesc": "표준 OpenAI OAuth 계정에만 적용됩니다. 값은 로컬에 저장되고 로컬 API 서비스와 동기화됩니다.",
+      "codexNoOauthAccounts": "설정 가능한 OpenAI OAuth 계정이 없습니다",
+      "codexOfficialOnly": "공식 클라이언트만",
+      "codexAppServer": "app-server 허용",
+      "codexFingerprintMode": "지문 수렴",
+      "codexFingerprintOff": "끔",
+      "codexFingerprintDevice": "기기만",
+      "codexFingerprintSession": "기기 + 세션",
+      "codexFingerprintFull": "전체 수렴",
       "githubCopilotSettingsTitle": "GitHub Copilot 설정",
       "ghcpAutoRefresh": "GitHub Copilot 할당량 자동 새로고침",
       "ghcpAutoRefreshDesc": "백그라운드 업데이트 주기",
@@ -1264,7 +1276,7 @@
       "workspaceIdPlaceholder": "Team / Workspace UUID 입력",
       "workspaceIdHint": "at-* 개인 액세스 토큰에만 사용됩니다. API 서비스가 ChatGPT-Account-Id로 전송합니다.",
       "fingerprintModeLabel": "기기 지문 모드",
-      "fingerprintModeHint": "OAuth 계정만 해당됩니다. 설정하지 않은 계정은 기본적으로 세션 모드를 사용합니다.",
+      "fingerprintModeHint": "OAuth만 해당. 기본값은 세션. 계정별로 설치/세션을 분리하고 작업 영역을 바꿔 한 기기의 다중 계정 연결을 줄입니다.",
       "fingerprintModeSession": "세션(권장)",
       "fingerprintModeDevice": "기기",
       "fingerprintModeFull": "전체",
@@ -1825,7 +1837,69 @@
     "other_group": "기타 모델"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "타사 app-server 허용",
+      "globalDescription": "활성화하면 현재 정책 요약이 표시되며, 관리를 눌러 Codex OAuth 계정을 일괄 또는 개별로 구성할 수 있습니다.",
+      "manage": "설정",
+      "title": "Codex OAuth 계정 정책",
+      "description": "선택한 계정에 정책을 적용하거나 한 계정을 직접 변경합니다.",
+      "noAccounts": "구성 가능한 Codex OAuth 계정이 없습니다",
+      "selectAll": "모두 선택",
+      "selectedCount": "{{count}}개 계정 선택됨",
+      "selectAccounts": "계정을 하나 이상 선택하세요.",
+      "selectBatchPolicy": "적용할 정책을 하나 이상 선택하세요.",
+      "officialOnly": "공식 클라이언트만",
+      "officialOnlyShort": "공식만",
+      "officialOnlyUnchanged": "공식 클라이언트: 변경 없음",
+      "officialOnlyOn": "공식 클라이언트: 켜기",
+      "officialOnlyOff": "공식 클라이언트: 끄기",
+      "appServer": "app-server 허용",
+      "appServerShort": "app-server 허용",
+      "appServerUnchanged": "app-server: 변경 없음",
+      "appServerOn": "app-server: 켜기",
+      "appServerOff": "app-server: 끄기",
+      "fingerprint": "기기 지문",
+      "fingerprintMode": "지문 모드",
+      "fingerprintUnchanged": "지문: 변경 없음",
+      "fingerprintOn": "지문: 모드 설정",
+      "fingerprintOff": "지문: 끄기",
+      "applyBatch": "선택 항목에 적용"
+    },
     "title": "Codex 계정 관리",
+    "experimentalModelCatalog": {
+      "title": "표시 모델",
+      "description": "사용 가능한 공식 모델과 사용자 지정 항목으로 Cockpit 관리 카탈로그를 생성하며 사용자 카탈로그는 덮어쓰지 않습니다.",
+      "enabledHint": "현재 표시 모델 목록을 사용합니다. Codex를 다시 시작하세요.",
+      "models": {
+        "title": "모델 목록",
+        "model": "모델",
+        "default": "기본 모델",
+        "add": "모델 추가",
+        "remove": "모델 삭제",
+        "setDefault": "기본값으로 설정",
+        "modelId": "모델 ID",
+        "displayName": "표시 이름",
+        "reasoning": "추론 강도",
+        "followOfficial": "공식 설정 따르기",
+        "operation": "작업",
+        "manage": "관리",
+        "inheritHint": "공식 모델은 기능 필드를 유지하고 사용자 지정 모델은 일반 템플릿을 사용합니다. 표시 모델을 추가하거나 삭제할 수 있습니다.",
+        "validation": {
+          "required": "모델을 하나 이상 유지하세요.",
+          "modelId": "모델 ID에는 문자, 숫자, 마침표, 하이픈, 밑줄, 슬래시, 콜론만 사용할 수 있습니다.",
+          "displayName": "100자 이하의 표시 이름을 입력하세요.",
+          "duplicate": "모델 ID는 중복될 수 없습니다.",
+          "reasoningEffort": "잘못된 추론 강도 옵션입니다.",
+          "reserved": "이 모델 ID는 공식 모델과 충돌합니다. 다른 ID를 사용하세요."
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "models_cache.json을 찾을 수 없습니다.",
+        "modelNotCached": "로컬 모델 카탈로그를 읽을 수 없습니다.",
+        "catalogConflict": "다른 model_catalog_json이 이미 설정되어 있어 덮어쓰지 않습니다.",
+        "cacheInvalid": "models_cache.json을 읽을 수 없거나 형식이 올바르지 않습니다."
+      }
+    },
     "newApi": {
       "quota": {
         "available": "할당량",
@@ -2311,9 +2385,17 @@
     "quota": {
       "hourly": "5시간 쿼터",
       "weekly": "주간 쿼터",
+      "monthlyCredits": "잔액",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "추가 할당량",
       "reset": "재설정",
       "weeklyBlocksHourly": "주간 할당량이 0이라 5시간 할당량을 사용할 수 없습니다",
+      "windowStats": "사용 {{tokens}} · {{cost}}",
+      "windowStatsHint": "이 창이 가득 찬 뒤부터 이 계정이 API 서비스로 쓴 요청 수, 토큰, 계정 과금",
+      "windowUsed": "사용 {{tokens}} · {{cost}}",
+      "windowReq": "{{count}}회",
       "resetCredits": "재설정 {{count}}",
       "resetCreditsTitle": "5시간 창에 남은 재설정 횟수: {{count}}",
       "resetCreditConfirm": "확인?",
@@ -2335,7 +2417,17 @@
       "resetCreditNoRecords": "재설정 기록 없음",
       "resetCreditRecordsLoadFailed": "재설정 기록을 불러오지 못했습니다: {{error}}",
       "resetCreditGrantedAt": "지급",
-      "resetCreditExpiresAt": "만료"
+      "resetCreditExpiresAt": "만료",
+      "windowAccountCostHint": "계정 과금(모델 가격 추산)",
+      "windowUserCostHint": "사용자 과금",
+      "windowWeeks": "{{count}}주 할당량",
+      "windowDays": "{{count}}일 할당량",
+      "windowHours": "{{count}}시간 할당량",
+      "windowMinutes": "{{count}}분 할당량",
+      "codeReview": "코드 리뷰",
+      "codeReviewShort": "리뷰",
+      "monthlyCreditsHint": "이번 달 크레딧 잔량",
+      "monthlyCreditsInline": "크레딧: {{value}}"
     },
     "quotaError": {
       "badge": "할당량 오류",
@@ -2834,6 +2926,82 @@
         "all": "전체"
       },
       "pickInstancePrompt": "이 세션이 여러 인스턴스에 있습니다. 인스턴스 ID를 입력하세요:"
+    },
+    "sessionUsage": {
+      "tab": "사용량",
+      "listTab": "세션",
+      "title": "세션 사용량",
+      "desc": "로컬 Codex 세션 로그에서 실제 토큰 사용량을 집계합니다. 공식 할당량이나 API 서비스 요청 로그는 쓰지 않습니다.",
+      "hint": "공식 할당량은 요금제 한도이고, API 서비스 로그는 로컬 게이트웨이 요청만 포함합니다. 여기서는 JSONL의 요청 단위 증분을 합산합니다.",
+      "range": {
+        "label": "기간",
+        "7d": "7일",
+        "30d": "30일",
+        "month": "이번 달",
+        "all": "전체"
+      },
+      "instance": {
+        "label": "인스턴스",
+        "all": "모든 인스턴스"
+      },
+      "actions": {
+        "refresh": "새로고침",
+        "rebuild": "다시 스캔"
+      },
+      "status": {
+        "idle": "아직 스캔하지 않음",
+        "scanning": "세션 로그 스캔 중…",
+        "ready": "파일 {{files}}개, 요청 {{requests}}건 집계",
+        "lastSynced": "마지막 동기화 {{time}}",
+        "deferred": "부모 대기 포크 {{count}}개",
+        "errors": "파싱 실패 {{count}}개"
+      },
+      "cards": {
+        "input": "입력 Tokens",
+        "cached": "캐시 입력 Tokens",
+        "output": "출력 Tokens",
+        "total": "합계 Tokens",
+        "requests": "요청",
+        "cost": "추정 비용"
+      },
+      "tables": {
+        "model": "모델별",
+        "instance": "인스턴스별",
+        "day": "날짜별",
+        "modelName": "모델",
+        "instanceName": "인스턴스",
+        "dayName": "날짜",
+        "input": "입력 Tokens",
+        "cached": "캐시 Tokens",
+        "output": "출력 Tokens",
+        "total": "합계 Tokens",
+        "requests": "요청"
+      },
+      "empty": {
+        "title": "세션 사용량이 없습니다",
+        "desc": "이 페이지를 열면 로컬 Codex 세션 로그와 추가 인스턴스를 백그라운드에서 스캔합니다. 방금 사용했다면 새로고침하세요."
+      },
+      "rebuildConfirm": {
+        "title": "다시 스캔",
+        "message": "세션 사용량 캐시를 지우고 모든 로그를 다시 읽습니다. 공식 할당량과 API 서비스 로그는 변하지 않습니다. 계속할까요?"
+      },
+      "errors": {
+        "loadFailed": "세션 사용량 읽기 실패: {{error}}",
+        "syncFailed": "세션 사용량 스캔 실패: {{error}}"
+      },
+      "summary": {
+        "title": "최근 30일",
+        "scanning": "스캔 중",
+        "updating": "갱신 중",
+        "detail": "자세히",
+        "back": "뒤로",
+        "input": "입력",
+        "cached": "캐시",
+        "output": "출력",
+        "total": "합계",
+        "requests": "요청",
+        "cost": "비용"
+      }
     },
     "api": {
       "baseUrl": "기본 URL",
@@ -5804,7 +5972,7 @@
       "short": "메모",
       "addShort": "메모 추가",
       "fingerprintModeLabel": "기기 지문 모드",
-      "fingerprintModeHint": "OAuth 계정만 해당됩니다. 설정하지 않은 계정은 기본적으로 세션 모드를 사용합니다.",
+      "fingerprintModeHint": "OAuth만 해당. 기본값은 세션. 계정별로 설치/세션을 분리하고 작업 영역을 바꿔 한 기기의 다중 계정 연결을 줄입니다.",
       "fingerprintModeSession": "세션(권장)",
       "fingerprintModeDevice": "기기",
       "fingerprintModeFull": "전체",

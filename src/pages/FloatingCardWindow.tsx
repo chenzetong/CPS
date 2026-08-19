@@ -6,6 +6,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { TauriEvent, emit, listen } from '@tauri-apps/api/event';
 import { useTranslation } from 'react-i18next';
+import { dismissBootSplash } from '../utils/bootSplash';
 import {
   buildAntigravityAccountPresentation,
   buildClaudeAccountPresentation,
@@ -625,6 +626,7 @@ export function FloatingCardWindow() {
     document.documentElement.classList.add('floating-card-overlay-root');
     document.body.classList.add('floating-card-overlay-root');
     rootElement?.classList.add('floating-card-overlay-root');
+    dismissBootSplash();
 
     return () => {
       document.documentElement.classList.remove('floating-card-overlay-root');
@@ -678,7 +680,7 @@ export function FloatingCardWindow() {
         }
         await getCurrentWebview().setZoom(
           typeof config.ui_scale === 'number' && Number.isFinite(config.ui_scale)
-            ? Math.min(2, Math.max(0.8, config.ui_scale))
+            ? Math.min(2, Math.max(0.3, config.ui_scale))
             : 1,
         );
         setAlwaysOnTop(Boolean(config.floating_card_always_on_top));

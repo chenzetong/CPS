@@ -7,6 +7,102 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
+## [1.3.23] - 2026-08-19
+
+### 变更
+
+- **Codex OAuth 设备指纹重新默认打开（会话），并按账号切开 API 服务身份**：未单独设置为设备 / 完整的账号按会话模式生效；1.3.22 升级时被切到关闭的账号也会回到会话。会话模式会为每个账号生成稳定的安装 / 会话 / 线程 / 回合 ID，并改写父子谱系和工作区路径、Git remote、commit，避免同机多号共用一套环境身份。启动后会把本地 API 服务里上次默认关闭写入的状态同步回来，需要时仍可手动改为关闭 / 设备 / 完整。
+- **Codex Business 月度 credits 改为单行剩余展示**：有剩余时显示 `Credits：数量`，不再画进度条；剩余为 0 时不显示这一行。
+- **关闭右上角推广广告**。
+
+### 修复
+
+- **Linux 上可正确解析并启动 Antigravity**：支持配置路径、`PATH`、安装根与 `bin/` 布局、用户本地 `~/.local/share/antigravity-ide`，并校验执行权限；Debian 包补充 `libsecret-tools`，供官方切号调用 `secret-tool`。感谢 @KirschBluteX（[#1944](https://github.com/jlcodes99/cockpit-tools/pull/1944)）。
+
+## [1.3.22] - 2026-08-18
+
+### 新增
+
+- **Codex 支持可见模型目录管理**：新版会将旧版本目录一次性迁移为预设的官方可见模型列表；之后可在独立管理弹框中新增、编辑或删除模型，为每个模型选择跟随官方或自定义推理强度，并将任意可见模型设为默认模型。设置会在默认目录、多开实例和账号切换后保持一致，并尊重用户自定义的模型目录。
+- **新增 Codex OAuth 客户端策略**：在 Codex 右上角设置弹框开启允许 app-server 后，可继续在策略弹框中批量或单独配置仅允许官方客户端、允许 app-server 和设备指纹模式，修改后会同步到本地 API 服务。
+- **macOS 启动终端新增 Ghostty**：Claude CLI 和 Codex CLI 可直接用 Ghostty 打开。感谢 @Jonesxq（[#1948](https://github.com/jlcodes99/cockpit-tools/pull/1948)）。
+- **Linux 上可启动 Codex 终端**：支持系统终端，并依次回退到 gnome-terminal、konsole。感谢 @Jonesxq（[#1950](https://github.com/jlcodes99/cockpit-tools/pull/1950)）。
+
+### 变更
+
+- **Codex 设置中的可见模型改为只读摘要**：主设置弹框只展示当前模型列表，点击“管理”后在独立弹框中编辑模型 ID、展示名和推理强度，避免主设置内容拥挤。
+- **Codex OAuth 设备指纹本次版本对所有人默认改为关闭**：升级后已有账号也会切到关闭，需要时仍可手动改回会话 / 设备 / 完整。
+- **Codex OAuth 设备指纹与客户端策略统一移至 Codex 右上角设置弹框管理**：设备指纹支持关闭、设备、会话、完整四种模式，并在后台同步到本地 API 服务，不阻塞设置页保存。
+- **Codex API Service 统一使用 sidecar 网关**：移除旧网关选项及仅适用于旧网关的超时字段，已有旧网关集合会自动迁移到 sidecar 模式。
+- **Codex API 服务默认估算价与公开价目对齐**：`gpt-5.6-luna` 调整为 $0.2 / $0.02 / $1.2，`gpt-5.6-terra` 调整为 $2 / $0.2 / $12（均为每百万 token 的输入 / 缓存读 / 输出）；未单独改过价格的账号会改用新单价，之后的新请求按新价估算，已有统计不会重算。
+- **Codex 账号卡片上的 API 服务用量仅在账号加入账号池后显示**：未加入时不再显示请求数、token 和账号计费。
+- **界面缩放最小值调整为 30%**，便于在较小窗口中完整使用设置和管理页面。
+- **内置 CLIProxyAPI 源码目录改为 `sidecars/cockpit-cliproxy/third_party/CLIProxyAPI`**：原先的 `cdk/CLIProxyAPI` 已替换，本地构建 sidecar 需改用新路径。
+
+### 修复
+
+- **选择 MiniMax 预设时会保留识图能力**：目录里只有 `MiniMax-M3` 支持图片输入，`MiniMax-M2.7` 仍按纯文本。感谢 @octo-patch（[#1968](https://github.com/jlcodes99/cockpit-tools/pull/1968)）。
+- **Codex Business 账号可显示月度 credits**：解析并展示剩余、总量和重置时间。感谢 @Jonesxq（[#1953](https://github.com/jlcodes99/cockpit-tools/pull/1953)）。
+- **macOS 上 API 服务 sidecar 不再继承 Cockpit 应用身份**：避免访问局域网网关失败。感谢 @Jonesxq（[#1947](https://github.com/jlcodes99/cockpit-tools/pull/1947)）。
+- **开启菜单栏额度后，关闭到托盘仍会继续刷新额度**：主窗口改为隐藏而不是拆掉 WebView。感谢 @Jonesxq（[#1952](https://github.com/jlcodes99/cockpit-tools/pull/1952)）。
+
+## [1.3.21] - 2026-08-15
+
+### 新增
+
+- **Codex 支持可选的实验模型目录**：默认目录和多开实例都可添加、编辑实验模型 ID 与展示名，初始提供 `gpt-5.6-sol-wm` / `GPT-5.6 Sol WM`；自定义实验模型可用于 Codex 客户端和 Cockpit API 服务，切换不同账号类型后设置仍会保留，并尊重用户自定义的模型目录。
+- **Antigravity 账号分隔行导入支持辅助邮箱与 Google refresh token**：refresh token 可用时可直接恢复账号登录，不可用或未填写时仍会保留密码、辅助邮箱和 2FA 等待授权资料；账号导出也会保留辅助邮箱。
+
+### 变更
+
+- **Codex 设置改为扁平布局并即时保存**：配置文件、上下文预设、自定义值、实验模型、切号联动、额度显示和自动切号都与外层设置保持同级；点击预设或开关、编辑字段后直接持久化，不再需要单独的保存或刷新按钮，连续修改也会按顺序保存。
+
+## [1.3.20] - 2026-08-14
+
+### 新增
+
+- **Codex MiniMax Token Plan 和智谱 GLM Coding Plan 账号可显示额度**：可刷新并查看剩余百分比、套餐和重置时间。感谢 @Jonesxq（[#1929](https://github.com/jlcodes99/cockpit-tools/pull/1929)）。
+- **Codex 模型供应商新增 OpenCode Go，OpenRouter 补上 Luna Pro 模型**：可直接选择 OpenCode Go 及其当前模型目录。感谢 @Jonesxq（[#1922](https://github.com/jlcodes99/cockpit-tools/pull/1922)）。
+- **已有 Codex 模型供应商 API Key 可直接编辑**：不用删掉重建，关联账号会同步新 Key。感谢 @Jonesxq（[#1923](https://github.com/jlcodes99/cockpit-tools/pull/1923)）。
+
+### 变更
+
+- **考虑到 Codex Spark 等长标题，调整了账号额度布局**：标题放在进度条上方，进度条保持对齐。
+- **Codex 里的 DeepSeek 改为展示真实推理档位**：`low` / `high` / `max`，不再套用 Codex 默认的 `medium` / `xhigh`。感谢 @Jonesxq（[#1931](https://github.com/jlcodes99/cockpit-tools/pull/1931)）。
+
+### 修复
+
+- **已关闭的引导、账号分组和自定义排序在更新后会保留**：网关引导、风险提示和侧栏提示会记到本机数据目录，旧的 localStorage 键也仍视为已关闭；账号列表未就绪时不会再清空分组成员或自定义排序。分组文件读取失败不再当成空数据，写入改为原子替换。感谢 @Jonesxq（[#1933](https://github.com/jlcodes99/cockpit-tools/pull/1933)，[#1919](https://github.com/jlcodes99/cockpit-tools/issues/1919)）。
+- **CodeBuddy 国内版和 WorkBuddy 企业账号可显示真实用量**：个人资源接口为空时改走官方企业用量接口。感谢 @Yuyang-0423（[#1911](https://github.com/jlcodes99/cockpit-tools/pull/1911)）。
+- **供应商用量查询支持只填根地址**：先试你填的地址，再回退到 `/v1`。感谢 @Jonesxq（[#1926](https://github.com/jlcodes99/cockpit-tools/pull/1926)）。
+- **Codex 切到内置 OpenAI 时，不再覆盖用户自己选的非托管 `model_provider`**。感谢 @Jonesxq（[#1930](https://github.com/jlcodes99/cockpit-tools/pull/1930)）。
+- **WorkBuddy 定时签到更稳**：保存配置后会立刻唤醒调度，启动时检查一次，活动暂时关闭会重试而不是记成今天已签。感谢 @Jonesxq（[#1932](https://github.com/jlcodes99/cockpit-tools/pull/1932)）。
+- **Codex API 服务请求日志会记录推理力度**。感谢 @Jonesxq（[#1924](https://github.com/jlcodes99/cockpit-tools/pull/1924)）。
+
+## [1.3.19] - 2026-08-14
+
+### 变更
+
+- **Codex 账号额度标签改为短写法且不再换行**：`5h` / `7d` / `5w`，模型专属窗口如 `Spark 7d`，Code Review 用短标签。完整名称只在悬停时显示。
+
+## [1.3.18] - 2026-08-14
+
+### 新增
+
+- **Codex 第三方模型目录支持按模型设置上下文窗口**：可在添加 / 编辑 API Key 的模型列表、模型供应商编辑页，或 API 服务的模型映射表中填写。官方 / DeepSeek 目录默认保留厂商值；其他模型留空则回落到「上下文与压缩阈值」或 128000。保存后，Codex 客户端和 API 服务对外模型目录都会按该窗口上报；Codex 需重启后生效。
+- **安装后首次打开和更新后启动会显示进度条**：应用加载时窗口不再长时间空白。
+- **Codex 账号卡片显示本窗口从满额到现在的用量**：API 服务池里的官方账号会显示请求数、token 和账号计费（`A $`）；没有用量时也保留 `0 req`、`0`、`A $0.00`。
+- **Codex 会话管理增加会话用量**：可从本机会话日志汇总真实 Token 用量，不依赖官方配额百分比，也不要求请求一定走 API 服务。
+
+### 变更
+
+- **Codex 官方额度改为小进度条，重置时间单独一行并与额度标签左对齐**。
+- **Codex API 服务官方 OAuth 出站身份与官方客户端对齐**：默认使用配对的 `codex-tui` 身份，不再转发下游客户端 UA；会话头改为 `Session-Id`，并带上窗口与线程标识。
+
+### 修复
+
+- **修复安装后首次打开和更新后启动卡在白屏、像死机的问题**：启动过程现在会显示进度，首屏也不再等待远程字体。
+
 ## [1.3.17] - 2026-08-13
 
 ### 新增

@@ -29,7 +29,7 @@
     "advancedSettings": "Pokročilá nastavení",
     "codexFingerprint": {
       "modeLabel": "Režim otisku zařízení",
-      "modeHint": "Pouze pro účty OAuth; nenastavené účty ve výchozím stavu používají režim relace.",
+      "modeHint": "Pouze OAuth; výchozí je relace. Odděluje instalaci/relaci podle účtu a přepisuje workspace, aby se místní účty nespojovaly.",
       "session": "Relace (doporučeno)",
       "device": "Zařízení",
       "full": "Úplný",
@@ -692,6 +692,18 @@
       "commonTitle": "Obecné",
       "antigravitySettingsTitle": "Nastavení Antigravity IDE",
       "codexSettingsTitle": "Nastavení Codex",
+      "codexClientPolicyTitle": "Globálně povolit klienty Codex app-server",
+      "codexClientPolicyDesc": "Po zapnutí přijmou OAuth účty s omezením na oficiální klienty také klienty třetích stran přes app-server.",
+      "codexAccountPolicies": "Zásady účtů Codex OAuth",
+      "codexAccountPoliciesDesc": "Platí pouze pro standardní účty OpenAI OAuth. Hodnoty se ukládají lokálně a synchronizují s místní službou API.",
+      "codexNoOauthAccounts": "Žádné konfigurovatelné účty OpenAI OAuth",
+      "codexOfficialOnly": "Pouze oficiální klienti",
+      "codexAppServer": "Povolit app-server",
+      "codexFingerprintMode": "Konvergence otisku",
+      "codexFingerprintOff": "Vypnuto",
+      "codexFingerprintDevice": "Pouze zařízení",
+      "codexFingerprintSession": "Zařízení + relace",
+      "codexFingerprintFull": "Úplná konvergence",
       "githubCopilotSettingsTitle": "Nastavení GitHub Copilot",
       "ghcpAutoRefresh": "Automatické obnovení kvóty GitHub Copilot",
       "ghcpAutoRefreshDesc": "Frekvence aktualizace na pozadí",
@@ -1264,7 +1276,7 @@
       "workspaceIdPlaceholder": "Zadejte UUID týmu / pracovního prostoru",
       "workspaceIdHint": "Pouze pro osobní přístupové tokeny at-*; služba API jej odešle jako ChatGPT-Account-Id.",
       "fingerprintModeLabel": "Režim otisku zařízení",
-      "fingerprintModeHint": "Pouze účty OAuth; nenastavené účty standardně používají režim relace.",
+      "fingerprintModeHint": "Pouze OAuth; výchozí je relace. Odděluje instalaci/relaci podle účtu a přepisuje workspace, aby se místní účty nespojovaly.",
       "fingerprintModeSession": "Relace (doporučeno)",
       "fingerprintModeDevice": "Zařízení",
       "fingerprintModeFull": "Plný",
@@ -1825,7 +1837,69 @@
     "other_group": "Ostatní modely"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "Povolit externí app-server",
+      "globalDescription": "Po zapnutí se zobrazí souhrn aktuálních zásad; kliknutím na Spravovat je můžete nastavit hromadně nebo jednotlivě.",
+      "manage": "Nastavení",
+      "title": "Zásady účtů Codex OAuth",
+      "description": "Použijte zásadu na vybrané účty nebo upravte jeden účet přímo.",
+      "noAccounts": "Žádné konfigurovatelné účty Codex OAuth",
+      "selectAll": "Vybrat vše",
+      "selectedCount": "Vybráno účtů: {{count}}",
+      "selectAccounts": "Vyberte alespoň jeden účet.",
+      "selectBatchPolicy": "Vyberte alespoň jednu zásadu.",
+      "officialOnly": "Pouze oficiální klienti",
+      "officialOnlyShort": "Jen oficiální",
+      "officialOnlyUnchanged": "Oficiální klienti: beze změny",
+      "officialOnlyOn": "Oficiální klienti: zapnout",
+      "officialOnlyOff": "Oficiální klienti: vypnout",
+      "appServer": "Povolit app-server",
+      "appServerShort": "Povolit app-server",
+      "appServerUnchanged": "app-server: beze změny",
+      "appServerOn": "app-server: zapnout",
+      "appServerOff": "app-server: vypnout",
+      "fingerprint": "Otisk zařízení",
+      "fingerprintMode": "Režim otisku",
+      "fingerprintUnchanged": "Otisk: beze změny",
+      "fingerprintOn": "Otisk: nastavit režim",
+      "fingerprintOff": "Otisk: vypnout",
+      "applyBatch": "Použít na vybrané"
+    },
     "title": "Správa účtů Codex",
+    "experimentalModelCatalog": {
+      "title": "Viditelné modely",
+      "description": "Vytvoří katalog spravovaný Cockpitem z dostupných oficiálních modelů a vlastních položek, aniž by přepsal uživatelský katalog.",
+      "enabledHint": "Použije aktuální seznam viditelných modelů. Pro použití restartujte Codex.",
+      "models": {
+        "title": "Seznam modelů",
+        "model": "Položka modelu",
+        "default": "Výchozí model",
+        "add": "Přidat model",
+        "remove": "Odebrat model",
+        "setDefault": "Nastavit jako výchozí",
+        "modelId": "ID modelu",
+        "displayName": "Zobrazovaný název",
+        "reasoning": "Úroveň uvažování",
+        "followOfficial": "Podle oficiálního",
+        "operation": "Akce",
+        "manage": "Spravovat",
+        "inheritHint": "Oficiální modely si zachovají svá pole schopností; vlastní modely použijí obecnou šablonu. Viditelné modely můžete přidávat nebo mazat.",
+        "validation": {
+          "required": "Ponechte alespoň jeden model.",
+          "modelId": "ID modelu smí obsahovat pouze písmena, číslice, tečky, pomlčky, podtržítka, lomítka a dvojtečky.",
+          "displayName": "Zadejte zobrazovaný název o délce nejvýše 100 znaků.",
+          "duplicate": "ID modelů musí být jedinečná.",
+          "reasoningEffort": "Neplatná úroveň uvažování.",
+          "reserved": "Toto ID modelu koliduje s oficiálním modelem. Použijte jiné ID."
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "Soubor models_cache.json nebyl nalezen.",
+        "modelNotCached": "Místní katalog modelů se nepodařilo načíst.",
+        "catalogConflict": "Jiný model_catalog_json je již nastaven a nebude přepsán.",
+        "cacheInvalid": "Soubor models_cache.json nelze přečíst nebo má neplatný formát."
+      }
+    },
     "newApi": {
       "quota": {
         "available": "Kvóta",
@@ -2311,9 +2385,17 @@
     "quota": {
       "hourly": "Kvóta 5 hodin",
       "weekly": "Týdenní kvóta",
+      "monthlyCredits": "Zůstatek",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "Dodatečná kvóta",
       "reset": "Reset​",
       "weeklyBlocksHourly": "Týdenní kvóta je 0, proto není 5hodinová kvóta dostupná",
+      "windowStats": "Spotřeb. {{tokens}} · {{cost}}",
+      "windowStatsHint": "Požadavky, tokeny a účtování účtu přes API službu od plného okna",
+      "windowUsed": "Spotřeb. {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} pož.",
       "resetCredits": "Resety {{count}}",
       "resetCreditsTitle": "Zbývající resety pro 5hodinové okno: {{count}}",
       "resetCreditConfirm": "Potvrdit?",
@@ -2335,7 +2417,17 @@
       "resetCreditNoRecords": "Žádné záznamy resetů",
       "resetCreditRecordsLoadFailed": "Načtení záznamů resetů selhalo: {{error}}",
       "resetCreditGrantedAt": "Přiděleno",
-      "resetCreditExpiresAt": "Vyprší"
+      "resetCreditExpiresAt": "Vyprší",
+      "windowAccountCostHint": "Účtování účtu (odhad z cen modelu)",
+      "windowUserCostHint": "Účtování uživatele",
+      "windowWeeks": "Kvóta {{count}} týd.",
+      "windowDays": "Kvóta {{count}} d",
+      "windowHours": "Kvóta {{count}} h",
+      "windowMinutes": "Kvóta {{count}} min",
+      "codeReview": "Kontrola kódu",
+      "codeReviewShort": "Recenze",
+      "monthlyCreditsHint": "Zbývající měsíční kredity",
+      "monthlyCreditsInline": "Kredity: {{value}}"
     },
     "quotaError": {
       "badge": "Chyba kvóty",
@@ -2834,6 +2926,82 @@
         "all": "Všechny"
       },
       "pickInstancePrompt": "Relace je na více instancích. Zadejte ID instance:"
+    },
+    "sessionUsage": {
+      "tab": "Spotřeba",
+      "listTab": "Relace",
+      "title": "Spotřeba relací",
+      "desc": "Sčítá skutečnou spotřebu tokenů z místních protokolů Codex, bez oficiální kvóty a logů API služby.",
+      "hint": "Oficiální kvóta je limit tarifu. Logy API služby pokrývají jen místní bránu. Zde sčítáme JSONL delty po požadavcích.",
+      "range": {
+        "label": "Období",
+        "7d": "7 dní",
+        "30d": "30 dní",
+        "month": "Tento měsíc",
+        "all": "Vše"
+      },
+      "instance": {
+        "label": "Prostředí",
+        "all": "Všechny"
+      },
+      "actions": {
+        "refresh": "Obnovit",
+        "rebuild": "Znovu skenovat"
+      },
+      "status": {
+        "idle": "Ještě neskenováno",
+        "scanning": "Skenování protokolů…",
+        "ready": "{{files}} souborů, {{requests}} požadavků",
+        "lastSynced": "Poslední sync {{time}}",
+        "deferred": "{{count}} forky čekají na rodiče",
+        "errors": "{{count}} souborů nelze číst"
+      },
+      "cards": {
+        "input": "Vstupní tokeny",
+        "cached": "Cache tokeny",
+        "output": "Výstupní tokeny",
+        "total": "Tokeny celkem",
+        "requests": "Požadavky",
+        "cost": "Odhad ceny"
+      },
+      "tables": {
+        "model": "Podle modelu",
+        "instance": "Podle instance",
+        "day": "Podle dne",
+        "modelName": "Název",
+        "instanceName": "Prostředí",
+        "dayName": "Datum",
+        "input": "Vstupní tokeny",
+        "cached": "Cache tokeny",
+        "output": "Výstupní tokeny",
+        "total": "Tokeny celkem",
+        "requests": "Pož."
+      },
+      "empty": {
+        "title": "Zatím žádná spotřeba relací",
+        "desc": "Otevření stránky na pozadí naskenuje místní protokoly Codex a extra instance. Po čerstvém použití klikněte na Obnovit."
+      },
+      "rebuildConfirm": {
+        "title": "Znovu skenovat",
+        "message": "Vymaže se mezipaměť spotřeby relací a znovu se načtou všechny protokoly. Oficiální kvóta a logy API služby se nezmění. Pokračovat?"
+      },
+      "errors": {
+        "loadFailed": "Načtení spotřeby relací selhalo: {{error}}",
+        "syncFailed": "Skenování spotřeby relací selhalo: {{error}}"
+      },
+      "summary": {
+        "title": "30 dní",
+        "scanning": "Sken…",
+        "updating": "Aktual…",
+        "detail": "Podrobnosti",
+        "back": "Zpět",
+        "input": "Vstup",
+        "cached": "Cache",
+        "output": "Výstup",
+        "total": "Celkem",
+        "requests": "Pož.",
+        "cost": "Cena"
+      }
     },
     "api": {
       "baseUrl": "Základní URL",
@@ -5804,7 +5972,7 @@
       "short": "Poznámka",
       "addShort": "Poznámka",
       "fingerprintModeLabel": "Režim otisku zařízení",
-      "fingerprintModeHint": "Pouze účty OAuth; nenastavené účty standardně používají režim relace.",
+      "fingerprintModeHint": "Pouze OAuth; výchozí je relace. Odděluje instalaci/relaci podle účtu a přepisuje workspace, aby se místní účty nespojovaly.",
       "fingerprintModeSession": "Relace (doporučeno)",
       "fingerprintModeDevice": "Zařízení",
       "fingerprintModeFull": "Plný",

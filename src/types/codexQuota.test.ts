@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   getCodexAdditionalQuotaWindows,
+  getCodexQuotaWindowLabel,
+  getCodexMonthlyCreditUsage,
   type CodexQuota,
 } from "./codex.ts";
 
@@ -30,6 +32,14 @@ const quota: CodexQuota = {
     ],
   },
 };
+
+test("uses 5h / Weekly / N Week window labels", () => {
+  assert.equal(getCodexQuotaWindowLabel(300, "hourly"), "5h");
+  assert.equal(getCodexQuotaWindowLabel(10_080, "weekly"), "Weekly");
+  assert.equal(getCodexQuotaWindowLabel(50_400, "weekly"), "5 Week");
+  assert.equal(getCodexQuotaWindowLabel(undefined, "weekly"), "Weekly");
+  assert.equal(getCodexQuotaWindowLabel(undefined, "hourly"), "5h");
+});
 
 test("keeps upstream Spark-specific quota windows for the account card", () => {
   assert.deepEqual(getCodexAdditionalQuotaWindows(quota), [
@@ -62,4 +72,52 @@ test("keeps upstream Spark-specific quota windows for the account card", () => {
       windowMinutes: 10_080,
     },
   ]);
+});
+
+test("reads Business monthly credits from the spend-control payload", () => {
+  assert.deepEqual(
+    getCodexMonthlyCreditUsage({
+      hourly_percentage: 100,
+      weekly_percentage: 100,
+      raw_data: {
+        plan_type: "business",
+        spend_control: {
+          individual_limit: {
+            limit: "25000",
+            used: "8000",
+            remaining: "17000",
+            remaining_percent: 68,
+            reset_at: 1_790_000_000,
+          },
+        },
+      },
+    }),
+    {
+      used: 8000,
+      total: 25000,
+      remaining: 17000,
+      remainingPercent: 68,
+      resetTime: 1_790_000_000,
+    },
+  );
+});
+
+test("falls back to a balance-only credits payload", () => {
+  assert.deepEqual(
+    getCodexMonthlyCreditUsage({
+      hourly_percentage: 100,
+      weekly_percentage: 100,
+      raw_data: {
+        credits: {
+          unlimited: false,
+          balance: "42",
+        },
+      },
+    }),
+    {
+      balance: "42",
+      remaining: 42,
+      unlimited: false,
+    },
+  );
 });

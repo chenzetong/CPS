@@ -29,7 +29,7 @@
     "advancedSettings": "Расширенные настройки",
     "codexFingerprint": {
       "modeLabel": "Режим отпечатка устройства",
-      "modeHint": "Только для аккаунтов OAuth; ненастроенные аккаунты по умолчанию используют режим сессии.",
+      "modeHint": "Только OAuth; по умолчанию сессия. Разделяет установку и сессию по аккаунту и переписывает рабочие каталоги, чтобы локальные аккаунты не связывались.",
       "session": "Сессия (рекомендуется)",
       "device": "Устройство",
       "full": "Полный",
@@ -696,6 +696,18 @@
       "commonTitle": "Общие",
       "antigravitySettingsTitle": "Настройки Antigravity IDE",
       "codexSettingsTitle": "Настройки Codex",
+      "codexClientPolicyTitle": "Глобально разрешать клиентов Codex app-server",
+      "codexClientPolicyDesc": "При включении OAuth-аккаунты с ограничением на официальные клиенты также принимают сторонние клиенты app-server.",
+      "codexAccountPolicies": "Политики аккаунтов Codex OAuth",
+      "codexAccountPoliciesDesc": "Применяется только к стандартным аккаунтам OpenAI OAuth. Значения хранятся локально и синхронизируются с локальной API-службой.",
+      "codexNoOauthAccounts": "Нет настраиваемых аккаунтов OpenAI OAuth",
+      "codexOfficialOnly": "Только официальные клиенты",
+      "codexAppServer": "Разрешить app-server",
+      "codexFingerprintMode": "Сведение отпечатка",
+      "codexFingerprintOff": "Выкл.",
+      "codexFingerprintDevice": "Только устройство",
+      "codexFingerprintSession": "Устройство + сессия",
+      "codexFingerprintFull": "Полное сведение",
       "githubCopilotSettingsTitle": "Настройки GitHub Copilot",
       "ghcpAutoRefresh": "Автообновление квоты GitHub Copilot",
       "ghcpAutoRefreshDesc": "Частота фонового обновления",
@@ -1264,7 +1276,7 @@
       "workspaceIdPlaceholder": "Введите UUID команды / рабочего пространства",
       "workspaceIdHint": "Только для персональных токенов доступа at-*; API-сервис отправляет его как ChatGPT-Account-Id.",
       "fingerprintModeLabel": "Режим отпечатка устройства",
-      "fingerprintModeHint": "Только для OAuth-аккаунтов; для аккаунтов без настройки по умолчанию используется режим сеанса.",
+      "fingerprintModeHint": "Только OAuth; по умолчанию сессия. Разделяет установку и сессию по аккаунту и переписывает рабочие каталоги, чтобы локальные аккаунты не связывались.",
       "fingerprintModeSession": "Сеанс (рекомендуется)",
       "fingerprintModeDevice": "Устройство",
       "fingerprintModeFull": "Полный",
@@ -1825,7 +1837,69 @@
     "other_group": "Другие модели"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "Разрешить сторонний app-server",
+      "globalDescription": "После включения отображается сводка текущих политик; нажмите «Управление», чтобы настроить аккаунты массово или по отдельности.",
+      "manage": "Настройки",
+      "title": "Политики аккаунтов Codex OAuth",
+      "description": "Примените политику к выбранным аккаунтам или измените один аккаунт напрямую.",
+      "noAccounts": "Нет настраиваемых аккаунтов Codex OAuth",
+      "selectAll": "Выбрать все",
+      "selectedCount": "Выбрано аккаунтов: {{count}}",
+      "selectAccounts": "Выберите хотя бы один аккаунт.",
+      "selectBatchPolicy": "Выберите хотя бы одну политику.",
+      "officialOnly": "Только официальные клиенты",
+      "officialOnlyShort": "Только официальный",
+      "officialOnlyUnchanged": "Официальные клиенты: без изменений",
+      "officialOnlyOn": "Официальные клиенты: включить",
+      "officialOnlyOff": "Официальные клиенты: выключить",
+      "appServer": "Разрешить app-server",
+      "appServerShort": "Разрешить app-server",
+      "appServerUnchanged": "app-server: без изменений",
+      "appServerOn": "app-server: включить",
+      "appServerOff": "app-server: выключить",
+      "fingerprint": "Отпечаток устройства",
+      "fingerprintMode": "Режим отпечатка",
+      "fingerprintUnchanged": "Отпечаток: без изменений",
+      "fingerprintOn": "Отпечаток: задать режим",
+      "fingerprintOff": "Отпечаток: выключить",
+      "applyBatch": "Применить к выбранным"
+    },
     "title": "Управление аккаунтами Codex",
+    "experimentalModelCatalog": {
+      "title": "Видимые модели",
+      "description": "Создаёт управляемый Cockpit каталог доступных официальных моделей и пользовательских записей, не перезаписывая каталог пользователя.",
+      "enabledHint": "Использует текущий список видимых моделей. Перезапустите Codex для применения.",
+      "models": {
+        "title": "Список моделей",
+        "model": "Модель",
+        "default": "Модель по умолчанию",
+        "add": "Добавить модель",
+        "remove": "Удалить модель",
+        "setDefault": "Сделать моделью по умолчанию",
+        "modelId": "ID модели",
+        "displayName": "Отображаемое имя",
+        "reasoning": "Уровень рассуждений",
+        "followOfficial": "Следовать официальному",
+        "operation": "Действия",
+        "manage": "Управление",
+        "inheritHint": "Официальные модели сохраняют свои возможности, а пользовательские используют общий шаблон. Видимые модели можно добавлять и удалять.",
+        "validation": {
+          "required": "Оставьте хотя бы одну модель.",
+          "modelId": "ID модели может содержать только буквы, цифры, точки, дефисы, подчёркивания, косые черты и двоеточия.",
+          "displayName": "Введите отображаемое имя длиной не более 100 символов.",
+          "duplicate": "ID моделей не должны повторяться.",
+          "reasoningEffort": "Недопустимый уровень рассуждений.",
+          "reserved": "Этот ID совпадает с официальной моделью. Используйте другой ID."
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "Файл models_cache.json не найден.",
+        "modelNotCached": "Не удалось прочитать локальный каталог моделей.",
+        "catalogConflict": "Другой model_catalog_json уже настроен и не будет перезаписан.",
+        "cacheInvalid": "Не удалось прочитать models_cache.json, либо его формат недопустим."
+      }
+    },
     "newApi": {
       "quota": {
         "available": "Квота",
@@ -2311,9 +2385,17 @@
     "quota": {
       "hourly": "Квота 5 часов",
       "weekly": "Недельная квота",
+      "monthlyCredits": "Баланс",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "Дополнительная квота",
       "reset": "Сброс",
       "weeklyBlocksHourly": "Недельная квота равна 0, поэтому 5-часовая квота недоступна",
+      "windowStats": "Израсх. {{tokens}} · {{cost}}",
+      "windowStatsHint": "Запросы, токены и счёт аккаунта через API-сервис с момента полного окна",
+      "windowUsed": "Израсх. {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} запр.",
       "resetCredits": "Сбросы {{count}}",
       "resetCreditsTitle": "Осталось сбросов для 5-часового окна: {{count}}",
       "resetCreditConfirm": "Подтвердить?",
@@ -2335,7 +2417,17 @@
       "resetCreditNoRecords": "Нет записей сброса",
       "resetCreditRecordsLoadFailed": "Не удалось загрузить записи сброса: {{error}}",
       "resetCreditGrantedAt": "Выдано",
-      "resetCreditExpiresAt": "Истекает"
+      "resetCreditExpiresAt": "Истекает",
+      "windowAccountCostHint": "Счёт аккаунта (оценка по ценам модели)",
+      "windowUserCostHint": "Счёт пользователя",
+      "windowWeeks": "Квота {{count}} нед.",
+      "windowDays": "Квота {{count}} дн.",
+      "windowHours": "Квота {{count}} ч",
+      "windowMinutes": "Квота {{count}} мин",
+      "codeReview": "Обзор кода",
+      "codeReviewShort": "Обзор",
+      "monthlyCreditsHint": "Остаток месячных кредитов",
+      "monthlyCreditsInline": "Кредиты: {{value}}"
     },
     "quotaError": {
       "badge": "Ошибка квоты",
@@ -2834,6 +2926,82 @@
         "all": "Все типы"
       },
       "pickInstancePrompt": "Сеанс есть на нескольких экземплярах. Введите ID экземпляра:"
+    },
+    "sessionUsage": {
+      "tab": "Расход",
+      "listTab": "Сессии",
+      "title": "Расход сессий",
+      "desc": "Суммирует реальный расход токенов из локальных журналов Codex, без официальной квоты и логов API-сервиса.",
+      "hint": "Официальная квота — лимит тарифа. Логи API-сервиса покрывают только локальный шлюз. Здесь складываются дельты JSONL по запросам.",
+      "range": {
+        "label": "Период",
+        "7d": "7 дней",
+        "30d": "30 дней",
+        "month": "Этот месяц",
+        "all": "Все"
+      },
+      "instance": {
+        "label": "Инстанс",
+        "all": "Все инстансы"
+      },
+      "actions": {
+        "refresh": "Обновить",
+        "rebuild": "Перескан"
+      },
+      "status": {
+        "idle": "Ещё не сканировали",
+        "scanning": "Сканирование журналов…",
+        "ready": "{{files}} файлов, {{requests}} запросов",
+        "lastSynced": "Последняя синхр. {{time}}",
+        "deferred": "{{count}} форков ждут родителя",
+        "errors": "{{count}} файлов не разобраны"
+      },
+      "cards": {
+        "input": "Вход. токены",
+        "cached": "Кэш. токены",
+        "output": "Выход. токены",
+        "total": "Всего токенов",
+        "requests": "Запросы",
+        "cost": "Оценка $"
+      },
+      "tables": {
+        "model": "По модели",
+        "instance": "По инстансу",
+        "day": "По дням",
+        "modelName": "Модель",
+        "instanceName": "Инстанс",
+        "dayName": "Дата",
+        "input": "Вход. токены",
+        "cached": "Кэш. токены",
+        "output": "Выход. токены",
+        "total": "Всего токенов",
+        "requests": "Запр."
+      },
+      "empty": {
+        "title": "Расхода сессий пока нет",
+        "desc": "Открытие страницы сканирует локальные журналы Codex и доп. инстансы в фоне. Если только что пользовались — нажмите «Обновить»."
+      },
+      "rebuildConfirm": {
+        "title": "Перескан",
+        "message": "Кэш расхода сессий будет очищен, все журналы прочитаны заново. Официальная квота и логи API-сервиса не изменятся. Продолжить?"
+      },
+      "errors": {
+        "loadFailed": "Не удалось загрузить расход сессий: {{error}}",
+        "syncFailed": "Не удалось просканировать расход сессий: {{error}}"
+      },
+      "summary": {
+        "title": "30 дней",
+        "scanning": "Скан…",
+        "updating": "Обнов…",
+        "detail": "Подробнее",
+        "back": "Назад",
+        "input": "Вход",
+        "cached": "Кэш",
+        "output": "Выход",
+        "total": "Итого",
+        "requests": "Запр.",
+        "cost": "Стоим."
+      }
     },
     "api": {
       "baseUrl": "Базовый URL",
@@ -5804,7 +5972,7 @@
       "short": "Заметка",
       "addShort": "Заметка",
       "fingerprintModeLabel": "Режим отпечатка устройства",
-      "fingerprintModeHint": "Только для OAuth-аккаунтов; для аккаунтов без настройки по умолчанию используется режим сеанса.",
+      "fingerprintModeHint": "Только OAuth; по умолчанию сессия. Разделяет установку и сессию по аккаунту и переписывает рабочие каталоги, чтобы локальные аккаунты не связывались.",
       "fingerprintModeSession": "Сеанс (рекомендуется)",
       "fingerprintModeDevice": "Устройство",
       "fingerprintModeFull": "Полный",

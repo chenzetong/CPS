@@ -7,6 +7,102 @@ All notable changes to CPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.23] - 2026-08-19
+
+### Changed
+
+- **Codex OAuth device fingerprint defaults to Session again and isolates API Service identity per account**: accounts that were not explicitly set to Device or Full use Session; accounts that 1.3.22 switched to Off on upgrade also return to Session. Session mode issues a stable installation / session / thread / turn identity per account and rewrites parent/fork lineage plus workspace paths, Git remotes, and commits so local accounts do not share one environment identity. After startup, the local API service is synced away from the previous default-off write; Off / Device / Full can still be chosen manually.
+- **Codex Business monthly credits now show as a single remaining line**: when credits remain, the card shows `Credits: amount` without a progress bar; the row is hidden when remaining is 0.
+- **Disabled the top-right promotional ad**.
+
+### Fixed
+
+- **Linux can resolve and launch Antigravity correctly**: configured paths, `PATH`, install-root and `bin/` layouts, and the user-local `~/.local/share/antigravity-ide` install are supported, with execute-permission checks; Debian packages now include `libsecret-tools` because official credential switching calls `secret-tool`. Thanks @KirschBluteX ([#1944](https://github.com/jlcodes99/cockpit-tools/pull/1944)).
+
+## [1.3.22] - 2026-08-18
+
+### Added
+
+- **Codex now supports visible-model catalog management**: the new version migrates older catalogs once to the shipped official visible-model list; afterward, models can be added, edited, or removed in a dedicated manager, with each model following official reasoning levels or using a custom reasoning-effort set, and any visible model can be marked as the default. The setting remains consistent across the default profile, extra instances, and account switches while respecting user-managed catalogs.
+- **Added Codex OAuth client policies**: use the Codex top-right Settings popover to enable app-server access, then configure official-client-only access, app-server access, and device-fingerprint mode in bulk or per OAuth account; changes are synchronized to the local API service.
+- **macOS launch terminals now include Ghostty**: Claude CLI and Codex CLI can open directly in Ghostty. Thanks @Jonesxq ([#1948](https://github.com/jlcodes99/cockpit-tools/pull/1948)).
+- **Codex terminals can launch on Linux**: the system terminal is used first, then gnome-terminal and konsole. Thanks @Jonesxq ([#1950](https://github.com/jlcodes99/cockpit-tools/pull/1950)).
+
+### Changed
+
+- **Visible models in Codex settings now use a read-only summary**: the main settings dialog only shows the current list; click “Manage” to edit model IDs, display names, and reasoning efforts in a dedicated dialog, keeping the main settings surface compact.
+- **Codex OAuth device fingerprint now defaults to Off for everyone**: existing accounts are switched to Off on upgrade; Session / Device / Full can still be turned back on manually.
+- **Codex OAuth fingerprint and client policies are managed from the Codex Settings popover**: fingerprint convergence now supports Off / Device / Session / Full and is synchronized with the local API service without blocking the settings page.
+- **Codex API Service now runs through the sidecar gateway**: the legacy gateway option and its legacy-only timeout fields are retired, and existing legacy collections migrate to the sidecar mode automatically.
+- **Codex API Service default estimates now match the public price book**: `gpt-5.6-luna` is $0.2 / $0.02 / $1.2 and `gpt-5.6-terra` is $2 / $0.2 / $12 (input / cached-read / output per million tokens). Accounts that still used the previous defaults pick up the new rates; later requests are estimated with the new prices, and existing stats are left unchanged.
+- **API Service usage on Codex account cards is shown only after the account joins the pool**: request count, tokens, and account cost stay hidden until then.
+- **Interface scaling now supports smaller sizes down to 30%**, making dense settings and management pages usable in smaller windows.
+- **The bundled CLIProxyAPI source path is now `sidecars/cockpit-cliproxy/third_party/CLIProxyAPI`**: the previous `cdk/CLIProxyAPI` directory has been replaced; local sidecar builds should use the new path.
+
+### Fixed
+
+- **Selecting a MiniMax preset now keeps image-input support**: only `MiniMax-M3` accepts images; `MiniMax-M2.7` stays text-only. Thanks @octo-patch ([#1968](https://github.com/jlcodes99/cockpit-tools/pull/1968)).
+- **Codex Business accounts can show monthly credits**: remaining amount, total, and reset time are parsed and displayed. Thanks @Jonesxq ([#1953](https://github.com/jlcodes99/cockpit-tools/pull/1953)).
+- **macOS API Service sidecars no longer inherit the Cockpit app identity**: LAN gateway access no longer fails for that reason. Thanks @Jonesxq ([#1947](https://github.com/jlcodes99/cockpit-tools/pull/1947)).
+- **Menu-bar quota keeps refreshing after close-to-tray**: when menu-bar quota is enabled, the main window is hidden instead of tearing down the WebView. Thanks @Jonesxq ([#1952](https://github.com/jlcodes99/cockpit-tools/pull/1952)).
+
+## [1.3.21] - 2026-08-15
+
+### Added
+
+- **Codex now supports an optional experimental model catalog**: add and edit experimental model IDs and display names for the default profile and extra instances, with `gpt-5.6-sol-wm` / `GPT-5.6 Sol WM` provided initially. Custom experimental models are available in the Codex client and Cockpit API Service; the setting stays enabled across account-type switches and respects user-managed model catalogs.
+- **Delimited Antigravity account imports support auxiliary email addresses and Google refresh tokens**: a valid refresh token can restore the signed-in account directly, while missing or invalid tokens still preserve the password, auxiliary email, and 2FA details as a pending profile. Account exports preserve the auxiliary email as well.
+
+### Changed
+
+- **Codex settings are flatter and save immediately**: the config file, context presets, custom values, experimental models, account-switch integrations, quota display, and auto-switch controls now share the outer settings level; presets, fields, and switches persist without separate Save or Refresh buttons, and consecutive edits are saved in order.
+
+## [1.3.20] - 2026-08-14
+
+### Added
+
+- **Codex MiniMax Token Plan and Zhipu/GLM Coding Plan accounts can now show quota**: refresh to see remaining percentage, plan, and reset time. Thanks @Jonesxq ([#1929](https://github.com/jlcodes99/cockpit-tools/pull/1929)).
+- **Codex model providers add OpenCode Go, and OpenRouter includes the Luna Pro model**: OpenCode Go can be selected as a Chat Completions provider with its current model catalog. Thanks @Jonesxq ([#1922](https://github.com/jlcodes99/cockpit-tools/pull/1922)).
+- **Existing Codex model-provider API keys can be edited in place**: the provider entry stays, and linked Codex accounts pick up the new key. Thanks @Jonesxq ([#1923](https://github.com/jlcodes99/cockpit-tools/pull/1923)).
+
+### Changed
+
+- **Considering long titles such as Codex Spark, the account quota layout was adjusted**: the title sits above the bar so progress bars stay aligned.
+- **DeepSeek in Codex now exposes its real reasoning levels**: `low` / `high` / `max`, instead of Codex default `medium` / `xhigh`. Thanks @Jonesxq ([#1931](https://github.com/jlcodes99/cockpit-tools/pull/1931)).
+
+### Fixed
+
+- **Closed guides, account groups, and custom sort now survive updates**: dismissed gateway / risk / sidebar prompts are stored on disk, old localStorage keys still count as dismissed, and incomplete account lists no longer wipe group members or custom order. Group files also fail closed and write atomically. Thanks @Jonesxq ([#1933](https://github.com/jlcodes99/cockpit-tools/pull/1933), [#1919](https://github.com/jlcodes99/cockpit-tools/issues/1919)).
+- **CodeBuddy CN and WorkBuddy enterprise accounts now show real usage**: when the personal resource API returns empty, the official enterprise usage API is used. Thanks @Yuyang-0423 ([#1911](https://github.com/jlcodes99/cockpit-tools/pull/1911)).
+- **Provider usage lookup now works when the base URL is only a host root**: the configured URL is tried first, then `/v1`. Thanks @Jonesxq ([#1926](https://github.com/jlcodes99/cockpit-tools/pull/1926)).
+- **Switching Codex to the built-in OpenAI provider no longer overwrites a user-selected unmanaged `model_provider`**. Thanks @Jonesxq ([#1930](https://github.com/jlcodes99/cockpit-tools/pull/1930)).
+- **WorkBuddy scheduled check-ins now fire more reliably**: the scheduler wakes after config changes, checks once at startup, and retries when the activity is temporarily closed. Thanks @Jonesxq ([#1932](https://github.com/jlcodes99/cockpit-tools/pull/1932)).
+- **Codex API Service request logs now record reasoning effort**. Thanks @Jonesxq ([#1924](https://github.com/jlcodes99/cockpit-tools/pull/1924)).
+
+## [1.3.19] - 2026-08-14
+
+### Changed
+
+- **Codex account quota labels are now short and stay on one line**: `5h` / `7d` / `5w`, model-specific windows like `Spark 7d`, and Code Review as a short label. Full names remain in the hover tooltip.
+
+## [1.3.18] - 2026-08-14
+
+### Added
+
+- **Codex third-party model catalogs support a per-model context window**: set it on the model list when adding or editing an API Key, in the model-provider editor, or on the API Service mapping table. Official and DeepSeek catalogs keep vendor values unless you enter one; other models fall back to Compact settings or 128000. After saving, both the Codex client catalog and the API Service model list report that window; restart Codex to apply it there.
+- **First launch and post-update startup show a progress bar**: the window no longer stays blank while the app is loading.
+- **Codex account cards show usage from the last full window to now**: official accounts in the API Service pool display request count, tokens, and account-billed cost (`A $`); empty windows still show `0 req`, `0`, and `A $0.00`.
+- **Codex session management adds session usage**: real token usage is aggregated from local session logs, independent of official remaining-quota percentages and without requiring traffic to go through API Service.
+
+### Changed
+
+- **Official Codex quota bars are now compact, with reset time on its own line aligned to the quota label**.
+- **Codex API Service official OAuth outbound identity now matches official clients**: paired `codex-tui` identity is used by default and downstream client user-agents are not forwarded; session headers use `Session-Id` and include window and thread identifiers.
+
+### Fixed
+
+- **Fixed the app appearing frozen on a white screen after install or update**: startup now shows progress, and first paint no longer waits on remote fonts.
+
 ## [1.3.17] - 2026-08-13
 
 ### Added

@@ -29,7 +29,7 @@
     "advancedSettings": "Impostazioni avanzate",
     "codexFingerprint": {
       "modeLabel": "Modalità impronta del dispositivo",
-      "modeHint": "Solo per account OAuth; gli account non configurati usano la modalità sessione per impostazione predefinita.",
+      "modeHint": "Solo OAuth; Sessione predefinita. Isola installazione/sessione per account e riscrive le workspace per non collegare gli account locali.",
       "session": "Sessione (consigliato)",
       "device": "Dispositivo",
       "full": "Completo",
@@ -692,6 +692,18 @@
       "commonTitle": "Generale",
       "antigravitySettingsTitle": "Impostazioni Antigravity IDE",
       "codexSettingsTitle": "Impostazioni Codex",
+      "codexClientPolicyTitle": "Consenti globalmente i client Codex app-server",
+      "codexClientPolicyDesc": "Quando attivo, gli account OAuth limitati ai client ufficiali accettano anche client app-server di terze parti.",
+      "codexAccountPolicies": "Policy degli account Codex OAuth",
+      "codexAccountPoliciesDesc": "Si applica solo agli account OpenAI OAuth standard. I valori sono salvati localmente e sincronizzati con il servizio API locale.",
+      "codexNoOauthAccounts": "Nessun account OpenAI OAuth configurabile",
+      "codexOfficialOnly": "Solo client ufficiali",
+      "codexAppServer": "Consenti app-server",
+      "codexFingerprintMode": "Convergenza dell’impronta",
+      "codexFingerprintOff": "Disattivata",
+      "codexFingerprintDevice": "Solo dispositivo",
+      "codexFingerprintSession": "Dispositivo + sessione",
+      "codexFingerprintFull": "Convergenza completa",
       "githubCopilotSettingsTitle": "Impostazioni GitHub Copilot",
       "ghcpAutoRefresh": "Aggiornamento automatico quota GitHub Copilot",
       "ghcpAutoRefreshDesc": "Frequenza di aggiornamento in background",
@@ -1264,7 +1276,7 @@
       "workspaceIdPlaceholder": "Inserisci l’UUID del team / area di lavoro",
       "workspaceIdHint": "Solo per token di accesso personali at-*; il servizio API lo invia come ChatGPT-Account-Id.",
       "fingerprintModeLabel": "Modalità impronta del dispositivo",
-      "fingerprintModeHint": "Solo account OAuth; gli account non impostati usano la modalità sessione per impostazione predefinita.",
+      "fingerprintModeHint": "Solo OAuth; Sessione predefinita. Isola installazione/sessione per account e riscrive le workspace per non collegare gli account locali.",
       "fingerprintModeSession": "Sessione (consigliata)",
       "fingerprintModeDevice": "Dispositivo",
       "fingerprintModeFull": "Completo",
@@ -1825,7 +1837,69 @@
     "other_group": "Altri modelli"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "Consenti app-server di terze parti",
+      "globalDescription": "L'attivazione mostra il riepilogo delle policy attuali; usa Gestisci per configurare gli account in blocco o singolarmente.",
+      "manage": "Impostazioni",
+      "title": "Policy degli account Codex OAuth",
+      "description": "Applica una policy agli account selezionati o modifica direttamente un account.",
+      "noAccounts": "Nessun account Codex OAuth configurabile",
+      "selectAll": "Seleziona tutto",
+      "selectedCount": "{{count}} account selezionati",
+      "selectAccounts": "Seleziona almeno un account.",
+      "selectBatchPolicy": "Seleziona almeno una policy.",
+      "officialOnly": "Solo client ufficiali",
+      "officialOnlyShort": "Solo ufficiale",
+      "officialOnlyUnchanged": "Client ufficiali: invariato",
+      "officialOnlyOn": "Client ufficiali: attiva",
+      "officialOnlyOff": "Client ufficiali: disattiva",
+      "appServer": "Consenti app-server",
+      "appServerShort": "Consenti app-server",
+      "appServerUnchanged": "app-server: invariato",
+      "appServerOn": "app-server: attiva",
+      "appServerOff": "app-server: disattiva",
+      "fingerprint": "Impronta del dispositivo",
+      "fingerprintMode": "Modalità impronta",
+      "fingerprintUnchanged": "Impronta: invariata",
+      "fingerprintOn": "Impronta: imposta modalità",
+      "fingerprintOff": "Impronta: disattiva",
+      "applyBatch": "Applica alla selezione"
+    },
     "title": "Gestione account Codex",
+    "experimentalModelCatalog": {
+      "title": "Modelli visibili",
+      "description": "Genera un catalogo gestito da Cockpit con i modelli ufficiali disponibili e le tue voci personalizzate, senza sovrascrivere il catalogo.",
+      "enabledHint": "Usa l'elenco attuale dei modelli visibili. Riavvia Codex per applicarlo.",
+      "models": {
+        "title": "Elenco modelli",
+        "model": "Modello",
+        "default": "Modello predefinito",
+        "add": "Aggiungi modello",
+        "remove": "Rimuovi modello",
+        "setDefault": "Imposta come predefinito",
+        "modelId": "ID modello",
+        "displayName": "Nome visualizzato",
+        "reasoning": "Livello di ragionamento",
+        "followOfficial": "Segui quello ufficiale",
+        "operation": "Azioni",
+        "manage": "Gestisci",
+        "inheritHint": "I modelli ufficiali mantengono le proprie capacità; quelli personalizzati usano un modello generale. Puoi aggiungere o rimuovere i modelli visibili.",
+        "validation": {
+          "required": "Mantieni almeno un modello.",
+          "modelId": "Gli ID modello possono contenere solo lettere, numeri, punti, trattini, caratteri di sottolineatura, barre e due punti.",
+          "displayName": "Inserisci un nome visualizzato di massimo 100 caratteri.",
+          "duplicate": "Gli ID modello devono essere univoci.",
+          "reasoningEffort": "Opzione di ragionamento non valida.",
+          "reserved": "Questo ID modello è in conflitto con un modello ufficiale. Usa un ID diverso."
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "models_cache.json non è stato trovato.",
+        "modelNotCached": "Impossibile leggere il catalogo modelli locale.",
+        "catalogConflict": "È già configurato un altro model_catalog_json e non verrà sovrascritto.",
+        "cacheInvalid": "models_cache.json non è leggibile o ha un formato non valido."
+      }
+    },
     "newApi": {
       "quota": {
         "available": "Credito",
@@ -2311,9 +2385,17 @@
     "quota": {
       "hourly": "Quota di 5 ore",
       "weekly": "Quota settimanale",
+      "monthlyCredits": "Saldo",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "Quota aggiuntiva",
       "reset": "Reimposta",
       "weeklyBlocksHourly": "La quota settimanale è 0, quindi la quota di 5 ore non è disponibile",
+      "windowStats": "Usati {{tokens}} · {{cost}}",
+      "windowStatsHint": "Richieste, token e addebito account di questo account via servizio API da quando la finestra era piena",
+      "windowUsed": "Usati {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} rich.",
       "resetCredits": "Reset {{count}}",
       "resetCreditsTitle": "Reset rimasti per la finestra di 5 ore: {{count}}",
       "resetCreditConfirm": "Confermare?",
@@ -2335,7 +2417,17 @@
       "resetCreditNoRecords": "Nessun record di ripristino",
       "resetCreditRecordsLoadFailed": "Impossibile caricare i record di ripristino: {{error}}",
       "resetCreditGrantedAt": "Concessa",
-      "resetCreditExpiresAt": "Scade"
+      "resetCreditExpiresAt": "Scade",
+      "windowAccountCostHint": "Addebito account (stimato dai prezzi modello)",
+      "windowUserCostHint": "Addebito utente",
+      "windowWeeks": "Quota {{count}} sett.",
+      "windowDays": "Quota {{count}} gg",
+      "windowHours": "Quota {{count}} h",
+      "windowMinutes": "Quota {{count}} min",
+      "codeReview": "Revisione codice",
+      "codeReviewShort": "Revisione",
+      "monthlyCreditsHint": "Crediti mensili rimanenti",
+      "monthlyCreditsInline": "Crediti: {{value}}"
     },
     "quotaError": {
       "badge": "Errore quota",
@@ -2834,6 +2926,82 @@
         "all": "Tutti"
       },
       "pickInstancePrompt": "Sessione presente su più istanze. Inserisci ID istanza:"
+    },
+    "sessionUsage": {
+      "tab": "Uso",
+      "listTab": "Sessioni",
+      "title": "Uso sessioni",
+      "desc": "Aggrega l’uso reale dei token dai log locali di Codex, senza quota ufficiale né log del servizio API.",
+      "hint": "La quota ufficiale è il tetto del piano. I log del servizio API coprono solo il gateway locale. Qui si sommano i delta JSONL per richiesta.",
+      "range": {
+        "label": "Periodo",
+        "7d": "7 giorni",
+        "30d": "30 giorni",
+        "month": "Questo mese",
+        "all": "Tutto"
+      },
+      "instance": {
+        "label": "Istanza",
+        "all": "Tutte"
+      },
+      "actions": {
+        "refresh": "Aggiorna",
+        "rebuild": "Riscansiona"
+      },
+      "status": {
+        "idle": "Non ancora scansionato",
+        "scanning": "Scansione dei log…",
+        "ready": "{{files}} file, {{requests}} richieste",
+        "lastSynced": "Ultima sync {{time}}",
+        "deferred": "{{count}} fork in attesa del padre",
+        "errors": "{{count}} file non letti"
+      },
+      "cards": {
+        "input": "Token in ingresso",
+        "cached": "Token in cache",
+        "output": "Token in uscita",
+        "total": "Token totali",
+        "requests": "Richieste",
+        "cost": "Costo stim."
+      },
+      "tables": {
+        "model": "Per modello",
+        "instance": "Per istanza",
+        "day": "Per giorno",
+        "modelName": "Modello",
+        "instanceName": "Istanza",
+        "dayName": "Data",
+        "input": "Token ingresso",
+        "cached": "Token cache",
+        "output": "Token uscita",
+        "total": "Token totali",
+        "requests": "Rich."
+      },
+      "empty": {
+        "title": "Nessun uso di sessione",
+        "desc": "Aprendo la pagina si scansionano in background i log locali di Codex e le istanze extra. Se l’hai appena usato, aggiorna."
+      },
+      "rebuildConfirm": {
+        "title": "Riscansiona",
+        "message": "La cache dell’uso sessioni verrà svuotata e tutti i log rilette. Quota ufficiale e log del servizio API restano invariati. Continuare?"
+      },
+      "errors": {
+        "loadFailed": "Lettura uso sessioni non riuscita: {{error}}",
+        "syncFailed": "Scansione uso sessioni non riuscita: {{error}}"
+      },
+      "summary": {
+        "title": "30 giorni",
+        "scanning": "Scansione…",
+        "updating": "Aggiorna…",
+        "detail": "Dettagli",
+        "back": "Indietro",
+        "input": "Ingresso",
+        "cached": "Cache",
+        "output": "Uscita",
+        "total": "Totale",
+        "requests": "Rich.",
+        "cost": "Costo"
+      }
     },
     "api": {
       "baseUrl": "URL di base",
@@ -5804,7 +5972,7 @@
       "short": "Nota",
       "addShort": "Nota",
       "fingerprintModeLabel": "Modalità impronta del dispositivo",
-      "fingerprintModeHint": "Solo account OAuth; gli account non impostati usano la modalità sessione per impostazione predefinita.",
+      "fingerprintModeHint": "Solo OAuth; Sessione predefinita. Isola installazione/sessione per account e riscrive le workspace per non collegare gli account locali.",
       "fingerprintModeSession": "Sessione (consigliata)",
       "fingerprintModeDevice": "Dispositivo",
       "fingerprintModeFull": "Completo",

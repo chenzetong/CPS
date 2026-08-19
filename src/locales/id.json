@@ -29,7 +29,7 @@
     "advancedSettings": "Pengaturan lanjutan",
     "codexFingerprint": {
       "modeLabel": "Mode sidik perangkat",
-      "modeHint": "Hanya untuk akun OAuth; akun yang belum diatur menggunakan mode sesi secara default.",
+      "modeHint": "Hanya OAuth; default Sesi. Memisahkan instalasi/sesi per akun dan menulis ulang workspace agar akun lokal tidak tertaut.",
       "session": "Sesi (disarankan)",
       "device": "Perangkat",
       "full": "Penuh",
@@ -753,6 +753,18 @@
       "commonTitle": "Umum",
       "antigravitySettingsTitle": "Pengaturan Antigravity IDE",
       "codexSettingsTitle": "Pengaturan Codex",
+      "codexClientPolicyTitle": "Izinkan klien Codex app-server secara global",
+      "codexClientPolicyDesc": "Saat aktif, akun OAuth yang hanya mengizinkan klien resmi juga menerima klien app-server pihak ketiga.",
+      "codexAccountPolicies": "Kebijakan akun Codex OAuth",
+      "codexAccountPoliciesDesc": "Hanya berlaku untuk akun OpenAI OAuth standar. Nilai disimpan secara lokal dan disinkronkan ke layanan API lokal.",
+      "codexNoOauthAccounts": "Tidak ada akun OpenAI OAuth yang dapat dikonfigurasi",
+      "codexOfficialOnly": "Hanya klien resmi",
+      "codexAppServer": "Izinkan app-server",
+      "codexFingerprintMode": "Konvergensi sidik jari",
+      "codexFingerprintOff": "Nonaktif",
+      "codexFingerprintDevice": "Perangkat saja",
+      "codexFingerprintSession": "Perangkat + sesi",
+      "codexFingerprintFull": "Konvergensi penuh",
       "githubCopilotSettingsTitle": "Pengaturan GitHub Copilot",
       "ghcpAutoRefresh": "Penyegaran Otomatis Kuota GitHub Copilot",
       "ghcpAutoRefreshDesc": "Frekuensi pembaruan latar belakang",
@@ -1311,7 +1323,7 @@
       "workspaceIdPlaceholder": "Masukkan UUID tim / ruang kerja",
       "workspaceIdHint": "Hanya untuk token akses pribadi at-*; Layanan API mengirimkannya sebagai ChatGPT-Account-Id.",
       "fingerprintModeLabel": "Mode sidik jari perangkat",
-      "fingerprintModeHint": "Hanya akun OAuth; akun yang tidak diatur menggunakan mode sesi secara default.",
+      "fingerprintModeHint": "Hanya OAuth; default Sesi. Memisahkan instalasi/sesi per akun dan menulis ulang workspace agar akun lokal tidak tertaut.",
       "fingerprintModeSession": "Sesi (disarankan)",
       "fingerprintModeDevice": "Perangkat",
       "fingerprintModeFull": "Lengkap",
@@ -1872,7 +1884,69 @@
     "other_group": "Model Lainnya"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "Izinkan app-server pihak ketiga",
+      "globalDescription": "Saat diaktifkan, ringkasan kebijakan saat ini ditampilkan; gunakan Kelola untuk mengatur akun secara massal atau per akun.",
+      "manage": "Pengaturan",
+      "title": "Kebijakan akun Codex OAuth",
+      "description": "Terapkan kebijakan ke akun yang dipilih atau ubah satu akun secara langsung.",
+      "noAccounts": "Tidak ada akun Codex OAuth yang dapat dikonfigurasi",
+      "selectAll": "Pilih semua",
+      "selectedCount": "{{count}} akun dipilih",
+      "selectAccounts": "Pilih setidaknya satu akun.",
+      "selectBatchPolicy": "Pilih setidaknya satu kebijakan.",
+      "officialOnly": "Hanya klien resmi",
+      "officialOnlyShort": "Resmi saja",
+      "officialOnlyUnchanged": "Klien resmi: tidak berubah",
+      "officialOnlyOn": "Klien resmi: aktif",
+      "officialOnlyOff": "Klien resmi: nonaktif",
+      "appServer": "Izinkan app-server",
+      "appServerShort": "Izinkan app-server",
+      "appServerUnchanged": "app-server: tidak berubah",
+      "appServerOn": "app-server: aktif",
+      "appServerOff": "app-server: nonaktif",
+      "fingerprint": "Sidik jari perangkat",
+      "fingerprintMode": "Mode sidik jari",
+      "fingerprintUnchanged": "Sidik jari: tidak berubah",
+      "fingerprintOn": "Sidik jari: atur mode",
+      "fingerprintOff": "Sidik jari: nonaktif",
+      "applyBatch": "Terapkan ke pilihan"
+    },
     "title": "Codex Account​",
+    "experimentalModelCatalog": {
+      "title": "Model yang terlihat",
+      "description": "Membuat katalog yang dikelola Cockpit dari model resmi yang tersedia dan entri khusus Anda tanpa menimpa katalog pengguna.",
+      "enabledHint": "Menggunakan daftar model yang terlihat saat ini. Mulai ulang Codex untuk menerapkan.",
+      "models": {
+        "title": "Daftar model",
+        "model": "Model AI",
+        "default": "Model bawaan",
+        "add": "Tambah model",
+        "remove": "Hapus model",
+        "setDefault": "Jadikan bawaan",
+        "modelId": "ID model",
+        "displayName": "Nama tampilan",
+        "reasoning": "Tingkat penalaran",
+        "followOfficial": "Ikuti resmi",
+        "operation": "Tindakan",
+        "manage": "Kelola",
+        "inheritHint": "Model resmi mempertahankan bidang kemampuannya; model khusus menggunakan templat umum. Model yang terlihat dapat ditambah atau dihapus.",
+        "validation": {
+          "required": "Pertahankan setidaknya satu model.",
+          "modelId": "ID model hanya boleh berisi huruf, angka, titik, tanda hubung, garis bawah, garis miring, dan titik dua.",
+          "displayName": "Masukkan nama tampilan maksimal 100 karakter.",
+          "duplicate": "ID model harus unik.",
+          "reasoningEffort": "Opsi tingkat penalaran tidak valid.",
+          "reserved": "ID model ini bertentangan dengan model resmi. Gunakan ID lain."
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "models_cache.json tidak ditemukan.",
+        "modelNotCached": "Katalog model lokal tidak dapat dibaca.",
+        "catalogConflict": "model_catalog_json lain sudah dikonfigurasi dan tidak akan ditimpa.",
+        "cacheInvalid": "models_cache.json tidak dapat dibaca atau formatnya tidak valid."
+      }
+    },
     "newApi": {
       "quota": {
         "available": "Kuota",
@@ -2492,9 +2566,17 @@
     "quota": {
       "hourly": "Kuota 5 jam",
       "weekly": "Kuota mingguan",
+      "monthlyCredits": "Saldo",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "Kuota tambahan",
       "reset": "Setel ulang",
       "weeklyBlocksHourly": "Kuota mingguan 0, jadi kuota 5 jam tidak tersedia",
+      "windowStats": "Terpakai {{tokens}} · {{cost}}",
+      "windowStatsHint": "Jumlah permintaan, token, dan tagihan akun lewat layanan API sejak jendela penuh",
+      "windowUsed": "Terpakai {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} mnt",
       "resetCredits": "Reset {{count}}",
       "resetCreditsTitle": "Sisa reset untuk jendela 5 jam: {{count}}",
       "resetCreditConfirm": "Konfirmasi?",
@@ -2516,7 +2598,17 @@
       "resetCreditNoRecords": "Belum ada catatan reset",
       "resetCreditRecordsLoadFailed": "Gagal memuat catatan reset: {{error}}",
       "resetCreditGrantedAt": "Diberikan",
-      "resetCreditExpiresAt": "Kedaluwarsa"
+      "resetCreditExpiresAt": "Kedaluwarsa",
+      "windowAccountCostHint": "Tagihan akun (perkiraan harga model)",
+      "windowUserCostHint": "Tagihan pengguna",
+      "windowWeeks": "Kuota {{count}} minggu",
+      "windowDays": "Kuota {{count}} hari",
+      "windowHours": "Kuota {{count}} jam",
+      "windowMinutes": "Kuota {{count}} mnt",
+      "codeReview": "Tinjauan kode",
+      "codeReviewShort": "Tinjauan",
+      "monthlyCreditsHint": "Sisa kredit bulanan",
+      "monthlyCreditsInline": "Kredit: {{value}}"
     },
     "usage": {
       "open": "Buka penggunaan OpenAI",
@@ -3012,6 +3104,82 @@
         "all": "Semua jenis"
       },
       "pickInstancePrompt": "Sesi ada di beberapa instance. Masukkan ID instance:"
+    },
+    "sessionUsage": {
+      "tab": "Pemakaian",
+      "listTab": "Sesi",
+      "title": "Pemakaian sesi",
+      "desc": "Mengagregasi pemakaian token nyata dari log sesi Codex lokal, tanpa kuota resmi atau log permintaan layanan API.",
+      "hint": "Kuota resmi adalah batas paket. Log layanan API hanya mencakup gateway lokal. Di sini delta JSONL per permintaan dijumlahkan.",
+      "range": {
+        "label": "Rentang",
+        "7d": "7 hari",
+        "30d": "30 hari",
+        "month": "Bulan ini",
+        "all": "Semua"
+      },
+      "instance": {
+        "label": "Instans",
+        "all": "Semua instans"
+      },
+      "actions": {
+        "refresh": "Muat ulang",
+        "rebuild": "Pindai ulang"
+      },
+      "status": {
+        "idle": "Belum dipindai",
+        "scanning": "Memindai log sesi…",
+        "ready": "{{files}} berkas, {{requests}} permintaan",
+        "lastSynced": "Sinkron terakhir {{time}}",
+        "deferred": "{{count}} fork menunggu induk",
+        "errors": "{{count}} berkas gagal dibaca"
+      },
+      "cards": {
+        "input": "Token masuk",
+        "cached": "Token cache",
+        "output": "Token keluar",
+        "total": "Total token",
+        "requests": "Permintaan",
+        "cost": "Perkiraan biaya"
+      },
+      "tables": {
+        "model": "Per model",
+        "instance": "Per instans",
+        "day": "Per hari",
+        "modelName": "Nama model",
+        "instanceName": "Instans",
+        "dayName": "Tanggal",
+        "input": "Token masuk",
+        "cached": "Token cache",
+        "output": "Token keluar",
+        "total": "Total token",
+        "requests": "Mnt"
+      },
+      "empty": {
+        "title": "Belum ada pemakaian sesi",
+        "desc": "Membuka halaman ini memindai log Codex lokal dan instans tambahan di latar. Jika baru dipakai, ketuk Muat ulang."
+      },
+      "rebuildConfirm": {
+        "title": "Pindai ulang",
+        "message": "Cache pemakaian sesi akan dikosongkan dan semua log dibaca ulang. Kuota resmi dan log layanan API tidak berubah. Lanjutkan?"
+      },
+      "errors": {
+        "loadFailed": "Gagal memuat pemakaian sesi: {{error}}",
+        "syncFailed": "Gagal memindai pemakaian sesi: {{error}}"
+      },
+      "summary": {
+        "title": "30 hari",
+        "scanning": "Memindai",
+        "updating": "Memperbarui",
+        "detail": "Detail",
+        "back": "Kembali",
+        "input": "Masuk",
+        "cached": "Cache",
+        "output": "Keluar",
+        "total": "Jumlah",
+        "requests": "Mnt",
+        "cost": "Biaya"
+      }
     },
     "deepSeek": {
       "start": {
@@ -5804,7 +5972,7 @@
       "short": "Catatan",
       "addShort": "Catatan",
       "fingerprintModeLabel": "Mode sidik jari perangkat",
-      "fingerprintModeHint": "Hanya akun OAuth; akun yang tidak diatur menggunakan mode sesi secara default.",
+      "fingerprintModeHint": "Hanya OAuth; default Sesi. Memisahkan instalasi/sesi per akun dan menulis ulang workspace agar akun lokal tidak tertaut.",
       "fingerprintModeSession": "Sesi (disarankan)",
       "fingerprintModeDevice": "Perangkat",
       "fingerprintModeFull": "Lengkap",

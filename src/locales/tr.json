@@ -29,7 +29,7 @@
     "advancedSettings": "Gelişmiş ayarlar",
     "codexFingerprint": {
       "modeLabel": "Cihaz parmak izi modu",
-      "modeHint": "Yalnızca OAuth hesapları için; yapılandırılmamış hesaplar varsayılan olarak oturum modunu kullanır.",
+      "modeHint": "Yalnızca OAuth; varsayılan Oturum. Kurulum/oturumu hesaba göre ayırır ve çalışma alanını yeniden yazar; yerel hesaplar bağlanmasın.",
       "session": "Oturum (önerilen)",
       "device": "Cihaz",
       "full": "Tam",
@@ -696,6 +696,18 @@
       "commonTitle": "Genel",
       "antigravitySettingsTitle": "Antigravity IDE Ayarları",
       "codexSettingsTitle": "Codex Ayarları",
+      "codexClientPolicyTitle": "Codex app-server istemcilerine genel izin ver",
+      "codexClientPolicyDesc": "Etkinleştirildiğinde yalnızca resmi istemcilere izin veren OAuth hesapları üçüncü taraf app-server istemcilerini de kabul eder.",
+      "codexAccountPolicies": "Codex OAuth hesap politikaları",
+      "codexAccountPoliciesDesc": "Yalnızca standart OpenAI OAuth hesaplarına uygulanır. Değerler yerel olarak saklanır ve yerel API hizmetiyle eşitlenir.",
+      "codexNoOauthAccounts": "Yapılandırılabilir OpenAI OAuth hesabı yok",
+      "codexOfficialOnly": "Yalnızca resmi istemciler",
+      "codexAppServer": "app-server'a izin ver",
+      "codexFingerprintMode": "Parmak izi yakınsaması",
+      "codexFingerprintOff": "Kapalı",
+      "codexFingerprintDevice": "Yalnızca cihaz",
+      "codexFingerprintSession": "Cihaz + oturum",
+      "codexFingerprintFull": "Tam yakınsama",
       "githubCopilotSettingsTitle": "GitHub Copilot Ayarları",
       "ghcpAutoRefresh": "GitHub Copilot kota otomatik yenileme",
       "ghcpAutoRefreshDesc": "Arka plan güncelleme sıklığı",
@@ -1264,7 +1276,7 @@
       "workspaceIdPlaceholder": "Ekip / çalışma alanı UUID’sini girin",
       "workspaceIdHint": "Yalnızca at-* kişisel erişim belirteçleri içindir; API Hizmeti bunu ChatGPT-Account-Id olarak gönderir.",
       "fingerprintModeLabel": "Cihaz parmak izi modu",
-      "fingerprintModeHint": "Yalnızca OAuth hesapları; ayarlanmamış hesaplar varsayılan olarak oturum modunu kullanır.",
+      "fingerprintModeHint": "Yalnızca OAuth; varsayılan Oturum. Kurulum/oturumu hesaba göre ayırır ve çalışma alanını yeniden yazar; yerel hesaplar bağlanmasın.",
       "fingerprintModeSession": "Oturum (önerilir)",
       "fingerprintModeDevice": "Cihaz",
       "fingerprintModeFull": "Tam",
@@ -1825,7 +1837,69 @@
     "other_group": "Diğer modeller"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "Üçüncü taraf app-server'a izin ver",
+      "globalDescription": "Etkinleştirildiğinde mevcut politika özeti gösterilir; hesapları toplu veya tek tek yapılandırmak için Yönet'i kullanın.",
+      "manage": "Ayarlar",
+      "title": "Codex OAuth hesap politikaları",
+      "description": "Seçili hesaplara politika uygulayın veya tek bir hesabı doğrudan değiştirin.",
+      "noAccounts": "Yapılandırılabilir Codex OAuth hesabı yok",
+      "selectAll": "Tümünü seç",
+      "selectedCount": "{{count}} hesap seçildi",
+      "selectAccounts": "En az bir hesap seçin.",
+      "selectBatchPolicy": "En az bir politika seçin.",
+      "officialOnly": "Yalnızca resmi istemciler",
+      "officialOnlyShort": "Yalnızca resmi",
+      "officialOnlyUnchanged": "Resmi istemciler: değişmeden bırak",
+      "officialOnlyOn": "Resmi istemciler: aç",
+      "officialOnlyOff": "Resmi istemciler: kapat",
+      "appServer": "app-server'a izin ver",
+      "appServerShort": "app-server'a izin ver",
+      "appServerUnchanged": "app-server: değişmeden bırak",
+      "appServerOn": "app-server: aç",
+      "appServerOff": "app-server: kapat",
+      "fingerprint": "Cihaz parmak izi",
+      "fingerprintMode": "Parmak izi modu",
+      "fingerprintUnchanged": "Parmak izi: değişmeden bırak",
+      "fingerprintOn": "Parmak izi: modu ayarla",
+      "fingerprintOff": "Parmak izi: kapat",
+      "applyBatch": "Seçilenlere uygula"
+    },
     "title": "Codex Hesap Yönetimi",
+    "experimentalModelCatalog": {
+      "title": "Görünür modeller",
+      "description": "Mevcut resmi modeller ve özel girdilerden Cockpit tarafından yönetilen bir katalog oluşturur; kullanıcı kataloğunun üzerine yazmaz.",
+      "enabledHint": "Güncel görünür model listesini kullanır. Uygulamak için Codex’i yeniden başlatın.",
+      "models": {
+        "title": "Model listesi",
+        "model": "Model adı",
+        "default": "Varsayılan model",
+        "add": "Model ekle",
+        "remove": "Modeli kaldır",
+        "setDefault": "Varsayılan yap",
+        "modelId": "Model kimliği",
+        "displayName": "Görünen ad",
+        "reasoning": "Akıl yürütme düzeyi",
+        "followOfficial": "Resmiyi takip et",
+        "operation": "İşlemler",
+        "manage": "Yönet",
+        "inheritHint": "Resmi modeller yetenek alanlarını korur; özel modeller genel bir şablon kullanır. Görünür modeller eklenebilir veya silinebilir.",
+        "validation": {
+          "required": "En az bir model bırakın.",
+          "modelId": "Model kimlikleri yalnızca harf, sayı, nokta, kısa çizgi, alt çizgi, eğik çizgi ve iki nokta içerebilir.",
+          "displayName": "En fazla 100 karakterlik bir görünen ad girin.",
+          "duplicate": "Model kimlikleri benzersiz olmalıdır.",
+          "reasoningEffort": "Geçersiz akıl yürütme seçeneği.",
+          "reserved": "Bu model kimliği resmi bir modelle çakışıyor. Farklı bir kimlik kullanın."
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "models_cache.json bulunamadı.",
+        "modelNotCached": "Yerel model kataloğu okunamadı.",
+        "catalogConflict": "Başka bir model_catalog_json zaten yapılandırılmış ve üzerine yazılmayacak.",
+        "cacheInvalid": "models_cache.json okunamıyor veya biçimi geçersiz."
+      }
+    },
     "newApi": {
       "quota": {
         "available": "Kota",
@@ -2311,9 +2385,17 @@
     "quota": {
       "hourly": "5 saatlik kota",
       "weekly": "Haftalık kota",
+      "monthlyCredits": "Bakiye",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "Ek kota",
       "reset": "Sıfırla",
       "weeklyBlocksHourly": "Haftalık kota 0 olduğu için 5 saatlik kota kullanılamaz",
+      "windowStats": "Harcanan {{tokens}} · {{cost}}",
+      "windowStatsHint": "Bu pencere dolduktan sonra hesabın API hizmetindeki istek, token ve hesap ücreti",
+      "windowUsed": "Harcanan {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} ist.",
       "resetCredits": "Sıfırlama {{count}}",
       "resetCreditsTitle": "5 saatlik pencere için kalan sıfırlama: {{count}}",
       "resetCreditConfirm": "Onayla?",
@@ -2335,7 +2417,17 @@
       "resetCreditNoRecords": "Sıfırlama kaydı yok",
       "resetCreditRecordsLoadFailed": "Sıfırlama kayıtları yüklenemedi: {{error}}",
       "resetCreditGrantedAt": "Verildi",
-      "resetCreditExpiresAt": "Biter"
+      "resetCreditExpiresAt": "Biter",
+      "windowAccountCostHint": "Hesap ücreti (model fiyatından tahmin)",
+      "windowUserCostHint": "Kullanıcı ücreti",
+      "windowWeeks": "{{count}} haftalık kota",
+      "windowDays": "{{count}} günlük kota",
+      "windowHours": "{{count}} saatlik kota",
+      "windowMinutes": "{{count}} dakikalık kota",
+      "codeReview": "Kod inceleme",
+      "codeReviewShort": "İnceleme",
+      "monthlyCreditsHint": "Kalan aylık kredi",
+      "monthlyCreditsInline": "Kredi: {{value}}"
     },
     "quotaError": {
       "badge": "Kota hatası",
@@ -2834,6 +2926,82 @@
         "all": "Tüm türler"
       },
       "pickInstancePrompt": "Oturum birden fazla örnekte var. Örnek kimliğini girin:"
+    },
+    "sessionUsage": {
+      "tab": "Kullanım",
+      "listTab": "Oturumlar",
+      "title": "Oturum kullanımı",
+      "desc": "Yerel Codex oturum günlüklerinden gerçek token kullanımını toplar; resmi kota veya API hizmeti istek günlükleri kullanılmaz.",
+      "hint": "Resmi kota plan limitidir. API hizmeti günlükleri yalnızca yerel ağ geçidini kapsar. Burada JSONL istek artışları toplanır.",
+      "range": {
+        "label": "Aralık",
+        "7d": "7 gün",
+        "30d": "30 gün",
+        "month": "Bu ay",
+        "all": "Tümü"
+      },
+      "instance": {
+        "label": "Örnek",
+        "all": "Tüm örnekler"
+      },
+      "actions": {
+        "refresh": "Yenile",
+        "rebuild": "Yeniden tara"
+      },
+      "status": {
+        "idle": "Henüz taranmadı",
+        "scanning": "Oturum günlükleri taranıyor…",
+        "ready": "{{files}} dosya, {{requests}} istek",
+        "lastSynced": "Son senkron {{time}}",
+        "deferred": "{{count}} çatal ebeveyni bekliyor",
+        "errors": "{{count}} dosya okunamadı"
+      },
+      "cards": {
+        "input": "Giriş token",
+        "cached": "Önbellek token",
+        "output": "Çıkış token",
+        "total": "Toplam token",
+        "requests": "İstekler",
+        "cost": "Tahmini ücret"
+      },
+      "tables": {
+        "model": "Modele göre",
+        "instance": "Örneğe göre",
+        "day": "Güne göre",
+        "modelName": "Ad",
+        "instanceName": "Örnek",
+        "dayName": "Tarih",
+        "input": "Giriş token",
+        "cached": "Önbellek token",
+        "output": "Çıkış token",
+        "total": "Toplam token",
+        "requests": "İst."
+      },
+      "empty": {
+        "title": "Henüz oturum kullanımı yok",
+        "desc": "Bu sayfa açılınca yerel Codex günlükleri ve ek örnekler arka planda taranır. Az önce kullandıysanız Yenile’ye basın."
+      },
+      "rebuildConfirm": {
+        "title": "Yeniden tara",
+        "message": "Oturum kullanımı önbelleği silinir ve tüm günlükler yeniden okunur. Resmi kota ve API hizmeti günlükleri değişmez. Devam edilsin mi?"
+      },
+      "errors": {
+        "loadFailed": "Oturum kullanımı okunamadı: {{error}}",
+        "syncFailed": "Oturum kullanımı taranamadı: {{error}}"
+      },
+      "summary": {
+        "title": "30 gün",
+        "scanning": "Taranıyor",
+        "updating": "Güncelleniyor",
+        "detail": "Ayrıntı",
+        "back": "Geri",
+        "input": "Giriş",
+        "cached": "Önbellek",
+        "output": "Çıkış",
+        "total": "Toplam",
+        "requests": "İst.",
+        "cost": "Ücret"
+      }
     },
     "api": {
       "baseUrl": "Temel URL",
@@ -5804,7 +5972,7 @@
       "short": "Not",
       "addShort": "Not",
       "fingerprintModeLabel": "Cihaz parmak izi modu",
-      "fingerprintModeHint": "Yalnızca OAuth hesapları; ayarlanmamış hesaplar varsayılan olarak oturum modunu kullanır.",
+      "fingerprintModeHint": "Yalnızca OAuth; varsayılan Oturum. Kurulum/oturumu hesaba göre ayırır ve çalışma alanını yeniden yazar; yerel hesaplar bağlanmasın.",
       "fingerprintModeSession": "Oturum (önerilir)",
       "fingerprintModeDevice": "Cihaz",
       "fingerprintModeFull": "Tam",

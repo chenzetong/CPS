@@ -29,7 +29,7 @@
     "advancedSettings": "詳細設定",
     "codexFingerprint": {
       "modeLabel": "デバイス識別モード",
-      "modeHint": "OAuth アカウントのみ。未設定のアカウントは既定でセッションモードを使用します。",
+      "modeHint": "OAuth のみ。既定はセッション。アカウントごとにインストール／セッションを分離し、ワークスペースを書き換えて同一端末の複数アカウントの紐付けを防ぎます。",
       "session": "セッション（推奨）",
       "device": "デバイス",
       "full": "完全",
@@ -696,6 +696,18 @@
       "commonTitle": "共通",
       "antigravitySettingsTitle": "Antigravity IDE 設定",
       "codexSettingsTitle": "Codex 設定",
+      "codexClientPolicyTitle": "Codex app-server クライアントをグローバルに許可",
+      "codexClientPolicyDesc": "有効にすると、公式クライアント限定の OAuth アカウントでも第三者の app-server クライアントを受け入れます。",
+      "codexAccountPolicies": "Codex OAuth アカウントポリシー",
+      "codexAccountPoliciesDesc": "標準の OpenAI OAuth アカウントのみ対象です。値はローカルに保存され、ローカル API サービスへ同期されます。",
+      "codexNoOauthAccounts": "設定可能な OpenAI OAuth アカウントはありません",
+      "codexOfficialOnly": "公式クライアントのみ",
+      "codexAppServer": "app-server を許可",
+      "codexFingerprintMode": "フィンガープリント収束",
+      "codexFingerprintOff": "オフ",
+      "codexFingerprintDevice": "デバイスのみ",
+      "codexFingerprintSession": "デバイス + セッション",
+      "codexFingerprintFull": "完全収束",
       "githubCopilotSettingsTitle": "GitHub Copilot 設定",
       "ghcpAutoRefresh": "GitHub Copilot クォータの自動更新",
       "ghcpAutoRefreshDesc": "バックグラウンド更新頻度",
@@ -1264,7 +1276,7 @@
       "workspaceIdPlaceholder": "Team / Workspace の UUID を入力",
       "workspaceIdHint": "at-* 個人アクセストークン専用です。API サービスが ChatGPT-Account-Id として送信します。",
       "fingerprintModeLabel": "デバイス指紋モード",
-      "fingerprintModeHint": "OAuth アカウントのみ対象です。未設定のアカウントは既定でセッションモードになります。",
+      "fingerprintModeHint": "OAuth のみ。既定はセッション。アカウントごとにインストール／セッションを分離し、ワークスペースを書き換えて同一端末の複数アカウントの紐付けを防ぎます。",
       "fingerprintModeSession": "セッション（推奨）",
       "fingerprintModeDevice": "デバイス",
       "fingerprintModeFull": "完全",
@@ -1825,7 +1837,69 @@
     "other_group": "その他のモデル"
   },
   "codex": {
+    "oauthPolicy": {
+      "globalTitle": "サードパーティの app-server を許可",
+      "globalDescription": "有効にすると現在のポリシー概要が表示されます。「管理」から Codex OAuth アカウントを一括または個別に設定できます。",
+      "manage": "設定",
+      "title": "Codex OAuth アカウントポリシー",
+      "description": "選択したアカウントに適用するか、1 つのアカウントを直接変更します。",
+      "noAccounts": "設定可能な Codex OAuth アカウントはありません",
+      "selectAll": "すべて選択",
+      "selectedCount": "{{count}} アカウントを選択中",
+      "selectAccounts": "アカウントを 1 つ以上選択してください。",
+      "selectBatchPolicy": "適用するポリシーを 1 つ以上選択してください。",
+      "officialOnly": "公式クライアントのみ",
+      "officialOnlyShort": "公式のみ",
+      "officialOnlyUnchanged": "公式クライアント：変更なし",
+      "officialOnlyOn": "公式クライアント：オン",
+      "officialOnlyOff": "公式クライアント：オフ",
+      "appServer": "app-server を許可",
+      "appServerShort": "app-serverを許可",
+      "appServerUnchanged": "app-server：変更なし",
+      "appServerOn": "app-server：オン",
+      "appServerOff": "app-server：オフ",
+      "fingerprint": "デバイスフィンガープリント",
+      "fingerprintMode": "フィンガープリントモード",
+      "fingerprintUnchanged": "フィンガープリント：変更なし",
+      "fingerprintOn": "フィンガープリント：モード設定",
+      "fingerprintOff": "フィンガープリント：オフ",
+      "applyBatch": "選択項目に適用"
+    },
     "title": "Codex アカウント管理",
+    "experimentalModelCatalog": {
+      "title": "表示モデル",
+      "description": "利用可能な公式モデルとカスタム項目から Cockpit 管理カタログを生成し、ユーザーのカタログは上書きしません。",
+      "enabledHint": "現在の表示モデル一覧を使用します。Codex を再起動してください。",
+      "models": {
+        "title": "モデル一覧",
+        "model": "モデル",
+        "default": "既定モデル",
+        "add": "モデルを追加",
+        "remove": "モデルを削除",
+        "setDefault": "既定に設定",
+        "modelId": "モデル ID",
+        "displayName": "表示名",
+        "reasoning": "推論強度",
+        "followOfficial": "公式に従う",
+        "operation": "操作",
+        "manage": "管理",
+        "inheritHint": "公式モデルは能力フィールドを維持し、カスタムモデルは汎用テンプレートを使用します。表示モデルは追加・削除できます。",
+        "validation": {
+          "required": "モデルを少なくとも 1 つ残してください。",
+          "modelId": "モデル ID には英字、数字、ピリオド、ハイフン、アンダースコア、スラッシュ、コロンのみ使用できます。",
+          "displayName": "100 文字以内の表示名を入力してください。",
+          "duplicate": "モデル ID は重複できません。",
+          "reasoningEffort": "推論強度の選択が無効です。",
+          "reserved": "このモデル ID は公式モデルと重複しています。別の ID を使用してください。"
+        }
+      },
+      "unavailable": {
+        "cacheMissing": "models_cache.json が見つかりません。",
+        "modelNotCached": "ローカルモデルカタログを読み込めません。",
+        "catalogConflict": "別の model_catalog_json がすでに設定されているため、上書きしません。",
+        "cacheInvalid": "models_cache.json を読み取れないか、形式が無効です。"
+      }
+    },
     "newApi": {
       "quota": {
         "available": "残高",
@@ -2311,9 +2385,17 @@
     "quota": {
       "hourly": "5 時間クォータ",
       "weekly": "週次クォータ",
+      "monthlyCredits": "残高",
+      "monthlyCreditsValue": "{{remaining}} / {{total}}",
+      "creditBalance": "{{balance}}",
+      "unlimitedCredits": "∞",
       "additional": "追加クォータ",
       "reset": "リセット",
       "weeklyBlocksHourly": "週クォータが 0 のため、5時間クォータは利用できません",
+      "windowStats": "使用 {{tokens}} · {{cost}}",
+      "windowStatsHint": "この枠が満額になってから、このアカウントが API サービス経由で使ったリクエスト数・トークン・アカウント課金",
+      "windowUsed": "使用 {{tokens}} · {{cost}}",
+      "windowReq": "{{count}} 回",
       "resetCredits": "リセット {{count}}",
       "resetCreditsTitle": "5時間枠の残りリセット回数: {{count}}",
       "resetCreditConfirm": "確認?",
@@ -2335,7 +2417,17 @@
       "resetCreditNoRecords": "リセット記録はありません",
       "resetCreditRecordsLoadFailed": "リセット記録の読み込みに失敗しました: {{error}}",
       "resetCreditGrantedAt": "付与",
-      "resetCreditExpiresAt": "期限"
+      "resetCreditExpiresAt": "期限",
+      "windowAccountCostHint": "アカウント課金（モデル価格の概算）",
+      "windowUserCostHint": "ユーザー課金",
+      "windowWeeks": "{{count}}週クォータ",
+      "windowDays": "{{count}}日クォータ",
+      "windowHours": "{{count}}時間クォータ",
+      "windowMinutes": "{{count}}分クォータ",
+      "codeReview": "コードレビュー",
+      "codeReviewShort": "レビュー",
+      "monthlyCreditsHint": "今月のクレジット残量",
+      "monthlyCreditsInline": "Credits：{{value}}"
     },
     "quotaError": {
       "badge": "クォータエラー",
@@ -2834,6 +2926,82 @@
         "all": "すべて"
       },
       "pickInstancePrompt": "このセッションは複数インスタンスにあります。インスタンス ID を入力:"
+    },
+    "sessionUsage": {
+      "tab": "使用量",
+      "listTab": "セッション",
+      "title": "セッション使用量",
+      "desc": "ローカルの Codex セッションログから実際のトークン使用量を集計します。公式クォータや API サービスのリクエストログは使いません。",
+      "hint": "公式クォータはプラン枠、API サービスログはローカルゲートウェイ経由のみです。ここでは JSONL のリクエスト単位増分を合計します。",
+      "range": {
+        "label": "期間",
+        "7d": "7日",
+        "30d": "30日",
+        "month": "今月",
+        "all": "すべて"
+      },
+      "instance": {
+        "label": "インスタンス",
+        "all": "全インスタンス"
+      },
+      "actions": {
+        "refresh": "更新",
+        "rebuild": "再スキャン"
+      },
+      "status": {
+        "idle": "未スキャン",
+        "scanning": "セッションログをスキャン中…",
+        "ready": "{{files}} ファイル、{{requests}} リクエストを集計",
+        "lastSynced": "最終同期 {{time}}",
+        "deferred": "親待ちのフォーク {{count}} 件",
+        "errors": "解析失敗 {{count}} 件"
+      },
+      "cards": {
+        "input": "入力 Tokens",
+        "cached": "キャッシュ入力 Tokens",
+        "output": "出力 Tokens",
+        "total": "合計 Tokens",
+        "requests": "リクエスト",
+        "cost": "概算費用"
+      },
+      "tables": {
+        "model": "モデル別",
+        "instance": "インスタンス別",
+        "day": "日別",
+        "modelName": "モデル",
+        "instanceName": "インスタンス",
+        "dayName": "日付",
+        "input": "入力 Tokens",
+        "cached": "キャッシュ Tokens",
+        "output": "出力 Tokens",
+        "total": "合計 Tokens",
+        "requests": "回数"
+      },
+      "empty": {
+        "title": "使用量はまだありません",
+        "desc": "このページを開くと、ローカルの Codex セッションログと追加インスタンスをバックグラウンドでスキャンします。使った直後なら更新してください。"
+      },
+      "rebuildConfirm": {
+        "title": "再スキャン",
+        "message": "セッション使用量キャッシュを消し、全ログを読み直します。公式クォータと API サービスログは変わりません。続けますか？"
+      },
+      "errors": {
+        "loadFailed": "セッション使用量の読み込みに失敗：{{error}}",
+        "syncFailed": "セッション使用量のスキャンに失敗：{{error}}"
+      },
+      "summary": {
+        "title": "直近30日",
+        "scanning": "スキャン中",
+        "updating": "同期中",
+        "detail": "詳細",
+        "back": "戻る",
+        "input": "入力",
+        "cached": "キャッシュ",
+        "output": "出力",
+        "total": "合計",
+        "requests": "回数",
+        "cost": "費用"
+      }
     },
     "api": {
       "baseUrl": "ベース URL",
@@ -5804,7 +5972,7 @@
       "short": "メモ",
       "addShort": "メモ追加",
       "fingerprintModeLabel": "デバイス指紋モード",
-      "fingerprintModeHint": "OAuth アカウントのみ対象です。未設定のアカウントは既定でセッションモードになります。",
+      "fingerprintModeHint": "OAuth のみ。既定はセッション。アカウントごとにインストール／セッションを分離し、ワークスペースを書き換えて同一端末の複数アカウントの紐付けを防ぎます。",
       "fingerprintModeSession": "セッション（推奨）",
       "fingerprintModeDevice": "デバイス",
       "fingerprintModeFull": "完全",

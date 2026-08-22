@@ -7,6 +7,46 @@ All notable changes to CPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.25] - 2026-08-23
+
+### CPS integration
+
+- **CPS is aligned with upstream v1.3.25** while retaining CPS branding and updater channels, multi-host Codex SSH account and history synchronization, remote-project restoration, orphan rollout recovery, and safe app-server lifecycle handling.
+- **The upstream authorization progress, instance account-occupancy protection, and direct app-server cleanup are combined with CPS remote-launch context restoration and profile-scoped orphan app-server cleanup.**
+
+### Changed
+
+- **Codex account switching and reauthorization are more reliable**: resolved cases where switching required another login or newly authorized account state and credentials did not take effect; after authorization, the original account switch or instance launch can continue.
+- **Codex client authorization is now evaluated separately from API Service availability**: when the client needs reauthorization but the API token still works, the account remains available to API Service and is not counted as invalid.
+- **Codex multi-instance launches now protect account occupancy**: the same OAuth account cannot be used by multiple official instances at once; you can locate the active instance, choose another account, or transfer account use.
+- **Codex API Service now recovers automatically from local port conflicts**: when the original port is unavailable, the service selects another local port while keeping accounts, API keys, and pool settings intact.
+- **Behavior backups now use bounded retention**: Claude, Codex, WorkBuddy, CodeBuddy, and related session and configuration repair backups keep the newest copy per source and instance instead of consuming disk space indefinitely.
+
+### Fixed
+
+- **Fixed Codex API Service streaming conversations hanging and identities leaking across conversations**: streaming responses now finish cleanly and each conversation keeps an independent session identity.
+- **Fixed Codex API Service stats resetting after an account is added again**: usage is attributed by the official Codex account ID, so request counts, token usage, and account cost remain after reauthorizing or re-importing the same official account.
+- **Fixed Codex default-instance detection and lifecycle failures**: the default instance and its background processes can now be detected, started, and closed correctly.
+- **Fixed Codex instances with WebSocket disabled repeatedly attempting WebSocket connections**: API Service now preserves each instance's current WebSocket setting.
+
+### Added
+
+- **Grok account switches can sync OpenCode sign-in**: optionally sync OpenCode when switching Grok accounts and restart OpenCode so the new account takes effect immediately; accounts using custom third-party endpoints do not overwrite the existing sign-in. Thanks @FB208 ([#2002](https://github.com/jlcodes99/cockpit-tools/pull/2002)).
+- **Backup storage can now be moved to another drive**: macOS and Windows users can choose a new local backup folder in Settings; existing backups remain available after migration, with storage usage visible and cleanable by source.
+- **Codex accounts can be exported as official `auth.json` files**: OAuth, API Key, and Agent Identity accounts are exported in their corresponding formats, with separate files for multiple accounts.
+- **Codex model catalogs now support per-model context windows and compact limits**: each model can use defaults or custom values, synchronized for both the Codex client and API Service.
+
+## [1.3.24] - 2026-08-20
+
+### Fixed
+
+- **Fixed account switching with the latest Codex release and aligned it with the current official authentication flow**: before replacing the active credentials, Cockpit saves the current account's latest official auth state; the default file store reads `$CODEX_HOME/auth.json`, while explicitly configured `keyring` / `auto` stores use the matching `Codex Auth` entry. Account switches are serialized, and rewritten OAuth auth files preserve unrelated official or custom fields while removing stale account credentials, reducing cases where switching back requires another login.
+
+### Changed
+
+- **Codex OAuth login and token refresh now use the official credential-facing client identity**: token exchange and refresh requests send the matching `originator` and `User-Agent` pair used by the official client.
+- **The Codex launch-after-switch setting now sits with the Codex App launch path**: its description also makes clear that enabling it starts or restarts Codex App after an account switch.
+
 ## [1.3.23] - 2026-08-19
 
 ### Changed

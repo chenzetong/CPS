@@ -50,6 +50,7 @@ function isAllowedFixture(relativePath, rule, text, match) {
       "runner",
       "shared",
       "test",
+      "tester",
       "zcode-round-trip-test",
       "zcode-test",
       "zcode-user",
@@ -71,6 +72,9 @@ function isAllowedFixture(relativePath, rule, text, match) {
     rule === "rfc1918-host" &&
     [
       "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/config.example.yaml",
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/client/codex/live/media_test.go",
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/client/codex/live/tcp_proxy.go",
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/client/codex/live/tcp_proxy_test.go",
       "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/api/modules/amp/routes_test.go",
       "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/watcher/diff/config_diff_test.go",
       "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/sdk/api/handlers/openai/openai_responses_websocket_test.go",
@@ -103,6 +107,19 @@ function isAllowedFixture(relativePath, rule, text, match) {
 
   if (
     rule === "openai-style-key" &&
+    canonicalRelativePath.startsWith(
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/runtime/executor/claude_",
+    ) &&
+    canonicalRelativePath.endsWith("_test.go") &&
+    /(?:test|native|profile|scope|skip|empty|duplicate|diag|non-|fast|standard|stream|legacy|never|mcp|cloak|count|cache)/i.test(
+      match[0],
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    rule === "openai-style-key" &&
     relativePath === "src-tauri/src/modules/codex_account.rs" &&
     line.includes("let api_key =") &&
     text.slice(Math.max(0, lineStart - 500), lineStart).includes(
@@ -114,8 +131,22 @@ function isAllowedFixture(relativePath, rule, text, match) {
 
   if (
     rule === "codex-thread-id" &&
-    canonicalRelativePath ===
-      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/runtime/executor/codex_websockets_executor_test.go"
+    [
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/runtime/executor/codex_websockets_executor_test.go",
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/runtime/executor/xai_executor_test.go",
+    ].includes(canonicalRelativePath)
+  ) {
+    return true;
+  }
+
+  if (
+    rule === "developer-home-path" &&
+    ((canonicalRelativePath ===
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/internal/util/nocopy_invariant_test.go" &&
+      line.includes("internal/home/client.go")) ||
+      (canonicalRelativePath ===
+        "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/sdk/cliproxy/auth/home_concurrency_test.go" &&
+        line.includes("internal/home/testdata/")))
   ) {
     return true;
   }

@@ -402,7 +402,7 @@ npm run tauri build
 - CPS 基于 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) 持续维护，并尽量通过纯源码 PR 将通用修复回馈上游；感谢原作者和所有贡献者建立并维护完整的跨平台基础。
 - Codex 账号切换与记录同步方案调研参考了 [angusdevgo/OC-Codex](https://github.com/angusdevgo/OC-Codex)。CPS 在此基础上结合自身 SSH 场景实现了事务化文件投影、SQLite/rollout 对齐、孤立会话恢复和 app-server 重载；感谢其公开实现提供思路。
 - Antigravity 账号切号逻辑参考：[Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
-- Codex API 服务集成 CLIProxyAPI，Responses WebSocket 状态安全、canonical token accounting v2、Multi-Agent V2 兼容以及 Grok CLI 账号与 OAuth 实现方向亦参考其开源实现：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（MIT）
+- Codex API 服务集成 CLIProxyAPI，Codex Live WebRTC/sideband、Responses WebSocket 状态安全、canonical token accounting v2、Multi-Agent V2 兼容以及 Grok CLI 账号与 OAuth 实现方向亦参考其开源实现：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（MIT）
 - Grok 图标造型参考：[LobeHub/lobe-icons](https://github.com/lobehub/lobe-icons)（MIT）
 - Grok CLI 任务用量查询与兼容解析方向参考：[junhoyeo/tokscale](https://github.com/junhoyeo/tokscale)（MIT）
 - Grok CLI 第三方 BYOK 与 custom model 配置格式对照上游实现及文档：[xai-org/grok-build](https://github.com/xai-org/grok-build)
@@ -410,7 +410,7 @@ npm run tauri build
 - Codex Agent Identity 导入、动态签名、task 失效恢复、OAuth 设备指纹收敛，Responses namespace 分流、加密内容恢复、工具输出协议转换与模型兼容，以及官方账号窗口用量（req / token / A$）展示口径参考：[sub2api](https://github.com/Wei-Shaw/sub2api)
 - Codex Agent Identity runtime 注册协议与 Ed25519 密钥格式参考官方实现：[openai/codex](https://github.com/openai/codex)（Apache-2.0）
 - Codex、Claude CLI 与 Claude Desktop Gateway 第三方供应商预设、模型映射，以及从会话 JSONL 汇总真实用量的方向参考：[CC Switch](https://github.com/farion1231/cc-switch)
-- Codex 模型目录、前端模型显示、loopback CDP 诊断与官方 live auth 保留策略参考：[CodexPlusPlus](https://github.com/BigPizzaV3/CodexPlusPlus)
+- Codex 模型目录、前端模型显示、loopback CDP 诊断、官方 live auth 保留策略，以及历史会话 Provider、SQLite 本地目录和工作区状态修复方向参考：[CodexPlusPlus](https://github.com/BigPizzaV3/CodexPlusPlus)
 - Codex 受管模型目录中展示实验模型的思路参考：[gptsolwm](https://github.com/yynxxxxx/gptsolwm)
 - Claude 可选登录 helper 运行时基于：[Electron](https://github.com/electron/electron)
 - 感谢 [@longwQaQ](https://github.com/longwQaQ) 贡献 Codex 模型供应商 Responses WebSocket 配置能力（[#1512](https://github.com/jlcodes99/cockpit-tools/pull/1512)）。

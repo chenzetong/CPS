@@ -407,7 +407,7 @@ npm run tauri build
 - CPS is continuously maintained from [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools), and reusable fixes are contributed back as source-only pull requests whenever practical. Thanks to the original author and every upstream contributor for the cross-platform foundation.
 - Research for Codex account switching and record synchronization included [angusdevgo/OC-Codex](https://github.com/angusdevgo/OC-Codex). CPS adapted those ideas to its SSH workflow with transactional projection, SQLite/rollout reconciliation, orphan recovery, and app-server reload handling. Thanks for making that implementation public.
 - Antigravity account switching logic references: [Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
-- The Codex API service integrates CLIProxyAPI; its Responses WebSocket state safety, canonical token accounting v2, Multi-Agent V2 compatibility, and open-source account and OAuth handling also informed Cockpit and the Grok CLI implementation: [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (MIT)
+- The Codex API service integrates CLIProxyAPI; its Codex Live WebRTC/sideband support, Responses WebSocket state safety, canonical token accounting v2, Multi-Agent V2 compatibility, and open-source account and OAuth handling also informed Cockpit and the Grok CLI implementation: [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (MIT)
 - Grok icon shape references: [LobeHub/lobe-icons](https://github.com/lobehub/lobe-icons) (MIT)
 - Grok CLI task-usage querying and compatibility parsing direction references: [junhoyeo/tokscale](https://github.com/junhoyeo/tokscale) (MIT)
 - Grok CLI third-party BYOK and custom-model configuration formats follow the upstream implementation and documentation: [xai-org/grok-build](https://github.com/xai-org/grok-build)
@@ -415,7 +415,7 @@ npm run tauri build
 - Codex Agent Identity import, dynamic signing, task recovery, OAuth device-fingerprint convergence, Responses namespace routing, encrypted-content recovery, tool-output protocol conversion, model compatibility, and official-account window usage display (req / tokens / A$) reference: [sub2api](https://github.com/Wei-Shaw/sub2api)
 - Codex Agent Identity runtime registration protocol and Ed25519 key format reference the official implementation: [openai/codex](https://github.com/openai/codex) (Apache-2.0)
 - Codex, Claude CLI, and Claude Desktop Gateway third-party provider presets, model mapping, and session JSONL usage aggregation direction reference: [CC Switch](https://github.com/farion1231/cc-switch)
-- Codex model catalog, frontend model display, loopback CDP diagnostics, and official live-auth preservation strategy reference: [CodexPlusPlus](https://github.com/BigPizzaV3/CodexPlusPlus)
+- Codex model catalog, frontend model display, loopback CDP diagnostics, official live-auth preservation strategy, and historical session provider, SQLite local catalog, and workspace-state repair direction reference: [CodexPlusPlus](https://github.com/BigPizzaV3/CodexPlusPlus)
 - Codex managed-catalog experimental model display direction references: [gptsolwm](https://github.com/yynxxxxx/gptsolwm)
 - Claude optional sign-in helper runtime is based on: [Electron](https://github.com/electron/electron)
 - Thanks [@longwQaQ](https://github.com/longwQaQ) for contributing per-provider Codex Responses WebSocket configuration ([#1512](https://github.com/jlcodes99/cockpit-tools/pull/1512)).

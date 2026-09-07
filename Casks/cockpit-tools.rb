@@ -1,6 +1,6 @@
 cask "cockpit-tools" do
-  version "1.3.32"
-  sha256 "22823b9c8a3c863dc0d09ab8c29e348e4abb258bad2266e98cb2087e70e95f7a"
+  version "1.3.43"
+  sha256 "8c5ed80f225b651e3947a11ba8f9c819f65ec16b3bcebfc93ee1c88ebb29a547"
 
   url "https://github.com/chenzetong/CPS/releases/download/v#{version}/CPS_#{version}_universal.dmg"
   name "CPS"

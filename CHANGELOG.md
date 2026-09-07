@@ -7,6 +7,187 @@ All notable changes to CPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
+## [1.3.43] - 2026-09-08
+
+### Added
+
+- **Separate Codex context settings from model management**: ordinary accounts follow the official model catalog by default and use the Cockpit catalog only after the user explicitly enables and confirms model management. Enabled catalogs can add, remove, reorder, and adjust models but no longer update automatically with the official catalog; a one-click reset restores the current release's Cockpit default model list, order, reasoning levels, and default model, with no disk changes until Apply Configuration is confirmed. Model management no longer sets per-model context windows or compaction thresholds, and legacy overrides are removed automatically. The standalone compact Context Management dialog offers Follow official, `516K / 460K`, `1M / 900K`, and Custom options, writes overrides through the current Codex instance's official top-level settings for every account in that instance, preserves them across account switches, and removes them when returning to official defaults.
+- **Custom ordering for Codex visible models**: model rows can now be reordered by dragging, and newly added models are inserted after models from the same source. The Codex model picker follows the saved order after the next launch through Cockpit.
+- **Preserve Team quota history for Business accounts** ([#2293](https://github.com/jlcodes99/cockpit-tools/pull/2293)): after an account moves to usage-based Business mode, the last Team quota and expected reset times remain visible. Historical data is isolated by user and workspace and is clearly marked as a local snapshot rather than currently available quota.
+
+### Fixed
+
+- **Support the Homebrew 6 Cask installation flow** ([#2279](https://github.com/jlcodes99/cockpit-tools/pull/2279)): remove the deprecated URL verification argument and migrate post-install quarantine cleanup to `postflight_steps`, preserving existing installation behavior without deprecation warnings.
+- **Preserve per-execution WebSocket usage accounting** ([#2292](https://github.com/jlcodes99/cockpit-tools/pull/2292)): every execution on a long-lived Responses WebSocket connection records and deduplicates its own token usage while retaining account attribution; failed handshakes and token-limit blocks continue through the existing diagnostics path.
+- **Fix Antigravity GCP ToS account eligibility and state loss during switching** ([#2286](https://github.com/jlcodes99/cockpit-tools/pull/2286)): account switches and instance launches prepare GCP ToS and project metadata before injection, encode the OAuth metadata correctly, and preserve existing IDE model, feature, and history caches. GCP ToS accounts are identified in the account UI, and switching synchronizes credentials to existing Antigravity and Antigravity IDE data directories.
+- **Fixed Codex API Service recovery remaining unavailable or appearing stuck**: an unexpectedly terminated Sidecar now performs rate-limited background recovery while preserving accounts, API keys, and the existing port configuration. Account recovery no longer waits on durable state writes, ignores stale failures from requests that started before recovery, uses per-account progress feedback, and returns a visible timeout instead of leaving the dialog busy. Normal stops prefer a graceful exit where supported and are never auto-restarted. Port cleanup only stops a matching Sidecar owned by the current instance or an orphan, while live parallel instances, DMG copies, and unrelated processes are preserved and the service moves to an available port instead of interrupting them.
+- **Fixed third-party API routing being impossible to disable**: disabling routing now persists an explicit off state while retaining channel configuration, so reopening settings or changing the bound account no longer enables it again. Running instances apply the change on the next launch through Cockpit without interrupting the current session.
+- **Fixed instant voice under mixed routing**: voice call setup and realtime control connections now use the same local gateway and account. Exiting Cockpit no longer restores profiles for Codex instances that are still running, avoiding subsequent `401` failures in the active session.
+- **Fixed missing Fast and Ultra options for third-party GPT models**: known GPT models with a channel prefix retain the corresponding reasoning levels, speed tiers, and context capabilities while continuing to follow the user-saved model order.
+- **Fixed draft and notice state in model-routing configuration**: refreshing accounts no longer overwrites unsaved channel configuration, channels with no selected models can be saved, and the account-switch preview now shows its save-success notice correctly.
+
+Thanks [@we1jia](https://github.com/we1jia) for the contribution ([#2259](https://github.com/jlcodes99/cockpit-tools/pull/2259)).
+
+## [1.3.42] - 2026-09-07
+
+### Fixed
+
+- **Recover Codex API Service capacity failures before output starts**: HTTP and WebSocket requests retain their initial handshake events while retrying temporary model-capacity failures within the existing retry budget. Failures after output starts are reported without replaying generated content.
+- **Keep capacity failures separate from account quota exhaustion**: temporary capacity failures no longer cool down healthy accounts and are returned as retryable server errors; quota, authentication, and policy failures retain their existing handling.
+- **Keep Codex API Service OAuth identity headers consistent**: the outgoing `Version` header now matches the `User-Agent` version. API Key passthrough and instance-specific provider gateways remain unchanged.
+- **Recover Codex accounts with usable Credits**: accounts with positive or unlimited Credits remain eligible when regular quota windows report zero, while accounts with confirmed exhausted regular quota and no usable Credits enter API Service cooldown.
+- **Expand local account-pool recovery**: recoverable scheduler and quota-cooldown states can be restored when the pool has no selectable account, manual recovery can clear the selected account's local cooldown state, and removing an account from API Service clears its runtime scheduler and quota state.
+- **Repair Codex profile configuration safely**: invalid `config.toml` files are restored from a valid sibling backup when possible, quarantined when recovery is unavailable, and valid UTF-16 files are rewritten as UTF-8 so account switching, launch, and provider configuration can continue.
+- **Release abandoned Codex refresh locks promptly**: a token-refresh lock whose owner process has exited is reclaimed immediately, while a live owner is still protected from lock stealing.
+
+## [1.3.41] - 2026-09-06
+
+### Changed
+
+- **Align the model-list manager dialog with the Codex model configuration dialog**: use the same desktop width and height limits, and let the model rows fill the available dialog space so the full catalog remains visible and scrollable.
+- **Default usage statistics to the last 7 days**: API Service and session-management usage details now open on the most recent seven days while retaining daily, weekly, monthly, and custom range selection.
+- **Remember the last selected statistics range**: API Service, the service settings dialog, and session usage details now restore the user's daily, weekly, monthly, or custom date selection; preset ranges are recalculated against the current date.
+- **Add a statistics and log-detail refresh action**: the Statistics & Logs panel can now refresh the current range and request details without clearing statistics, resetting filters, or changing the current page.
+- **Add usage trend charts to API Service and session management**: API Service shows a responsive hourly/daily trend for request-log tokens, request count, and estimated cost, while session management shows daily token and request trends from its existing session-log summary.
+- **Unify the visual style of Codex statistics and session management**: use a hero summary, input/cache/output metric cards, rounded gradient trend chart, and session-item layout; add the floating tooltip, vertical indicator, node highlight, and multicolor metric hierarchy; session trends run chronologically, with token badges shown only for positive points that do not collide, while edge labels stay inside the chart without changing data sources or actions.
+
+- **Use the official Astra display label**: show `6 Astra` consistently in the managed model catalog and API Service while keeping the request model ID as `gpt-6-astra`.
+- **Add the official experimental context-management switch (off by default)**: it can be enabled from Codex Settings, Quick Settings, or the current Codex configuration; turning it off removes this experimental setting and returns to the official default behavior. Fully restart Codex after either change; the switch does not alter the context window, compaction threshold, or API Service.
+- **Clarify the experimental switch label**: the UI now shows `Enable experimental_mode = true (experimental context management)`, matching the official configuration item that is written.
+
+### Fixed
+
+- **Fixed single-account recovery clearing every account's health state**: recovering one account from the abnormal-account dialog now clears only that account's scheduler and pool diagnostics while leaving other abnormal accounts visible.
+- **Update Codex client identity fallback and preserve API Key passthrough headers**: OAuth fallback headers now use the current `0.153.4` baseline, while API Key HTTP and WebSocket requests retain the downstream client's `User-Agent` and `Originator` instead of being rewritten to the old `0.146.0` identity.
+- **Automatically recover accounts blocked by Sidecar scheduler state**: API Service now treats `auth_available=false` scheduler cooldowns as recoverable pool failures, so an all-unavailable account pool can enter the automatic recovery path instead of requiring manual reset.
+- **Align injected quota badges with API Service effective windows**: when the weekly quota is exhausted, the CDP-injected 5-hour badge now follows the API Service and reports 0 instead of summing raw account values above 100%.
+
+## [1.3.40] - 2026-09-05
+
+### Added
+
+- **Persistent manual Luna Reserve option**: API Service and Codex managed catalogs expose `gpt-reserve` even when no account is currently eligible, without automatically selecting it, changing the default model, or fixing a compaction threshold. Requests retain the `gpt-reserve` ID and select only OAuth accounts within the current API key's scope whose regular allowance is unavailable, reserve allowance is allowed, and server banner is `luna_reserve`. If no account qualifies, the request fails without switching to ordinary accounts or other models. Explicit model access restrictions still apply, and disabling managed model visibility returns visibility control to the official client.
+
+### Changed
+
+- **Restore one retry after an expired Codex OAuth token**: Codex Alpha Search now refreshes the selected Home credential and retries once after an upstream `401`, matching the normal Codex request recovery behavior.
+- **Automatically recover temporarily unavailable local-access accounts once before retrying**: when an account pool has candidates but none can be selected, Cockpit Tools resets their runtime scheduler state and retries the original request; if the retry still finds no usable account, the response explains that automatic recovery was attempted.
+- **Persist disabling third-party API routing from the confirmation action**: turning routing off now saves the disabled state immediately while leaving the current running session untouched; the change takes effect on the next Codex launch.
+- **Isolate Codex session affinity by API key scope**: the same Codex session no longer reuses an account binding created under another client API key, preventing a restricted key from being routed to an account outside its scope.
+
+- **Return Codex model capabilities by client version**: the model catalog now filters incompatible `max`/`ultra` reasoning efforts by `client_version` while preserving official model aliases, context windows, priorities, service tiers, and supported reasoning levels; Astra uses the confirmed official capability template.
+- **Completed the Codex API Service HTTP, Responses, and WebSocket paths**: added the Codex client-model route, Responses/WebSocket streaming events, connection keepalive and Ping, upstream event and quota-header merging, handshake `Retry-After` handling for quota errors, and compatibility fallback when local upgrades fail.
+- **Supported Codex multi-agent and forked sessions**: added compatibility for the `collab_spawn` delegation marker, orphan delegation, fork/subagent session hierarchy, and parent/child session identity so collaborative requests continue on the correct session.
+- **Improved Claude/OpenAI protocol translation**: corrected tool-call and `tool_result` ordering, tool adjacency, JSON Schema `required` strictness, reasoning text delta/summary mapping, and preservation of Codex-to-Claude cache-write usage.
+- **Strengthened Codex authentication, scheduling, and quota-state consistency**: improved OAuth refresh and `401` retries, concurrent refresh merging, model-level cooldown and quota-exhausted state, post-retry error attribution, alias/subagent selection, and candidate-account fallback to avoid cooling accounts for recoverable requests.
+- **Completed streaming usage and diagnostics**: separated first-packet timing from effective TTFT and added stream-mode markers, WebSocket response observation, retry-scoped response headers, and request-level diagnostics for more accurate quota and failure reporting.
+- **Kept non-Codex model catalogs independent**: this API Service sync updates only Codex model entries and the shared low-level capabilities required by Codex, without overwriting other providers' model configuration.
+
+## [1.3.39] - 2026-09-05
+
+### Added
+
+- **GPT-6 Astra Ultra reasoning support**: Astra now advertises and accepts the `ultra` reasoning effort in the model capability catalog and API requests, matching the official client.
+
+## [1.3.38] - 2026-09-05
+
+### Added
+
+- **Claude Desktop login component uninstall**: the Claude account dialog can now remove the locally downloaded Electron sign-in runtime and unfinished login profiles to free disk space without deleting saved Claude accounts.
+- **6 Astra model compatibility**: exposes the official `gpt-6-astra` model ID and `6 Astra` display name across the API Service, account switching, visible-model catalog, wakeup presets, and provider sidecars; it is listed first in those model lists, with the 1.05M context window, `max` reasoning effort, Fast-tier metadata, and local cost estimation. It remains opt-in at selection time and does not change the default model.
+
+### Changed
+
+- **Improved Claude sign-in component cache management**: the uninstall area is now a dedicated cache card that shows actual disk usage and separates the description, confirmation actions, and button layout; storage calculation runs in the background without blocking the account dialog.
+- **Disabling the visible-model catalog now restores official model visibility**: saving the setting off removes the active `model_catalog_json` override and Cockpit-managed catalog state, while leaving any user-owned catalog file untouched; the official Codex client then determines model availability from its own account permissions.
+- **Generated 2FA codes are retained in query history automatically**: entering a valid 2FA secret in the 2FA manager or an account-note dialog now adds it to recent queries as soon as a one-time code can be generated, even if the account note is closed without saving; query history is no longer automatically evicted after 50 entries.
+
+### Fixed
+
+- **Fixed Claude Gateway mapping dialogs becoming misaligned when toggling the 1M context checkbox**: the custom checkbox now has its own positioning context, keeping mapping rows and dialog content stable when the 1M option is clicked or enabled. ([#2229](https://github.com/jlcodes99/cockpit-tools/issues/2229))
+- **Fixed mixed model routing configurations being rejected by the internal `__provider_gateway__` identifier**: internal Provider Gateway binding markers are no longer treated as user-facing route namespaces or account IDs, allowing valid OAuth subscription bindings and API Key routes to be saved and launched successfully. ([#2222](https://github.com/jlcodes99/cockpit-tools/issues/2222))
+- **Fixed official-session and international quota-request issues for imported CodeBuddy accounts**: international CodeBuddy billing requests now include the required `User-Agent`, and JSON-imported CodeBuddy, CodeBuddy CN, and WorkBuddy accounts preserve `expires_at` so switching to the official client does not immediately invalidate the session. ([#2194](https://github.com/jlcodes99/cockpit-tools/pull/2194))
+- **Fixed Responses Lite compatibility for API Key upstreams**: API Service now normalizes the Responses Lite request headers and tool-call parameters sent to API Key upstreams, reducing upstream rejections in multi-turn requests. ([#2169](https://github.com/jlcodes99/cockpit-tools/pull/2169))
+- **Fixed Windows toolbar controls being covered by the drag layer**: toolbar buttons remain fully clickable after the window is scrolled. ([#2187](https://github.com/jlcodes99/cockpit-tools/pull/2187))
+- **Codex API Service no longer cools accounts for upstream transport failures**: DNS failures, offline connections, and connection-refused errors remain retryable without changing account or model cooldown state.
+
+## [1.3.36] - 2026-09-02
+
+### Added
+
+- **Automatic Codex takeover restoration on startup**: when enabled, Cockpit Tools restores the last active Codex proxy takeover and visible-model configuration during launch, with a Settings switch to control the behavior.
+
+### Fixed
+
+- **Fixed existing Codex context settings being removed when saving visible models, model routing, or a copied instance**: catalog-only and routing saves now preserve existing `model_context_window` and `model_auto_compact_token_limit` values in `config.toml`; profiles that did not configure them remain on the default behavior, and failed transactions restore the previous values.
+- **Fixed Provider Gateway cleanup affecting model catalogs and default models it did not own**: cleanup now runs only when Provider ownership state or an explicit legacy Provider catalog is present; enabled experimental catalogs are reapplied after routing is disabled, normal exit cleanup, startup rollback, or watchdog fallback. Enabling an experimental default also records the original `model` state first so disabling restores the prior value or the original unset state.
+
+### Upgrade Notes
+
+- If an affected version already removed these fields, Cockpit Tools cannot determine whether the previous values were `1M/900K`, `516K/460K`, or custom values and will not guess. Restore the original values in `config.toml`, or open **Codex Settings → Visible Models → Manage** and reselect the context and compaction preset or custom values for the affected models, then restart Codex and verify with a new task.
+
+## [1.3.35] - 2026-09-01
+
+### Added
+
+- **Mixed model routing for Codex Desktop**: Codex instances can optionally route selected models or namespaces to configured third-party API providers while keeping official subscription models on the official route. The launch preview now provides the routing switch, provider/model selection, and synchronized model visibility.
+- **DeepSeek V4 Flash Vision support**: The dedicated `deepseek-v4-flash-vision-exp` model is now exposed with image-input metadata, allowing Codex to send `input_image` content through the native and provider-gateway paths.
+- **Cursor quota-failure filtering and batch deletion**: quickly find accounts whose quota lookup failed and delete all filtered failures in one action.
+
+### Changed
+
+- **Codex API Service account issues now use an account-only view**: the dialog no longer shows a separate pool-level summary; every unavailable account shows the affected model and failure reason, with per-account or bulk recovery when available.
+- **Unified account-add dialog sizing across platforms**: desktop dialogs now use the same 760px wide-dialog baseline as Codex while continuing to fit the available width on mobile screens.
+- **Mixed-routing lifecycle isolation**: third-party provider gateways are managed per Codex profile, and disabling routing or stopping a profile restores the Cockpit-managed `config.toml` state. Aborted or failed launches also perform the same fallback cleanup.
+- **Coalesced tray-menu rebuilds**: duplicate rebuild requests within a 150 ms window are merged, reducing repeated disk reads during account changes.
+- **Sidebar layout survives updates**: the layout is persisted to `ui_preferences.json` in the data directory and restored after upgrades, including remapping legacy platform entries.
+
+### Fixed
+
+- **Restored WorkBuddy, CodeBuddy, and CodeBuddy CN quota queries against current official clients**: OAuth and refresh headers, WorkBuddy endpoints and versioned login parameters, personal and enterprise billing payloads, response parsing, unlimited quotas, and WorkBuddy's shared sign-in file layout now follow the latest official behavior; failed refreshes preserve the previous quota snapshot.
+- **Fixed Qoder OAuth completion leaving the dialog open without showing the account**: authorization now confirms that the new account is persisted and visible in the list before closing the dialog; list failures or a missing account keep the dialog open and report failure instead of showing a false success.
+- **Fixed Qoder account switching on macOS reusing the previous in-memory session**: the current `Qoder IDE.app` main process is now detected and closed before credentials are injected and the default instance is relaunched.
+- **Fixed Codex API Service activation ignoring the selected instance**: activating from a non-default instance now prepares and launches that profile instead of always changing and starting `__default__`.
+- **Aligned ZCode quota queries with the 3.10.2 desktop client**: official source metadata and device identity headers are now sent so the service does not reject requests as `parameter error`; numeric-string balances and reset timestamps are accepted, and a successful no-plan response preserves the plan label while clearing stale failures.
+- **Aligned Devin/Windsurf quota-request metadata with the official client**: quota queries now read the installed product and Language Server versions dynamically instead of sending stale `1.0.0` placeholders that current servers can reject.
+- **Aligned Claude Web quota parsing with the current official client**: the account manager now reads the `limits[]` usage envelope (including session, weekly, Sonnet-scoped, and extra-usage meters) returned by the installed Claude desktop client.
+- **Fixed Codex API Service high-volume statistics repeatedly copying unbounded in-memory event history**: historical logs are now aggregated from SQLite as a stream, the runtime keeps only the latest 100 events, and persistence no longer duplicates the event list.
+- **Expired Codex subscriptions are classified by effective plan**: expired Plus/Pro accounts now display and group as `FREE`, and local API Service free-account limits use the effective plan as well.
+
+Thanks [@enenH](https://github.com/enenH) ([#2159](https://github.com/jlcodes99/cockpit-tools/issues/2159)), [@we1jia](https://github.com/we1jia) ([#2155](https://github.com/jlcodes99/cockpit-tools/pull/2155)), [@HUF457](https://github.com/HUF457) ([#2110](https://github.com/jlcodes99/cockpit-tools/pull/2110)), [@yifayun](https://github.com/yifayun) ([#2089](https://github.com/jlcodes99/cockpit-tools/pull/2089)), [@Jonesxq](https://github.com/Jonesxq) ([#1986](https://github.com/jlcodes99/cockpit-tools/pull/1986)), and [@TakaSoap](https://github.com/TakaSoap) ([#2056](https://github.com/jlcodes99/cockpit-tools/pull/2056)) for their contributions.
+
+## [1.3.34] - 2026-08-28
+
+### Added
+
+- **Manual Codex OAuth Token refresh**: refresh an account's credentials from the account overview and review the result, failure reason, retry, or reauthorization action in a dedicated dialog.
+- **Account-pool diagnostics**: when no account can handle a request, the account-pool dialog explains the selection result and provides recovery actions.
+- **Per-account image-generation policy**: API Service account pools can enable or disable image generation for individual accounts without affecting text requests.
+
+### Changed
+
+- **Unified Codex authentication flow**: account overview, default and managed instances, API Service, and API Key OAuth bindings now use the same credential preparation, refresh, reauthorization, progress, and result handling.
+- **Client authorization state is informational**: an observed client login-page redirect no longer blocks switching or API Service use; an explicit upstream authorization revocation remains the highest-priority state.
+- **OAuth authorization follows the official desktop entry point** and remains usable without a local Codex client; browser authorization now allows up to 10 minutes, and the client-version default can be managed remotely, cached locally, or overridden in Settings.
+- **Profile isolation and quota refresh efficiency**: API Service and managed instances keep independent provider gateways, while batch quota refresh reduces repeated process probing and request contention.
+- **Launch actions are recoverable**: users can cancel, retry, reauthorize, or skip eligible non-blocking failures from the active launch dialog.
+- **Subscription information is labeled as “Subscription validity”** so it is distinct from Token expiration.
+
+### Fixed
+
+- **Fixed stale OAuth credentials being restored after reauthorization, switching, quota refresh, or profile synchronization**, preventing accounts from reverting to an older Token.
+- **Fixed client login-page observations leaving stale or delayed account-card state**: the account overview now updates the recorded client status promptly and keeps it separate from API authorization failures.
+- **Fixed account-pool errors being hidden after dispatch failures**: unavailable-account results now retain pool diagnostics and display localized recovery information in the account-pool dialog.
+- **Fixed API 401 results being shown as API Service available**: the account status now reflects an actual upstream rejection.
+- **Fixed account cards remaining in a loading state after cancelling a switch**.
+- **Fixed text requests being rejected solely because image generation is unavailable**, and corrected affected controls that displayed browser-native gray button styles.
+
+## [1.3.33] - 2026-08-27
+
+### Changed
+
+- **The account overview and managed instances now share the same Codex client launch experience**: “Switch and launch” from the account overview, the default instance, and managed instances now use the same launch progress and authentication-result presentation, including consistent `access_token` and `id_token` expiration, refresh, and reauthorization states. Authorization or launch failures can be retried from the same dialog, and the original launch resumes after reauthorization succeeds.
+
 ## [1.3.32] - 2026-08-26
 
 ### Changed
@@ -26,7 +207,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Fixed Codex client launch failures still being reported as a successful account switch or API Service activation**: launch failures now retain a clear error result and retry action instead of treating a completed credential change as proof that the client is usable.
 - **Fixed Codex local import sometimes using stale OAuth credentials**: OAuth accounts are imported from the official credential store, including macOS Keychain, while API Key, Agent Identity, and personal access token imports retain their existing behavior.
 - **Fixed Codex API Service text tests being blocked by image-capability checks for some accounts**: ordinary text tests no longer advertise image-generation tools to upstreams without image capacity, while actual image-generation requests remain unaffected.
-- **Fixed Codex batch quota refresh repeatedly probing desktop processes on Windows**: a refresh batch reuses one runtime detection result, reducing PowerShell subprocesses and avoidable waits.
+- **Fixed Codex batch quota refresh repeatedly probing desktop processes on Windows**: a refresh batch reuses one runtime detection result, reducing PowerShell subprocesses and avoidable waits. Thanks [@popokcn](https://github.com/popokcn) for contributing ([#2106](https://github.com/jlcodes99/cockpit-tools/pull/2106)).
 
 ## [1.3.31] - 2026-08-25
 

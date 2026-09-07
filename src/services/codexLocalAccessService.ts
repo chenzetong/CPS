@@ -22,6 +22,7 @@ import type {
   CodexLocalAccessTimeoutPreset,
   CodexLocalAccessTimeouts,
   CodexLocalAccessUsageEventPage,
+  CodexLocalAccessImageGenerationPolicy,
 } from "../types/codexLocalAccess";
 
 export async function getCodexLocalAccessState(): Promise<CodexLocalAccessState> {
@@ -35,6 +36,7 @@ export async function saveCodexLocalAccessAccounts(
   preferredAccountIds?: string[],
   sessionAffinity?: boolean,
   sessionAffinityTtlMs?: number,
+  imageGenerationAccountPolicies?: Record<string, CodexLocalAccessImageGenerationPolicy>,
 ): Promise<CodexLocalAccessState> {
   return await invoke("codex_local_access_save_accounts", {
     accountIds,
@@ -43,6 +45,7 @@ export async function saveCodexLocalAccessAccounts(
     preferredAccountIds: preferredAccountIds ?? null,
     sessionAffinity: sessionAffinity ?? null,
     sessionAffinityTtlMs: sessionAffinityTtlMs ?? null,
+    imageGenerationAccountPolicies: imageGenerationAccountPolicies ?? null,
   });
 }
 
@@ -316,12 +319,15 @@ export async function setCodexLocalAccessEnabled(
   return await invoke("codex_local_access_set_enabled", { enabled });
 }
 
-export async function activateCodexLocalAccess(): Promise<CodexLocalAccessState> {
+export async function activateCodexLocalAccess(
+  instanceId?: string | null,
+): Promise<CodexLocalAccessState> {
   const startedAt = performance.now();
   console.info("[Codex API Service Switch][Service] invoke codex_local_access_activate started");
   try {
     return await invoke("codex_local_access_activate", {
       autoRepairMode: null,
+      instanceId: instanceId ?? null,
     });
   } finally {
     console.info(

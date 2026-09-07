@@ -8,6 +8,10 @@ export type CodexLocalAccessRequestKind =
   "text" | "image_generation" | "image_edit" | "other";
 export type CodexLocalAccessImageGenerationStatus =
   "unknown" | "available" | "unavailable" | "disabled";
+export type CodexLocalAccessImageGenerationPolicy =
+  | "inherit"
+  | "enabled"
+  | "disabled";
 
 export type CodexLocalAccessRoutingStrategy =
   | "auto"
@@ -116,6 +120,10 @@ export interface CodexLocalAccessCollection {
   accessScope: CodexLocalAccessScope;
   clientBaseUrlHost: CodexLocalAccessClientBaseUrlHost;
   imageGenerationMode: CodexLocalAccessImageGenerationMode;
+  imageGenerationAccountPolicies: Record<
+    string,
+    CodexLocalAccessImageGenerationPolicy
+  >;
   gatewayMode: CodexLocalAccessGatewayMode;
   upstreamProxyUrl?: string | null;
   routingStrategy: CodexLocalAccessRoutingStrategy;
@@ -194,6 +202,13 @@ export interface CodexLocalAccessStatsWindow {
   accounts: CodexLocalAccessAccountStats[];
   models: CodexLocalAccessModelStats[];
   apiKeys: CodexLocalAccessApiKeyStats[];
+  trend: CodexLocalAccessUsageTrendPoint[];
+  trendHourly: boolean;
+}
+
+export interface CodexLocalAccessUsageTrendPoint {
+  bucketStart: number;
+  usage: CodexLocalAccessUsageStats;
 }
 
 export interface CodexLocalAccessAccountWindowQuery {
@@ -249,7 +264,7 @@ export interface CodexLocalAccessUsageEvent {
   gatewayMode?: CodexLocalAccessGatewayMode | null;
   requestKind: CodexLocalAccessRequestKind;
   serviceTier?: string | null;
-  /** Request reasoning effort (e.g. low/medium/high/xhigh), when present. */
+  /** Request reasoning effort (e.g. low/medium/high/xhigh/max), when present. */
   reasoningEffort?: string | null;
   success: boolean;
   httpStatus?: number | null;
@@ -331,6 +346,34 @@ export interface CodexLocalAccessAccountHealth {
   cooldowns: CodexLocalAccessAccountCooldown[];
 }
 
+export interface CodexLocalAccessAccountPoolHealth {
+  apiKeyId: string;
+  apiKeyLabel: string;
+  provider: string;
+  model: string;
+  requestKind: string;
+  errorCode: string;
+  errorMessage: string;
+  diagnosticAvailable: boolean;
+  candidateAuths: number;
+  scopedAuths: number;
+  availableAuths: number;
+  unavailableAuths: number;
+  modelExcludedAuths: number;
+  quotaReservedAuths: number;
+  imagePolicyBlockedAuths: number;
+  accountStatuses: CodexLocalAccessAccountPoolMemberHealth[];
+  lastFailureAt: number;
+}
+
+export interface CodexLocalAccessAccountPoolMemberHealth {
+  accountId: string;
+  accountEmail: string;
+  available: boolean;
+  reasonCode: string;
+  reasonMessage: string;
+}
+
 export interface CodexLocalAccessProfileAttachment {
   profileDir: string;
   attached: boolean;
@@ -372,6 +415,7 @@ export interface CodexLocalAccessState {
   memberCount: number;
   stats: CodexLocalAccessStats;
   accountHealth: CodexLocalAccessAccountHealth[];
+  accountPoolHealth: CodexLocalAccessAccountPoolHealth[];
   quotaReserveStatus: CodexLocalAccessQuotaReserveStatus | null;
 }
 

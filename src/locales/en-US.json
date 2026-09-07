@@ -239,7 +239,10 @@
         "weekly": "Chat messages",
         "resetAt": "Reset: {{time}}",
         "expiresAt": "Expires at: {{time}}",
-        "leftPercent": "{{value}}% left"
+        "unlimited": "Unlimited",
+        "leftPercent": "{{value}}% left",
+        "cachedRefreshFailed": "Refresh failed; showing the last successful data",
+        "lastSuccessfulQuery": "Last successful: {{time}}"
       },
       "subtitle": "Monitor quota status for all accounts in real time.",
       "time": {
@@ -730,6 +733,26 @@
           "autoCompactInvalid": "Auto-compact limit must be an integer greater than 0."
         }
       },
+      "modelRouting": {
+        "title": "Third-party API routing",
+        "summary": "Unprefixed models use the current subscription; prefixed models such as cpa/gpt-5.5 are forwarded to a third-party API. Both depend on the local routing service.",
+        "rowSummary": "Unprefixed models use the current subscription; prefixed models such as cpa/gpt-5.5 are forwarded to a third-party API. Both depend on the local routing service.",
+        "confirmEnableTitle": "Enable third-party API routing?",
+        "confirmEnableMessage": "Codex model requests will be routed through the local Cockpit Tools service. If the service is not running, both subscription and third-party models may be unavailable. Launch at login will be enabled when you save.\n\nEnable routing?",
+        "confirmEnableAction": "Enable",
+        "confirmDisableTitle": "Disable third-party API routing?",
+        "confirmDisableMessage": "After this change takes effect, the local gateway will stop, native subscription access will be restored, and third-party models will be unavailable.\n\nDisable routing?",
+        "confirmDisableAction": "Disable",
+        "modalTip": "Subscription and third-party models both pass through the local routing service. Keep Cockpit Tools running in the background. The service recovers automatically and falls back to the official configuration after repeated failures.",
+        "modelRequired": "Each enabled API route must include at least one model.",
+        "runningSaveTitle": "When should routing take effect?",
+        "runningSaveMessage": "This Codex instance is running. Replacing the local service now will interrupt the current conversation.\n\nChoose Save and restart Codex to apply now, or Save for later to keep the current session unchanged.",
+        "saveAndRestart": "Save and restart Codex",
+        "saveForLater": "Save for later",
+        "savedForNextLaunch": "Saved. It will take effect the next time you start Codex through Cockpit; the current session remains unchanged.",
+        "restartRollbackFailed": "The new route failed to start and the original configuration could not be restarted: ",
+        "restartRolledBack": "The new route failed to start. The original configuration was restored and Codex restarted: {{error}}"
+      },
       "nameRequired": "Please enter an instance name",
       "pathRequired": "Please select an instance directory",
       "bindRequired": "Please select an account to bind",
@@ -766,7 +789,9 @@
       "progress": "Launch progress",
       "conflictTitle": "Account is in use",
       "completedTitle": "Instance started",
+      "cancelledTitle": "Launch cancelled",
       "failedTitle": "Instance launch failed",
+      "skipAndLaunch": "Skip and launch",
       "conflictAccount": "Account: {{account}}",
       "conflictDescription": "This account is running in {{owners}}. To prevent official instances from competing for the refresh_token, one OAuth account can run in only one instance.",
       "locate": "Locate instance",
@@ -952,8 +977,6 @@
       "codexAppUiInjectionPoolLabel": "Accounts",
       "codexAppUiInjectionWeeklyLabel": "Week",
       "codexAppUiInjectionFiveHourLabel": "5h",
-      "codexLoginPageGuard": "Login page guard",
-      "codexLoginPageGuardDesc": "After restarting a managed Codex instance, use CDP to keep a working conversation page from being replaced by the login screen when the shell OAuth state changes. This only blocks the page switch; it does not repair expired OAuth credentials.",
       "codexWslConfigDir": "WSL Codex Directory",
       "codexWslConfigDirDesc": "Enter the .codex directory inside WSL. \\\\wsl.localhost\\ paths are supported.",
       "codexWslConfigDirPlaceholder": "Example: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -968,6 +991,14 @@
       "commonTitle": "Common",
       "antigravitySettingsTitle": "Antigravity IDE Settings",
       "codexSettingsTitle": "Codex Settings",
+      "codexContextManagement": "Enable experimental_mode = true (experimental context management)",
+      "codexContextManagementDesc": "Off by default. Writes only the official Codex experimental context-management switch for the current profile; fully restart Codex to apply it. It does not change the context window, compaction threshold, or API Service.",
+      "codexContextManagementLoadFailed": "Failed to read the official context-management switch: {{error}}",
+      "codexContextManagementSaveSuccess": "Official context-management switch saved",
+      "codexContextManagementSaveFailed": "Failed to save the official context-management switch: {{error}}",
+      "codexOAuthAppVersion": "OAuth client version",
+      "codexOAuthAppVersionDesc": "Leave empty to follow the remote default {{version}}; a value only overrides the version field in OAuth authorization URLs.",
+      "codexOAuthAppVersionPlaceholder": "Leave empty to use {{version}}",
       "codexClientPolicyTitle": "Allow third-party clients to use Codex",
       "codexClientPolicyDesc": "When enabled, Codex OAuth accounts restricted to official clients can also be used by third-party clients; individual accounts can still opt in when this is off.",
       "codexAccountPolicies": "Codex OAuth account policies",
@@ -1503,6 +1534,10 @@
     "copyToken": "Copy Token",
     "deleteAccount": "Delete Account",
     "confirmDelete": "Are you sure you want to delete account {{email}}?",
+    "badge": {
+      "gcpTos": "GCP ToS",
+      "gcpTosTitle": "GCP ToS account"
+    },
     "columns": {
       "email": "Email",
       "subscription": "Subscription",
@@ -2161,6 +2196,14 @@
     "other_group": "Other Models"
   },
   "codex": {
+    "teamHistory": {
+      "title": "Previous Team quota (local snapshot)",
+      "unknown": "No historical reset time",
+      "hint": "Remaining quota before seat removal, not current available quota",
+      "elapsed": "Expected to reset; verify after restoring the seat",
+      "resetIn": "Expected reset: {{duration}}",
+      "observed": "Snapshot captured: {{time}}"
+    },
     "title": "Codex Account",
     "oauthPolicy": {
       "globalTitle": "Allow third-party clients",
@@ -2190,10 +2233,35 @@
       "fingerprintOff": "Fingerprint: off",
       "applyBatch": "Apply to selected"
     },
+    "contextOverride": {
+      "title": "Context management",
+      "description": "Models, ordering, the default model, and reasoning levels follow the official catalog. Context is overridden only when you set it manually.",
+      "dialogDescription": "This setting applies to every account in the current Codex instance and stays unchanged when accounts switch. Choose official settings, a preset, or Custom context.",
+      "followOfficial": "Follow official",
+      "custom": "Custom context",
+      "automatic": "Automatic",
+      "adjust": "Adjust context",
+      "manage": "Manage context",
+      "apply": "Apply context"
+    },
+    "modelManagement": {
+      "title": "Model management",
+      "enabled": "Enabled",
+      "disabled": "Follow official",
+      "enable": "Enable model management",
+      "disable": "Disable model management",
+      "manage": "Manage models",
+      "disabledDescription": "Off by default. When off, models, ordering, the default model, and reasoning levels follow the official catalog.",
+      "enabledDescription": "The configured model catalog is active. You can add or remove models, and the list no longer updates with the official catalog.",
+      "enableConfirmTitle": "Enable model management?",
+      "enableConfirmDescription": "After enabling, Codex uses the model catalog configured here. You can add, remove, and adjust models, but the list will no longer update automatically with the official catalog.",
+      "enableConfirmAction": "Enable and configure"
+    },
     "experimentalModelCatalog": {
       "title": "Visible models",
       "description": "Manage visible models, reasoning effort, context windows, and compact limits in one place.",
       "enabledHint": "Uses the current visible-model list. Restart Codex to apply.",
+      "disabledHint": "When disabled, the Cockpit-managed model catalog is removed and official model visibility is restored; available models are determined by the official account entitlement.",
       "models": {
         "title": "Model list",
         "model": "Model",
@@ -2207,6 +2275,7 @@
         "followOfficial": "Follow official",
         "operation": "Actions",
         "manage": "Manage",
+        "resetDefaults": "Reset to defaults",
         "inheritHint": "Official models keep their capability fields; custom models use a general capability template. Visible models can be added or removed.",
         "validation": {
           "required": "Keep at least one model.",
@@ -2306,6 +2375,14 @@
       "applyModelConfig": "Apply settings",
       "defaultModel": "Default model",
       "repairCompleted": "Session visibility repair completed"
+      ,"forceRefreshTitle": "Force-refresh Token",
+      "forceRefreshReady": "OAuth tokens can be refreshed manually",
+      "forceRefreshDescription": "Use refresh_token to obtain new access_token and id_token values. This may rotate the current refresh token.",
+      "forceRefreshUnavailable": "Unavailable for this account type",
+      "forceRefreshAction": "Refresh now",
+      "forceRefreshRunning": "Refreshing Token…",
+      "forceRefreshSuccess": "Token refreshed successfully",
+      "forceRefreshRetry": "Retry check"
     },
     "switch": "Switch",
     "switched": "Switched to {{email}}",
@@ -2322,7 +2399,15 @@
     "switchAuth": {
       "apiOnlyTitle": "Client Sign-in Needed",
       "reauthorizeTitle": "Codex Authorization Expired",
-      "apiOnlyDescription": "The current access_token can still be used temporarily by the API service, but the client login credentials could not be refreshed, so the official Codex/ChatGPT client was not switched.",
+      "apiOnlyDescription": "The current client has reached the login page. Reauthorize to restore client use; you can still continue using the API Service for now.",
+      "clearClientAuth": "Clear warning",
+      "clearClientAuthSuccess": "Client warning cleared",
+      "clearClientAuthFailed": "Failed to clear client warning: {{error}}",
+      "observationStatus": "Detected a redirect to the login page",
+      "observationTime": "Latest check: {{time}}",
+      "loginRedirectTime": "Latest login-page redirect: {{time}}",
+      "observationInstance": "Observed instance: {{instance}}",
+      "launchTime": "Instance launch time: {{time}}",
       "reauthorizeDescription": "The login credentials could not be refreshed and the access_token is no longer available to the API service. Reauthorize the account to continue.",
       "idTokenUnavailable": "The client identity credential expired and automatic refresh did not return a valid id_token.",
       "reasonLabel": "Reason",
@@ -2340,10 +2425,6 @@
     "switchProgress": {
       "completed": "Switch complete",
       "needsAttention": "Action required",
-      "skipOfficialCheck": "Skip official check",
-      "skipOfficialCheckTitle": "Skip official online check and continue",
-      "skipOfficialCheckDescription": "The access_token is not locally considered expired, but the official account check did not finish. Continuing may lead to a login page if the account status is unknown.",
-      "skipOfficialCheckConfirm": "Continue anyway",
       "steps": {
         "credentials": "Read account credentials",
         "accessToken": "Check access_token",
@@ -2373,8 +2454,6 @@
         "notApplicable": "This check does not apply to the account",
         "refreshNeeded": "Expired or inside the safety window; an update is required",
         "tokenValid": "Valid; no update required",
-        "officialCheckPassed": "Official account check passed",
-        "officialCheckSkipped": "Official online check skipped",
         "stoppingRuntime": "Safely stopping ChatGPT/Codex and app-server...",
         "runtimeStopped": "The previous client runtime stopped safely",
         "waiting": "Waiting for the previous step",
@@ -2721,18 +2800,22 @@
         "empty": "No quota stats yet"
       },
       "accountPoolHealth": {
-        "title": "Account Pool",
+        "title": "Account Status",
         "allAvailable": "All OK {{count}}",
         "availableRatio": "OK {{available}}/{{total}}",
         "issueSummary": "Bad {{abnormal}} · Cool {{cooldown}}",
         "detail": "OK {{available}}/{{total}}, bad {{abnormal}}, cooldown {{cooldown}}, missing {{missing}}, auth {{authError}}, quota {{quotaLimited}}",
-        "openDetails": "View problem accounts",
+        "openDetails": "View account issues",
         "recover": "Recover account status",
         "recoverSuccess": "Recovery requested for {{count}} account(s)",
         "dialog": {
-          "title": "Problem Accounts",
-          "description": "These states come from the Sidecar scheduler. Recovery clears scheduler cooldowns and retries the account.",
-          "noIssues": "No problem accounts",
+          "title": "Account Issues",
+          "description": "Each account is shown with its model, unavailable reason, and available recovery action.",
+          "noIssues": "No account issues",
+          "unscopedApiKey": "Current API Key",
+          "poolUnavailable": "No available pool account",
+          "poolUnavailableDetail": "No available account was selected for model {{model}}",
+          "poolDiagnosticDetail": "Model {{model}}: {{candidate}} candidates, {{scoped}} in scope, {{available}} available, {{unavailable}} unavailable, {{modelExcluded}} model-excluded, {{quotaReserved}} quota-reserved, {{imageBlocked}} image-policy blocked",
           "missing": "Missing account",
           "cooldown": "Cooling down",
           "quota": "Quota limited",
@@ -2748,7 +2831,8 @@
           "unavailableDetail": "Sidecar does not currently consider this account schedulable.",
           "recover": "Recover",
           "recovering": "Recovering…",
-          "recoverAll": "Recover all"
+          "recoverAll": "Recover all",
+          "resyncPool": "Resync account pool"
         }
       },
       "memberTitle": "Collection Members",
@@ -2757,6 +2841,12 @@
       "memberPriorityNormal": "Normal",
       "memberPriorityHighest": "Highest",
       "memberPriorityDesc": "Highest is used first; Normal follows the current routing rules; Lowest is used only when other accounts are unavailable.",
+      "imagePolicy": {
+        "label": "Image policy",
+        "inherit": "Image: Auto",
+        "enabled": "Image: Enabled",
+        "disabled": "Image: Disabled"
+      },
       "routingStrategy": {
         "auto": "Auto (Recommended)",
         "singleAccount": "Single Account",
@@ -3455,7 +3545,7 @@
       "dateTime": "{{date}} {{time}}"
     },
     "subscription": {
-      "label": "Term",
+      "label": "Subscription validity",
       "column": "Subscription info",
       "unknown": "No subscription info",
       "missingDetail": "No subscription info",
@@ -3698,7 +3788,8 @@
         "low": "Low",
         "medium": "Medium",
         "high": "High",
-        "xhigh": "XHigh"
+        "xhigh": "XHigh",
+        "max": "Max"
       }
     },
     "sessionManager": {
@@ -4043,7 +4134,8 @@
       },
       "usage": {
         "title": "Usage Stats",
-        "lastRecorded": "Last recorded"
+        "lastRecorded": "Last recorded",
+        "trendEmpty": "No requests in the selected range"
       },
       "healthTitle": "Service Health",
       "compat": {
@@ -5121,6 +5213,11 @@
       "desc": "Manage Cursor accounts by importing from local Cursor installation, pasting a JWT token, or signing in via OAuth.",
       "reason": "Permission scope: read and write Cursor local auth storage (state.vscdb) for account import and token injection (account switching).",
       "storage": "Network scope: when refreshing quota, the JWT is sent to cursor.com official APIs to fetch usage, user info, and subscription data. No data is sent to any third-party server."
+    },
+    "filters": {
+      "quotaFailed": "Quota query failed ({{count}})",
+      "cleanQuotaFailedAction": "Delete quota-failed accounts ({{count}})",
+      "cleanQuotaFailedConfirm": "Delete all {{count}} account(s) with quota query failures?"
     }
   },
   "breakout": {
@@ -5730,8 +5827,8 @@
     },
     "flowNotice": {
       "title": "WorkBuddy Account Info (click to expand/collapse)",
-      "desc": "Account switching writes the local sign-in file using the latest official WorkBuddy client layout; local import reads the same file. Data is processed locally only.",
-      "permission": "Permission scope: read and write the WorkBuddy sign-in file (CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info) for local import and account switching; the legacy state.vscdb is no longer read or modified.",
+      "desc": "Account switching writes the local WorkBuddy sign-in file using the current official client layout; local import reads the same file. Data is processed locally only. If an opaque official encryption wrapper is detected, the original file is preserved and the overwrite is stopped.",
+      "permission": "Permission scope: read and write the WorkBuddy sign-in file (CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info) for local import and account switching; the legacy state.vscdb is no longer read or modified. Files with an official encryption wrapper are not overwritten without its key.",
       "network": "Network scope: OAuth login and token refresh require network requests to WorkBuddy; quota queries call billing APIs. Local sign-in files and raw credentials are not uploaded."
     },
     "nickname": "Nickname",
@@ -6140,6 +6237,16 @@
       "preparingRuntime": "Preparing sign-in...",
       "hint": "The sign-in state is saved to this tool's local account vault first and is not written to official Claude until you switch accounts.",
       "runtimeHint": "First use may download and verify the Electron sign-in component into the local app data folder; it is not bundled in the installer and is reused afterward.",
+      "uninstall": "Uninstall and free space",
+      "storageTitle": "Sign-in component cache",
+      "storageUsage": "Using {{size}}",
+      "storageCalculating": "Calculating…",
+      "uninstallTitle": "Uninstall sign-in component",
+      "uninstallConfirm": "Uninstall the local Electron sign-in component? It will be downloaded again the next time you sign in to Claude.",
+      "uninstalling": "Uninstalling...",
+      "uninstallSuccess": "Claude sign-in component uninstalled and local cache cleared.",
+      "uninstallFailed": "Failed to uninstall the Claude sign-in component: {{error}}",
+      "uninstallDesc": "This removes the local Electron sign-in component, download cache, and unfinished sign-in files; saved Claude accounts are not deleted.",
       "nameLabel": "Account name",
       "namePlaceholder": "Optional, for example Claude Free",
       "waiting": "Finish signing in in the opened Claude authorization window. When the chat page appears, return here and complete the import.",

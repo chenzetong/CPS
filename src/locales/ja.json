@@ -232,7 +232,10 @@
         "weekly": "週次クォータ",
         "resetAt": "リセット: {{time}}",
         "expiresAt": "有効期限：{{time}}",
-        "leftPercent": "残り {{value}}%"
+        "unlimited": "無制限",
+        "leftPercent": "残り {{value}}%",
+        "cachedRefreshFailed": "更新に失敗したため、最後に成功したデータを表示しています",
+        "lastSuccessfulQuery": "最終成功: {{time}}"
       },
       "subtitle": "GitHub Copilot アカウントを管理します",
       "time": {
@@ -525,7 +528,27 @@
       "appSpeed": "速度",
       "appSpeedDesc": "公式 Codex の起動前に選択した速度を書き込みます",
       "autoSyncThreads": "セッション自動同期",
-      "autoSyncThreadsDesc": "オフの場合、複数インスタンスのセッションは分離されます。オンの場合、すべての Codex インスタンスが停止しているときだけ、インスタンスの起動または終了時にローカルセッション記録を自動的に統合します。"
+      "autoSyncThreadsDesc": "オフの場合、複数インスタンスのセッションは分離されます。オンの場合、すべての Codex インスタンスが停止しているときだけ、インスタンスの起動または終了時にローカルセッション記録を自動的に統合します。",
+      "modelRouting": {
+        "title": "サードパーティ API ルーティング",
+        "summary": "プレフィックスのないモデルは現在のサブスクリプションを使用し、cpa/gpt-5.5 などのプレフィックス付きモデルはサードパーティ API に転送されます。どちらもローカル ルーティング サービスに依存します。",
+        "rowSummary": "プレフィックスのないモデルは現在のサブスクリプションを使用し、cpa/gpt-5.5 などのプレフィックス付きモデルはサードパーティ API に転送されます。どちらもローカル ルーティング サービスに依存します。",
+        "confirmEnableTitle": "サードパーティ API ルーティングを有効にしますか？",
+        "confirmEnableMessage": "Codex モデルのリクエストはローカルの Cockpit Tools サービスを経由してルーティングされます。サービスが実行されていない場合、サブスクリプション モデルとサードパーティ モデルの両方が利用できなくなる可能性があります。保存時にログイン時起動が有効になります。\n\nルーティングを有効にしますか？",
+        "confirmEnableAction": "有効にする",
+        "confirmDisableTitle": "サードパーティ API ルーティングを無効にしますか？",
+        "confirmDisableMessage": "この変更が有効になると、ローカル ゲートウェイが停止し、ネイティブのサブスクリプション アクセスが復元され、サードパーティ モデルは利用できなくなります。\n\nルーティングを無効にしますか？",
+        "confirmDisableAction": "無効にする",
+        "modalTip": "サブスクリプション モデルとサードパーティ モデルはどちらもローカル ルーティング サービスを通過します。Cockpit Tools をバックグラウンドで実行したままにしてください。サービスは自動的に回復し、連続して失敗した場合は公式設定にフォールバックします。",
+        "modelRequired": "有効な各 API ルートには、少なくとも 1 つのモデルを含める必要があります。",
+        "runningSaveTitle": "ルーティング設定はいつ有効になりますか？",
+        "runningSaveMessage": "この Codex インスタンスは実行中です。今すぐローカル サービスを置き換えると、現在の会話が中断されます。\n\n今すぐ適用するには「保存して Codex を再起動」を、現在のセッションを変更しない場合は「保存して後で適用」を選択してください。",
+        "saveAndRestart": "保存して Codex を再起動",
+        "saveForLater": "保存して後で適用",
+        "savedForNextLaunch": "保存しました。次回 Cockpit から Codex を起動したときに反映され、現在のセッションは変更されません。",
+        "restartRollbackFailed": "新しいルートの起動に失敗し、元の設定を再起動できませんでした: ",
+        "restartRolledBack": "新しいルートの起動に失敗しました。元の設定が復元され、Codex が再起動されました: {{error}}"
+      }
     },
     "quota": {
       "unbound": "紐付けアカウントなし",
@@ -555,7 +578,9 @@
       "progress": "起動の進行状況",
       "conflictTitle": "アカウントは使用中です",
       "completedTitle": "インスタンスを起動しました",
+      "cancelledTitle": "起動をキャンセルしました",
       "failedTitle": "インスタンスの起動に失敗しました",
+      "skipAndLaunch": "スキップして起動",
       "conflictAccount": "アカウント：{{account}}",
       "conflictDescription": "このアカウントは {{owners}} で実行中です。公式インスタンス間で refresh_token が競合しないよう、1 つの OAuth アカウントは 1 つのインスタンスでのみ実行できます。",
       "locate": "インスタンスを表示",
@@ -744,8 +769,6 @@
       "codexAppUiInjectionPoolLabel": "アカウント",
       "codexAppUiInjectionWeeklyLabel": "週",
       "codexAppUiInjectionFiveHourLabel": "5時間",
-      "codexLoginPageGuard": "ログインページ保護",
-      "codexLoginPageGuardDesc": "管理対象の Codex インスタンスを再起動すると、CDP が利用可能な会話ページを維持し、シェルの OAuth 状態によるログイン画面への切り替えを防ぎます。ページ切り替えだけを防止し、期限切れの OAuth 認証情報は修復しません。",
       "codexWslConfigDir": "WSL Codex ディレクトリ",
       "codexWslConfigDirDesc": "WSL 内の .codex ディレクトリを入力します。\\\\wsl.localhost\\ のパスに対応しています。",
       "codexWslConfigDirPlaceholder": "例: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -760,6 +783,14 @@
       "commonTitle": "共通",
       "antigravitySettingsTitle": "Antigravity IDE 設定",
       "codexSettingsTitle": "Codex 設定",
+      "codexContextManagement": "experimental_mode = true を有効化（実験的なコンテキスト管理）",
+      "codexContextManagementDesc": "デフォルトではオフです。現在のプロファイルの公式 Codex 実験的コンテキスト管理スイッチだけを書き込みます。適用するには Codex を完全に再起動してください。コンテキストウィンドウ、圧縮しきい値、API Service は変更しません。",
+      "codexContextManagementLoadFailed": "公式コンテキスト管理スイッチを読み込めませんでした：{{error}}",
+      "codexContextManagementSaveSuccess": "公式コンテキスト管理スイッチを保存しました",
+      "codexContextManagementSaveFailed": "公式コンテキスト管理スイッチを保存できませんでした：{{error}}",
+      "codexOAuthAppVersion": "OAuth クライアントバージョン",
+      "codexOAuthAppVersionDesc": "空欄の場合はリモート既定値 {{version}} を使用します。入力すると OAuth 認証 URL のバージョン項目だけを上書きします。",
+      "codexOAuthAppVersionPlaceholder": "空欄で {{version}} を使用",
       "codexClientPolicyTitle": "Codex app-server クライアントをグローバルに許可",
       "codexClientPolicyDesc": "有効にすると、公式クライアント限定の OAuth アカウントでも第三者の app-server クライアントを受け入れます。",
       "codexAccountPolicies": "Codex OAuth アカウントポリシー",
@@ -1304,6 +1335,10 @@
     "copyToken": "トークンをコピー",
     "deleteAccount": "アカウントを削除",
     "confirmDelete": "アカウント {{email}} を削除してもよろしいですか？",
+    "badge": {
+      "gcpTos": "GCP ToS アカウント",
+      "gcpTosTitle": "GCP ToS アカウント"
+    },
     "columns": {
       "email": "メールアドレス",
       "subscription": "サブスクリプション",
@@ -1962,6 +1997,14 @@
     "other_group": "その他のモデル"
   },
   "codex": {
+    "teamHistory": {
+      "title": "以前の Team クォータ（ローカルスナップショット）",
+      "unknown": "過去のリセット時刻はありません",
+      "hint": "シート削除前の残りクォータであり、現在利用可能なクォータではありません",
+      "elapsed": "リセット済みの見込みです。シート復元後に確認してください",
+      "resetIn": "リセット予定：{{duration}}",
+      "observed": "スナップショット取得日時：{{time}}"
+    },
     "oauthPolicy": {
       "globalTitle": "サードパーティの app-server を許可",
       "globalDescription": "有効にすると現在のポリシー概要が表示されます。「管理」から Codex OAuth アカウントを一括または個別に設定できます。",
@@ -1991,10 +2034,35 @@
       "applyBatch": "選択項目に適用"
     },
     "title": "Codex アカウント管理",
+    "contextOverride": {
+      "title": "コンテキスト管理",
+      "description": "モデル、並び順、既定モデル、推論レベルは公式カタログに従います。手動設定した場合のみコンテキストを上書きします。",
+      "dialogDescription": "現在の Codex インスタンス内の全アカウントに適用され、アカウントを切り替えても維持されます。公式設定、プリセット、またはカスタムを選択してください。",
+      "followOfficial": "公式に従う",
+      "custom": "カスタムコンテキスト",
+      "automatic": "自動",
+      "adjust": "コンテキストを調整",
+      "manage": "コンテキストを管理",
+      "apply": "コンテキストを適用"
+    },
+    "modelManagement": {
+      "title": "モデル管理",
+      "enabled": "有効",
+      "disabled": "公式に従う",
+      "enable": "モデル管理を有効化",
+      "disable": "モデル管理を無効化",
+      "manage": "モデルを管理",
+      "disabledDescription": "既定では無効です。無効時はモデル、並び順、既定モデル、推論レベルが公式カタログに従います。",
+      "enabledDescription": "設定済みモデルカタログが有効です。モデルを追加・削除できますが、一覧は公式カタログに自動追従しません。",
+      "enableConfirmTitle": "モデル管理を有効にしますか？",
+      "enableConfirmDescription": "有効にすると、Codex はここで設定したモデルカタログを使用します。モデルを調整できますが、一覧は公式に自動追従しません。",
+      "enableConfirmAction": "有効にして設定"
+    },
     "experimentalModelCatalog": {
       "title": "表示モデル",
       "description": "表示モデル、推論強度、コンテキストウィンドウ、圧縮しきい値を一元管理します。",
       "enabledHint": "現在の表示モデル一覧を使用します。Codex を再起動してください。",
+      "disabledHint": "無効にすると Cockpit 管理のモデルカタログを削除し、公式のモデル表示に戻します。利用できるモデルは公式アカウントの権限で決まります。",
       "models": {
         "title": "モデル一覧",
         "model": "モデル",
@@ -2008,6 +2076,7 @@
         "followOfficial": "公式に従う",
         "operation": "操作",
         "manage": "管理",
+        "resetDefaults": "既定に戻す",
         "inheritHint": "公式モデルは能力フィールドを維持し、カスタムモデルは汎用テンプレートを使用します。表示モデルは追加・削除できます。",
         "validation": {
           "required": "モデルを少なくとも 1 つ残してください。",
@@ -2106,7 +2175,15 @@
       "modelConfigDialogDescription": "モデルごとに表示モデル、推論レベル、コンテキストウィンドウ、圧縮しきい値を設定します。",
       "applyModelConfig": "設定を適用",
       "defaultModel": "デフォルトモデル",
-      "repairCompleted": "セッション表示を修復しました"
+      "repairCompleted": "セッション表示を修復しました",
+      "forceRefreshTitle": "Tokenを強制更新",
+      "forceRefreshReady": "OAuth Token は手動で更新できます",
+      "forceRefreshDescription": "refresh_token を使って新しい access_token と id_token を取得します。現在の refresh token がローテーションされる場合があります。",
+      "forceRefreshUnavailable": "このアカウント種別では利用できません",
+      "forceRefreshAction": "今すぐ更新",
+      "forceRefreshRunning": "Tokenを更新中…",
+      "forceRefreshSuccess": "Tokenを更新しました",
+      "forceRefreshRetry": "再検出"
     },
     "switch": "切替",
     "switched": "{{email}} に切り替えました",
@@ -2123,7 +2200,12 @@
     "switchAuth": {
       "apiOnlyTitle": "クライアントのログインが必要",
       "reauthorizeTitle": "Codex の認証期限切れ",
-      "apiOnlyDescription": "現在の access_token は API サービスで一時的に利用できますが、クライアントのログイン情報を更新できなかったため、公式 Codex/ChatGPT クライアントには切り替えていません。",
+      "apiOnlyDescription": "現在のクライアントがログインページに移動しました。クライアントを復元するには再認証してください。しばらくは API サービスを引き続き利用できます。",
+      "observationStatus": "ログインページへのリダイレクトを検出しました",
+      "observationTime": "最新の確認：{{time}}",
+      "loginRedirectTime": "ログインページへの最新のリダイレクト：{{time}}",
+      "observationInstance": "確認したインスタンス：{{instance}}",
+      "launchTime": "インスタンスの起動時刻：{{time}}",
       "reauthorizeDescription": "ログイン情報を更新できず、access_token も API サービスで利用できません。続行するには再認証してください。",
       "idTokenUnavailable": "クライアント ID 情報の期限が切れ、自動更新でも有効な id_token を取得できませんでした。",
       "reasonLabel": "理由",
@@ -2136,7 +2218,10 @@
       "startingInstanceAfterReauth": "認証情報を更新しました。インスタンスを再起動しています...",
       "startInstanceAfterReauthFailed": "認証情報は更新されましたが、インスタンスを起動できませんでした：{{error}}",
       "reauthorizedAndStartedInstance": "再認証してインスタンスを起動しました",
-      "apiOnlyBadge": "再認証必要"
+      "apiOnlyBadge": "再認証必要",
+      "clearClientAuth": "警告をクリア",
+      "clearClientAuthSuccess": "クライアントの警告をクリアしました",
+      "clearClientAuthFailed": "クライアントの警告をクリアできませんでした：{{error}}"
     },
     "current": "現在",
     "empty": {
@@ -2304,6 +2389,12 @@
       "summaryMeta": "{{count}} 件のアカウント · {{scope}}",
       "summaryMetaUnconfigured": "未設定 · {{scope}}",
       "memberTitle": "集合メンバー",
+      "imagePolicy": {
+        "label": "画像ポリシー",
+        "inherit": "画像：自動",
+        "enabled": "画像：有効",
+        "disabled": "画像：無効"
+      },
       "memberPriorityLabel": "優先度",
       "memberPriorityLowest": "最低",
       "memberPriorityNormal": "通常",
@@ -2509,18 +2600,22 @@
       "clientBaseUrlHostDesc": "Codex Provider に書き込み、クライアントへコピーする Base URL だけに反映されます。サービスの待受アドレスは変わりません。",
       "clientBaseUrlHostSaveSuccess": "クライアントアドレスを更新しました",
       "accountPoolHealth": {
-        "title": "アカウントプール",
+        "title": "アカウント状態",
         "allAvailable": "すべて正常 {{count}}",
         "availableRatio": "正常 {{available}}/{{total}}",
         "issueSummary": "異常 {{abnormal}} · 冷却 {{cooldown}}",
         "detail": "正常 {{available}}/{{total}}、異常 {{abnormal}}、冷却 {{cooldown}}、欠落 {{missing}}、認証 {{authError}}、クォータ {{quotaLimited}}",
-        "openDetails": "異常アカウントを表示",
+        "openDetails": "アカウントの異常を表示",
         "recover": "アカウント状態を復旧",
         "recoverSuccess": "{{count}} 件のアカウントの復旧を要求しました",
         "dialog": {
-          "title": "異常アカウント",
-          "description": "この状態は Sidecar スケジューラから取得しています。復旧すると冷却を解除して再試行します。",
-          "noIssues": "異常アカウントはありません",
+          "title": "アカウントの異常",
+      "description": "各アカウントをモデル、利用不可の理由、実行可能な復旧操作とともに表示します。",
+          "noIssues": "アカウントに異常はありません",
+          "unscopedApiKey": "現在の API Key",
+          "poolUnavailable": "プールに利用可能なアカウントがありません",
+          "poolUnavailableDetail": "モデル {{model}} に利用可能なアカウントを選択できませんでした",
+          "poolDiagnosticDetail": "モデル {{model}}：候補 {{candidate}}、範囲内 {{scoped}}、利用可能 {{available}}、利用不可 {{unavailable}}、モデル除外 {{modelExcluded}}、クォータ予約 {{quotaReserved}}、画像ポリシー除外 {{imageBlocked}}",
           "missing": "アカウント欠落",
           "cooldown": "冷却中",
           "quota": "クォータ制限",
@@ -2536,7 +2631,8 @@
           "unavailableDetail": "Sidecar は現在このアカウントをスケジュール対象にしていません。",
           "recover": "復旧",
           "recovering": "復旧中…",
-          "recoverAll": "すべて復旧"
+          "recoverAll": "すべて復旧",
+          "resyncPool": "プールを再同期"
         }
       },
       "testChatModel": "モデル",
@@ -2849,7 +2945,8 @@
         "low": "低",
         "medium": "中",
         "high": "高",
-        "xhigh": "最高"
+        "xhigh": "最高",
+        "max": "最大"
       },
       "scheduleQuotaResetHint": "クォータリセット後の起動を有効にすると、自動更新は2分ごとに調整されます。",
       "scheduleQuotaResetSummary": "クォータリセット後に実行",
@@ -3667,10 +3764,6 @@
     "switchProgress": {
       "completed": "切替完了",
       "needsAttention": "対応が必要",
-      "skipOfficialCheck": "公式チェックをスキップ",
-      "skipOfficialCheckTitle": "公式オンラインチェックをスキップして続行",
-      "skipOfficialCheckDescription": "access_token はローカルでは期限切れと判定されていませんが、公式アカウントチェックを完了できませんでした。続行すると、アカウント状態が不明なためログイン画面に移動する可能性があります。",
-      "skipOfficialCheckConfirm": "続行する",
       "steps": {
         "credentials": "アカウント認証情報を読み込み",
         "accessToken": "access_token を確認",
@@ -3700,8 +3793,6 @@
         "notApplicable": "この確認は現在のアカウントには不要です",
         "refreshNeeded": "期限切れまたは安全更新期間内のため更新が必要です",
         "tokenValid": "現在有効で、更新は不要です",
-        "officialCheckPassed": "公式アカウント確認に合格しました",
-        "officialCheckSkipped": "公式オンラインチェックをスキップしました",
         "stoppingRuntime": "ChatGPT/Codex と app-server を安全に停止しています...",
         "runtimeStopped": "以前のクライアント実行状態を安全に停止しました",
         "waiting": "前の手順の完了を待っています",
@@ -4051,7 +4142,8 @@
       },
       "usage": {
         "title": "使用統計",
-        "lastRecorded": "最終記録"
+        "lastRecorded": "最終記録",
+        "trendEmpty": "選択した期間にリクエストはありません"
       },
       "accountModelMappings": {
         "action": "モデルマップ",
@@ -4816,6 +4908,11 @@
     },
     "oauth": {
       "desc": "下のボタンをクリックして、ブラウザで Cursor の認可を完了してください。"
+    },
+    "filters": {
+      "quotaFailed": "クォータ照会に失敗（{{count}}）",
+      "cleanQuotaFailedAction": "クォータ照会に失敗したアカウントを削除（{{count}}）",
+      "cleanQuotaFailedConfirm": "クォータ照会に失敗した{{count}}件のアカウントをすべて削除しますか？"
     }
   },
   "breakout": {
@@ -6131,6 +6228,16 @@
       "preparingRuntime": "ログイン準備中...",
       "hint": "まずローカル保存し、切替時だけ Claude へ書き込みます。",
       "runtimeHint": "初回利用時に Electron ログインコンポーネントをローカルアプリデータフォルダへダウンロードして検証する場合があります。インストーラーには同梱せず、以後はキャッシュを再利用します。",
+      "uninstall": "アンインストールして空き容量を確保",
+      "storageTitle": "ログインコンポーネントのキャッシュ",
+      "storageUsage": "使用量 {{size}}",
+      "storageCalculating": "計算中…",
+      "uninstallTitle": "ログインコンポーネントをアンインストール",
+      "uninstallConfirm": "ローカルの Electron ログインコンポーネントをアンインストールしますか？次回 Claude にログインすると再ダウンロードされます。",
+      "uninstalling": "アンインストール中...",
+      "uninstallSuccess": "Claude ログインコンポーネントをアンインストールし、ローカルキャッシュを削除しました。",
+      "uninstallFailed": "Claude ログインコンポーネントのアンインストールに失敗しました：{{error}}",
+      "uninstallDesc": "ローカルの Electron ログインコンポーネント、ダウンロードキャッシュ、未完了のログインファイルを削除します。保存済みの Claude アカウントは削除しません。",
       "nameLabel": "アカウント名",
       "namePlaceholder": "任意、例: Claude Free",
       "waiting": "Claude ウィンドウでログイン後、ここで取込を完了します。",

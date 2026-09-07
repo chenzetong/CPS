@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import fs from 'node:fs';
 import os from 'node:os';
+import assert from 'node:assert/strict';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
@@ -21,6 +22,7 @@ fs.writeFileSync(
   `
 export { getCodexAdditionalQuotaWindows } from ${JSON.stringify(path.join(root, 'src/types/codex.ts'))};
 export { withCodexPlanBadgeStyle } from ${JSON.stringify(path.join(root, 'src/utils/codexPreferences.ts'))};
+export { buildCodexAccountNoteForm, hasCodexAccountNoteDetails, hasCodexAccountNoteFormDetails, EMPTY_CODEX_ACCOUNT_NOTE_FORM } from ${JSON.stringify(path.join(root, 'src/pages/codexAccountsControllerModel.ts'))};
 `,
 );
 
@@ -35,6 +37,17 @@ await build({
 
 const mod = await import(pathToFileURL(outFile).href);
 const { getCodexAdditionalQuotaWindows, withCodexPlanBadgeStyle } = mod;
+
+const proxyAccount = { proxy_url: 'socks5://127.0.0.1:10808' };
+const proxyForm = mod.buildCodexAccountNoteForm(proxyAccount);
+assert.equal(proxyForm.proxyUrl, proxyAccount.proxy_url);
+assert.equal(mod.hasCodexAccountNoteDetails(proxyAccount), true);
+assert.equal(mod.hasCodexAccountNoteFormDetails(proxyForm), true);
+assert.equal(mod.buildCodexAccountNoteForm().proxyUrl, '');
+assert.equal(mod.EMPTY_CODEX_ACCOUNT_NOTE_FORM.proxyUrl, '');
+assert.equal(mod.hasCodexAccountNoteFormDetails({ ...proxyForm, proxyUrl: '' }), false);
+assert.equal(mod.hasCodexAccountNoteDetails({ proxy_url: '   ' }), false);
+console.log('PASS CPS account proxy survives the split account-note form');
 
 // --- #1540: Spark additional windows must be returned ---
 const sparkQuota = {
@@ -134,14 +147,14 @@ for (const sel of [
 console.log('PASS CSS style variants apply to tier-badge and instance-plan-badge');
 
 // Event wiring structural check
-const accountsPage = fs.readFileSync(path.join(root, 'src/pages/CodexAccountsPage.tsx'), 'utf8');
+const accountsPage = fs.readFileSync(path.join(root, 'src/pages/useCodexAccountsLocalAccessController.tsx'), 'utf8');
 const instancesPage = fs.readFileSync(path.join(root, 'src/pages/CodexInstancesPage.tsx'), 'utf8');
 if (!accountsPage.includes('CODEX_PLAN_BADGE_STYLE_CHANGED_EVENT')) {
-  console.error('FAIL CodexAccountsPage missing style event listener');
+  console.error('FAIL Codex local-access controller missing style event listener');
   process.exit(1);
 }
 if (!accountsPage.includes('planBadgeStyle')) {
-  console.error('FAIL CodexAccountsPage missing planBadgeStyle state in presentation memo');
+  console.error('FAIL Codex local-access controller missing planBadgeStyle state in presentation memo');
   process.exit(1);
 }
 if (!instancesPage.includes('CODEX_PLAN_BADGE_STYLE_CHANGED_EVENT')) {

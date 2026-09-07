@@ -41,6 +41,26 @@ function isAllowedFixture(relativePath, rule, text, match) {
   const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
 
   if (
+    canonicalRelativePath ===
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/sdk/cliproxy/auth/conductor_selection_cooldown_test.go" &&
+    /^\s*input:/.test(line) &&
+    ((rule === "developer-home-path" && ["alice", "Alice", "bob"].includes(match[1])) ||
+      (rule === "openai-style-key" && match[0] === "sk-live-secret-key-123456"))
+  ) {
+    return true;
+  }
+
+  if (
+    rule === "rfc1918-host" &&
+    canonicalRelativePath ===
+      "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/sdk/cliproxy/auth/conductor_scheduler_refresh_test.go" &&
+    match[0] === "10.0.0.1" &&
+    line.includes("http://10.0.0.1:8888")
+  ) {
+    return true;
+  }
+
+  if (
     rule === "developer-home-path" &&
     [
       "cockpit-test",

@@ -50,6 +50,8 @@ type Result struct {
 	Provider string
 	// Model is the upstream model identifier used for the request.
 	Model string
+	// RouteModel is the requested logical route model before alias resolution.
+	RouteModel string
 	// Success marks whether the execution succeeded.
 	Success bool
 	// RetryAfter carries a provider supplied retry hint (e.g. 429 retryDelay).
@@ -59,16 +61,32 @@ type Result struct {
 	// Error describes the failure when Success is false.
 	Error *Error
 	// Options carries execution request options (headers, metadata, etc.) for result tracking.
-	Options         cliproxyexecutor.Options
-	AuthStateKnown  bool
-	AuthAvailable   bool
-	NextRetryAt     time.Time
-	AuthStateReason string
+	Options cliproxyexecutor.Options
+	// SkipQuotaObservation reports that this result must not replace the last
+	// observed watermark. Count-tokens requests reuse the credential but are not
+	// generation traffic; their response headers are not a generation snapshot.
+	SkipQuotaObservation bool
+	AuthStateKnown       bool
+	AuthAvailable        bool
+	NextRetryAt          time.Time
+	AuthStateReason      string
+	// AttemptStartedAt identifies results from requests that began before a
+	// manual scheduler reset. Such stale results must not restore the state that
+	// the user just cleared.
+	AttemptStartedAt time.Time
 }
 
 // Selector chooses an auth candidate for execution.
 type Selector interface {
 	Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*Auth) (*Auth, error)
+}
+
+// AuthSelectionFailureReporter observes failures that happen before the
+// configured selector is invoked (for example, when the manager's availability
+// pass removes every candidate). Implementations must not mutate auth state.
+// The interface is optional so existing selectors remain source compatible.
+type AuthSelectionFailureReporter interface {
+	ReportAuthSelectionFailure(ctx context.Context, provider, model string, candidates []*Auth, err error) error
 }
 
 type PluginScheduler interface {
@@ -120,6 +138,8 @@ type Manager struct {
 	selectorMu                sync.Mutex
 	configCooldownMu          sync.Mutex
 	auths                     map[string]*Auth
+	authEpochs                map[string]uint64
+	authRecoveryBarriers      map[string]time.Time
 	scheduler                 *authScheduler
 	// pluginScheduler runs outside m.mu before falling back to native selection.
 	pluginScheduler PluginScheduler
@@ -165,6 +185,8 @@ type Manager struct {
 	// refreshLocks serializes credential refresh per auth ID so concurrent
 	// 401 recoveries and auto-refresh workers do not race the same refresh_token.
 	refreshLocks sync.Map
+	// persistLocks serializes disk persistence per auth ID and guards against out-of-order writes.
+	persistLocks sync.Map
 }
 
 // NewManager constructs a manager with optional custom selector and hook.
@@ -181,6 +203,8 @@ func NewManager(store Store, selector Selector, hook Hook) *Manager {
 		selector:              selector,
 		hook:                  hook,
 		auths:                 make(map[string]*Auth),
+		authEpochs:            make(map[string]uint64),
+		authRecoveryBarriers:  make(map[string]time.Time),
 		homeRuntimeAuths:      make(map[string]map[string]*Auth),
 		homeRuntimeAuthOwners: make(map[string]map[string]*HomeDispatchSelection),
 		homeSessionSelections: make(map[string]map[homeSessionSelectionKey]*HomeDispatchSelection),

@@ -106,7 +106,6 @@ type SwitchCodexAccountOptions = {
   reauthTokenGeneration?: number;
   reconcileAfterSwitch?: boolean;
   launchAfterSwitch?: boolean;
-  skipOfficialAccountCheck?: boolean;
 };
 
 interface CodexAccountState {
@@ -119,6 +118,7 @@ interface CodexAccountState {
   // Actions
   fetchAccounts: (options?: FetchCodexAccountsOptions) => Promise<void>;
   fetchCurrentAccount: (options?: FetchCodexCurrentAccountOptions) => Promise<void>;
+  restoreActiveTakeoverIfNeeded: () => Promise<void>;
   applyAccountSnapshot: (account: CodexAccount) => void;
   switchAccount: (accountId: string, options?: SwitchCodexAccountOptions) => Promise<CodexAccount>;
   deleteAccount: (accountId: string) => Promise<void>;
@@ -209,6 +209,14 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
     }
   },
 
+  restoreActiveTakeoverIfNeeded: async () => {
+    try {
+      await codexService.restoreCodexActiveTakeoverIfEnabled();
+    } catch (e) {
+      console.warn('[Codex Store] 自动恢复接管失败:', e);
+    }
+  },
+
   applyAccountSnapshot: (account: CodexAccount) => {
     if (!account?.id) return;
 
@@ -258,7 +266,6 @@ export const useCodexAccountStore = create<CodexAccountState>((set, get) => ({
       account = await codexService.switchCodexAccount(accountId, {
         reauthTokenGeneration: options?.reauthTokenGeneration,
         launchAfterSwitch: options?.launchAfterSwitch,
-        skipOfficialAccountCheck: options?.skipOfficialAccountCheck,
       });
     } catch (error) {
       // Token Authority 可能已把账号标记为 requires_reauth。立即回读账号库，

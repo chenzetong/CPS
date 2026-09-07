@@ -232,7 +232,10 @@
         "weekly": "週配額",
         "resetAt": "重置: {{time}}",
         "expiresAt": "到期時間：{{time}}",
-        "leftPercent": "剩餘 {{value}}%"
+        "unlimited": "無限額度",
+        "leftPercent": "剩餘 {{value}}%",
+        "cachedRefreshFailed": "刷新失敗，以下為上次成功資料",
+        "lastSuccessfulQuery": "上次成功：{{time}}"
       },
       "subtitle": "管理您的 GitHub Copilot 帳號",
       "time": {
@@ -525,7 +528,27 @@
       "appSpeed": "速度",
       "appSpeedDesc": "啟動官方 Codex 前寫入對應速度",
       "autoSyncThreads": "自動同步會話",
-      "autoSyncThreadsDesc": "關閉時保持多實例會話隔離；開啟後僅在所有 Codex 實例已停止時，啟動或關閉實例會自動合併本地會話記錄。"
+      "autoSyncThreadsDesc": "關閉時保持多實例會話隔離；開啟後僅在所有 Codex 實例已停止時，啟動或關閉實例會自動合併本地會話記錄。",
+      "modelRouting": {
+        "title": "第三方 API 路由",
+        "summary": "普通模型使用目前訂閱；帶前綴模型（如 cpa/gpt-5.5）轉發到第三方 API。兩者皆依賴本機分流服務。",
+        "rowSummary": "普通模型使用目前訂閱；帶前綴模型（如 cpa/gpt-5.5）轉發到第三方 API。兩者皆依賴本機分流服務。",
+        "confirmEnableTitle": "開啟第三方 API 路由？",
+        "confirmEnableMessage": "開啟後，Codex 的模型請求將透過 Cockpit Tools 本地服務分流。服務未運行時，官方訂閱與第三方模型皆可能無法使用。儲存時將預設啟用開機自啟。\n\n確認開啟嗎？",
+        "confirmEnableAction": "確認開啟",
+        "confirmDisableTitle": "關閉第三方 API 路由？",
+        "confirmDisableMessage": "關閉並生效後將停止本機閘道、恢復官方原生直連，所有第三方模型將不可用。\n\n確認關閉嗎？",
+        "confirmDisableAction": "確認關閉",
+        "modalTip": "開啟後，官方訂閱與第三方模型都會經過本地分流服務。請保持 Cockpit Tools 背景執行；服務異常時會自動復原，連續失敗則退回官方配置。",
+        "modelRequired": "每個已啟用的 API 路由至少需要選擇一個模型。",
+        "runningSaveTitle": "路由配置何時生效？",
+        "runningSaveMessage": "此 Codex 執行個體正在執行。立即取代本地服務會中斷目前對話。\n\n選擇「儲存並重啟 Codex」立即生效；選擇「僅儲存，稍後生效」不會影響目前工作階段。",
+        "saveAndRestart": "儲存並重啟 Codex",
+        "saveForLater": "僅儲存，稍後生效",
+        "savedForNextLaunch": "已儲存，下次透過 Cockpit 啟動 Codex 時生效；目前工作階段維持不變。",
+        "restartRollbackFailed": "新路由啟動失敗，恢復原配置後仍無法啟動：",
+        "restartRolledBack": "新路由啟動失敗，已恢復原配置並重新啟動 Codex：{{error}}"
+      }
     },
     "quota": {
       "unbound": "未綁定帳號",
@@ -555,7 +578,9 @@
       "progress": "啟動進度",
       "conflictTitle": "帳號正在其他執行個體中使用",
       "completedTitle": "執行個體啟動完成",
+      "cancelledTitle": "已取消啟動",
       "failedTitle": "執行個體啟動失敗",
+      "skipAndLaunch": "略過並啟動",
       "conflictAccount": "帳號：{{account}}",
       "conflictDescription": "此帳號正在 {{owners}} 中執行。為避免多個官方執行個體競爭 refresh_token，同一個 OAuth 帳號只能在一個執行個體中執行。",
       "locate": "定位現有執行個體",
@@ -740,8 +765,6 @@
       "codexAppUiInjectionPoolLabel": "帳號",
       "codexAppUiInjectionWeeklyLabel": "週",
       "codexAppUiInjectionFiveHourLabel": "5 小時",
-      "codexLoginPageGuard": "登入頁守衛",
-      "codexLoginPageGuardDesc": "重新啟動受管 Codex 實例後，透過 CDP 保留可用的對話頁面，避免外殼 OAuth 狀態將頁面切換到登入頁。此功能只阻止頁面切換，不會修復失效的 OAuth 憑證。",
       "codexWslConfigDir": "WSL Codex 目錄",
       "codexWslConfigDirDesc": "填入 WSL 內的 .codex 目錄，支援 \\\\wsl.localhost\\ 路徑。",
       "codexWslConfigDirPlaceholder": "例如：\\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -756,6 +779,14 @@
       "commonTitle": "通用",
       "antigravitySettingsTitle": "Antigravity IDE 設定",
       "codexSettingsTitle": "Codex 設定",
+      "codexContextManagement": "啟用experimental_mode = true（實驗性內容管理）",
+      "codexContextManagementDesc": "預設關閉。只寫入目前官方 Codex 設定的實驗性內容管理開關，完全重新啟動 Codex 後生效；不會修改內容視窗、壓縮閾值或 API Service。",
+      "codexContextManagementLoadFailed": "讀取官方內容管理開關失敗：{{error}}",
+      "codexContextManagementSaveSuccess": "官方內容管理開關已儲存",
+      "codexContextManagementSaveFailed": "儲存官方內容管理開關失敗：{{error}}",
+      "codexOAuthAppVersion": "OAuth 用戶端版本",
+      "codexOAuthAppVersionDesc": "留空以跟隨遠端預設值 {{version}}；填寫後只會覆寫 OAuth 授權網址中的版本欄位。",
+      "codexOAuthAppVersionPlaceholder": "留空使用 {{version}}",
       "codexClientPolicyTitle": "全域允許 Codex app-server 用戶端",
       "codexClientPolicyDesc": "開啟後，僅允許官方用戶端的 OAuth 帳號也會接受第三方 app-server 用戶端；仍可個別帳號放行。",
       "codexAccountPolicies": "Codex OAuth 帳號策略",
@@ -1304,6 +1335,10 @@
     "copyToken": "複製 Token",
     "deleteAccount": "刪除帳號",
     "confirmDelete": "確定要刪除帳號 {{email}} 嗎？",
+    "badge": {
+      "gcpTos": "GCP ToS 帳號",
+      "gcpTosTitle": "GCP ToS 帳號"
+    },
     "columns": {
       "email": "電子郵件",
       "subscription": "訂閱類型",
@@ -1962,6 +1997,14 @@
     "other_group": "其他模型"
   },
   "codex": {
+    "teamHistory": {
+      "title": "原 Team 席位額度（本機快照）",
+      "unknown": "沒有歷史重設時間",
+      "hint": "移除席位前的剩餘額度，不代表目前可用額度",
+      "elapsed": "預計已重設，恢復席位後請再確認",
+      "resetIn": "預計重設：{{duration}}",
+      "observed": "快照時間：{{time}}"
+    },
     "oauthPolicy": {
       "globalTitle": "允許第三方 app-server",
       "globalDescription": "啟用後會顯示目前帳號策略摘要，點擊「管理」可批次或個別設定。",
@@ -1991,10 +2034,35 @@
       "applyBatch": "套用至所選項目"
     },
     "title": "Codex 帳號管理",
+    "contextOverride": {
+      "title": "上下文管理",
+      "description": "模型、排序、預設模型與推理強度跟隨官方目錄；只有手動設定時才覆寫上下文。",
+      "dialogDescription": "對目前 Codex 執行個體的所有帳號生效，切換帳號後保持不變；可選擇跟隨官方、預設值或自訂。",
+      "followOfficial": "跟隨官方",
+      "custom": "自訂上下文",
+      "automatic": "自動",
+      "adjust": "調整上下文",
+      "manage": "管理上下文",
+      "apply": "套用上下文"
+    },
+    "modelManagement": {
+      "title": "模型管理",
+      "enabled": "已啟用",
+      "disabled": "跟隨官方",
+      "enable": "啟用模型管理",
+      "disable": "停用模型管理",
+      "manage": "管理模型",
+      "disabledDescription": "預設關閉；關閉時模型、排序、預設模型與推理強度皆跟隨官方目錄。",
+      "enabledDescription": "目前以設定的模型目錄為準，可新增或移除模型，不再自動跟隨官方目錄。",
+      "enableConfirmTitle": "啟用模型管理？",
+      "enableConfirmDescription": "啟用後，Codex 將以這裡設定的模型目錄為準。你可以新增、刪除及調整模型，但清單不會再自動跟隨官方變更。",
+      "enableConfirmAction": "啟用並設定"
+    },
     "experimentalModelCatalog": {
       "title": "可見模型",
       "description": "統一管理可見模型、推理強度、上下文視窗和壓縮門檻。",
       "enabledHint": "啟用後使用目前可見模型列表，重新啟動 Codex 才會生效。",
+      "disabledHint": "關閉後會移除 Cockpit 管理的模型目錄，恢復官方模型可見性；具體可用模型由官方帳號權限決定。",
       "models": {
         "title": "模型清單",
         "model": "模型",
@@ -2008,6 +2076,7 @@
         "followOfficial": "跟隨官方",
         "operation": "操作",
         "manage": "管理",
+        "resetDefaults": "恢復預設",
         "inheritHint": "官方模型保留原有能力欄位；自訂模型使用通用能力範本。可見模型可直接新增或刪除。",
         "validation": {
           "required": "至少保留一個模型。",
@@ -2106,7 +2175,15 @@
       "modelConfigDialogDescription": "為每個模型設定可見性、推理強度、上下文視窗與壓縮閾值。",
       "applyModelConfig": "套用設定",
       "defaultModel": "預設模型",
-      "repairCompleted": "工作階段可見性修復完成"
+      "repairCompleted": "工作階段可見性修復完成",
+      "forceRefreshTitle": "強制重新整理 Token",
+      "forceRefreshReady": "可手動重新整理 OAuth Token",
+      "forceRefreshDescription": "使用 refresh_token 取得新的 access_token 與 id_token；目前的 refresh_token 可能會被輪替。",
+      "forceRefreshUnavailable": "此帳號類型無法使用",
+      "forceRefreshAction": "立即重新整理",
+      "forceRefreshRunning": "正在重新整理 Token…",
+      "forceRefreshSuccess": "Token 重新整理成功",
+      "forceRefreshRetry": "重新檢測"
     },
     "switch": "切換",
     "switched": "已切換至 {{email}}",
@@ -2123,7 +2200,15 @@
     "switchAuth": {
       "apiOnlyTitle": "客戶端需登入",
       "reauthorizeTitle": "Codex 授權已失效",
-      "apiOnlyDescription": "目前的 access_token 仍可暫時用於 API 服務，但客戶端登入所需憑證無法自動更新，因此本次未切換至官方 Codex/ChatGPT 客戶端。",
+      "apiOnlyDescription": "偵測到目前客戶端已跳轉至登入頁面。你可以重新授權以恢復客戶端使用；若暫時只使用 API 服務，仍可繼續使用。",
+      "clearClientAuth": "清除異常標記",
+      "clearClientAuthSuccess": "已清除客戶端異常標記",
+      "clearClientAuthFailed": "清除客戶端異常標記失敗：{{error}}",
+      "observationStatus": "偵測到跳轉至登入頁面",
+      "observationTime": "最近一次偵測時間：{{time}}",
+      "loginRedirectTime": "最近一次跳轉登入頁面：{{time}}",
+      "observationInstance": "偵測執行個體：{{instance}}",
+      "launchTime": "本次執行個體啟動時間：{{time}}",
       "reauthorizeDescription": "目前登入憑證無法自動更新，且 access_token 已無法用於 API 服務。請重新授權後繼續使用。",
       "idTokenUnavailable": "客戶端身分憑證已過期，自動更新後仍未取得有效的 id_token。",
       "reasonLabel": "原因",
@@ -2304,6 +2389,12 @@
       "summaryMeta": "{{count}} 個帳號 · {{scope}}",
       "summaryMetaUnconfigured": "未設定 · {{scope}}",
       "memberTitle": "集合成員",
+      "imagePolicy": {
+        "label": "生圖策略",
+        "inherit": "生圖：自動",
+        "enabled": "生圖：啟用",
+        "disabled": "生圖：停用"
+      },
       "memberPriorityLabel": "優先級",
       "memberPriorityLowest": "最低",
       "memberPriorityNormal": "一般",
@@ -2509,18 +2600,22 @@
       "clientBaseUrlHostDesc": "僅影響寫入 Codex Provider 和複製給用戶端的 Base URL，不會改變服務監聽位址。",
       "clientBaseUrlHostSaveSuccess": "用戶端位址已更新",
       "accountPoolHealth": {
-        "title": "帳號池",
+        "title": "帳號狀態",
         "allAvailable": "全部可用 {{count}}",
         "availableRatio": "可用 {{available}}/{{total}}",
         "issueSummary": "異常 {{abnormal}} · 冷卻 {{cooldown}}",
         "detail": "可用 {{available}}/{{total}}，異常 {{abnormal}}，冷卻 {{cooldown}}，缺失 {{missing}}，鑑權 {{authError}}，額度 {{quotaLimited}}",
-        "openDetails": "查看異常帳號詳情",
+        "openDetails": "查看帳號異常詳情",
         "recover": "恢復帳號狀態",
         "recoverSuccess": "已提交 {{count}} 個帳號的恢復操作",
         "dialog": {
-          "title": "異常帳號",
-          "description": "以下狀態來自 Sidecar 帳號調度器。恢復操作會清除調度冷卻並重新嘗試帳號。",
+          "title": "帳號異常",
+      "description": "以下狀態按帳號顯示，包含對應模型、無法使用原因及可執行的復原操作。",
           "noIssues": "目前沒有異常帳號",
+          "unscopedApiKey": "目前 API Key",
+          "poolUnavailable": "帳號池無可用帳號",
+          "poolUnavailableDetail": "模型 {{model}} 的請求未能選出可用帳號",
+          "poolDiagnosticDetail": "模型 {{model}}：候選 {{candidate}}，範圍符合 {{scoped}}，可用 {{available}}，不可用 {{unavailable}}，模型排除 {{modelExcluded}}，額度保留 {{quotaReserved}}，生圖策略攔截 {{imageBlocked}}",
           "missing": "帳號缺失",
           "cooldown": "冷卻中",
           "quota": "額度受限",
@@ -2536,7 +2631,8 @@
           "unavailableDetail": "Sidecar 目前未將該帳號列為可調度帳號",
           "recover": "恢復",
           "recovering": "恢復中…",
-          "recoverAll": "全部恢復"
+          "recoverAll": "全部恢復",
+          "resyncPool": "重新同步帳號池"
         }
       },
       "testChatModel": "模型",
@@ -2980,7 +3076,8 @@
         "low": "低",
         "medium": "中",
         "high": "高",
-        "xhigh": "超高"
+        "xhigh": "超高",
+        "max": "最高"
       },
       "scheduleQuotaResetHint": "啟用配額重置後喚醒時，系統會將自動刷新調整為每 2 分鐘執行一次。",
       "scheduleQuotaResetSummary": "配額重置後觸發",
@@ -3667,10 +3764,6 @@
     "switchProgress": {
       "completed": "切換完成",
       "needsAttention": "需要處理",
-      "skipOfficialCheck": "略過官方檢查",
-      "skipOfficialCheckTitle": "略過官方線上檢查並繼續",
-      "skipOfficialCheckDescription": "目前在本機判定 access_token 尚未過期，但官方帳號檢查未完成。繼續後若帳號狀態未知，可能會跳轉到登入頁面。",
-      "skipOfficialCheckConfirm": "確認繼續",
       "steps": {
         "credentials": "讀取帳號憑證",
         "accessToken": "檢查 access_token",
@@ -3700,8 +3793,6 @@
         "notApplicable": "目前帳號無需檢查此項",
         "refreshNeeded": "已過期或進入安全更新範圍，需要更新",
         "tokenValid": "目前有效，無需更新",
-        "officialCheckPassed": "官方帳號檢查已通過",
-        "officialCheckSkipped": "已略過官方線上檢查",
         "stoppingRuntime": "正在安全停止 ChatGPT/Codex 與 app-server...",
         "runtimeStopped": "舊客戶端執行狀態已安全停止",
         "waiting": "等待前一步驟完成",
@@ -4051,7 +4142,8 @@
       },
       "usage": {
         "title": "用量統計",
-        "lastRecorded": "最近記錄"
+        "lastRecorded": "最近記錄",
+        "trendEmpty": "所選時間範圍沒有請求記錄"
       },
       "accountModelMappings": {
         "action": "模型對應",
@@ -4816,6 +4908,11 @@
     },
     "oauth": {
       "desc": "點擊下方按鈕，在瀏覽器中完成 Cursor 授權登入。"
+    },
+    "filters": {
+      "quotaFailed": "配額查詢失敗 ({{count}})",
+      "cleanQuotaFailedAction": "刪除配額查詢失敗的帳號 ({{count}})",
+      "cleanQuotaFailedConfirm": "確定要刪除全部 {{count}} 個配額查詢失敗的帳號嗎？"
     }
   },
   "breakout": {
@@ -6131,6 +6228,16 @@
       "preparingRuntime": "準備登入元件...",
       "hint": "登入狀態會先儲存在本工具本機帳號庫，不會立刻寫入官方 Claude；切號時才寫回 Claude。",
       "runtimeHint": "首次使用時會下載並校驗 Electron 登入元件到本地應用資料目錄；安裝包不內建，之後會重用本地快取。",
+      "uninstall": "解除安裝並釋放空間",
+      "storageTitle": "登入元件快取",
+      "storageUsage": "佔用 {{size}}",
+      "storageCalculating": "計算中…",
+      "uninstallTitle": "解除安裝登入元件",
+      "uninstallConfirm": "確定要解除安裝本地 Electron 登入元件嗎？下次登入 Claude 時需要重新下載。",
+      "uninstalling": "正在解除安裝...",
+      "uninstallSuccess": "Claude 登入元件已解除安裝，並已清理本地快取空間。",
+      "uninstallFailed": "解除安裝 Claude 登入元件失敗：{{error}}",
+      "uninstallDesc": "解除安裝會刪除本地 Electron 登入元件、下載快取和未完成登入的暫存檔案；不會刪除已儲存的 Claude 帳號。",
       "nameLabel": "帳號名稱",
       "namePlaceholder": "可選，例如 Claude Free",
       "waiting": "請在已開啟的 Claude 授權視窗完成登入。看到聊天頁後回到這裡點擊完成匯入。",

@@ -364,6 +364,8 @@ pub fn run() {
                 modules::codex_local_access::restore_local_access_gateway().await;
             });
 
+            commands::codex_instance::start_mixed_model_gateway_watchdog(app.handle().clone());
+
             {
                 let app_handle = app.handle().clone();
                 std::thread::spawn(move || {
@@ -651,6 +653,8 @@ pub fn run() {
             commands::claude::list_claude_accounts,
             commands::claude::delete_claude_account,
             commands::claude::delete_claude_accounts,
+            commands::claude::claude_uninstall_desktop_login_component,
+            commands::claude::claude_get_desktop_login_component_storage,
             commands::claude::import_claude_from_json,
             commands::claude::import_claude_api_key,
             commands::claude::import_claude_desktop_gateway,
@@ -766,6 +770,8 @@ pub fn run() {
             commands::system::load_user_memory,
             commands::system::mark_user_memory_dismissed,
             commands::system::save_user_memory_list,
+            commands::system::load_ui_preferences,
+            commands::system::save_ui_preferences,
             // Logs Commands
             commands::logs::logs_get_snapshot,
             commands::logs::logs_open_log_directory,
@@ -824,14 +830,20 @@ pub fn run() {
             commands::codex::get_codex_config_toml_path,
             commands::codex::open_codex_config_toml,
             commands::codex::get_codex_quick_config,
+            commands::codex::save_codex_context_management,
             commands::codex::save_codex_quick_config,
+            commands::codex::save_codex_model_catalog,
+            commands::codex::restore_codex_active_takeover_if_enabled,
             commands::codex::get_codex_app_speed_config,
             commands::codex::save_codex_app_speed,
             commands::codex::get_codex_api_service_app_speed_config,
             commands::codex::save_codex_api_service_app_speed,
             commands::codex::update_codex_account_app_speed,
             commands::codex::refresh_codex_account_profile,
+            commands::codex::force_refresh_codex_tokens,
+            commands::codex::codex_clear_client_auth_observation,
             commands::codex::switch_codex_account,
+            commands::codex::codex_cancel_account_switch,
             commands::codex::delete_codex_account,
             commands::codex::delete_codex_accounts,
             commands::codex::start_codex_batch_delete,
@@ -1292,7 +1304,10 @@ pub fn run() {
             commands::codex_instance::codex_get_instance_defaults,
             commands::codex_instance::codex_list_instances,
             commands::codex_instance::codex_get_instance_quick_config,
+            commands::codex_instance::codex_save_instance_context_management,
             commands::codex_instance::codex_save_instance_quick_config,
+            commands::codex_instance::codex_save_instance_model_catalog,
+            commands::codex_instance::codex_save_instance_configuration,
             commands::codex_instance::codex_open_instance_config_toml,
             commands::codex_instance::codex_sync_threads_across_instances,
             commands::codex_instance::codex_sync_sessions_to_instance,
@@ -1318,6 +1333,7 @@ pub fn run() {
             commands::codex_instance::codex_update_instance,
             commands::codex_instance::codex_delete_instance,
             commands::codex_instance::codex_start_instance,
+            commands::codex_instance::codex_cancel_instance_start,
             commands::codex_instance::codex_stop_instance,
             commands::codex_instance::codex_open_instance_window,
             commands::codex_instance::codex_focus_runtime_owner,
@@ -1357,7 +1373,10 @@ pub fn run() {
                     api.prevent_exit();
                     modules::logger::log_info("[Window] 主窗口已销毁，应用继续在托盘运行");
                 } else {
-                    modules::app_lifecycle::begin_shutdown();
+                    let first_shutdown = modules::app_lifecycle::begin_shutdown();
+                    if first_shutdown {
+                        commands::codex_instance::restore_mixed_model_profiles_for_app_exit();
+                    }
                     modules::codex_app_injection::stop_all();
                     tauri::async_runtime::spawn(async {
                         modules::codex_local_access::shutdown_local_access_gateway_for_app_exit()
@@ -1366,7 +1385,10 @@ pub fn run() {
                 }
             }
             RunEvent::Exit => {
-                modules::app_lifecycle::begin_shutdown();
+                let first_shutdown = modules::app_lifecycle::begin_shutdown();
+                if first_shutdown {
+                    commands::codex_instance::restore_mixed_model_profiles_for_app_exit();
+                }
                 modules::codex_app_injection::stop_all();
                 tauri::async_runtime::spawn(async {
                     modules::codex_local_access::shutdown_local_access_gateway_for_app_exit().await;

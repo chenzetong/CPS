@@ -227,7 +227,10 @@
         "weekly": "Haftalık kota",
         "resetAt": "Sıfırlama: {{time}}",
         "expiresAt": "Bitiş: {{time}}",
-        "leftPercent": "%{{value}} kaldı"
+        "unlimited": "Sınırsız kota",
+        "leftPercent": "%{{value}} kaldı",
+        "cachedRefreshFailed": "Yenileme başarısız; son başarılı veriler gösteriliyor",
+        "lastSuccessfulQuery": "Son başarılı: {{time}}"
       },
       "subtitle": "GitHub Copilot hesaplarınızı yönetin",
       "time": {
@@ -525,7 +528,27 @@
       "appSpeed": "Hız",
       "appSpeedDesc": "Resmi Codex başlatılmadan önce seçilen hızı yazar",
       "autoSyncThreads": "Oto oturum sync",
-      "autoSyncThreadsDesc": "Kapalıyken çoklu instance oturumları ayrı kalır. Açıldığında, bir instance başlatılırken veya kapatılırken yerel oturum kayıtları yalnızca tüm Codex instance'ları durmuşsa otomatik birleştirilir."
+      "autoSyncThreadsDesc": "Kapalıyken çoklu instance oturumları ayrı kalır. Açıldığında, bir instance başlatılırken veya kapatılırken yerel oturum kayıtları yalnızca tüm Codex instance'ları durmuşsa otomatik birleştirilir.",
+      "modelRouting": {
+        "title": "Üçüncü taraf API yönlendirmesi",
+        "summary": "Ön eki olmayan modeller geçerli aboneliği kullanır; cpa/gpt-5.5 gibi ön ekli modeller üçüncü taraf bir API'ye iletilir. Her ikisi de yerel yönlendirme hizmetine bağlıdır.",
+        "rowSummary": "Ön eki olmayan modeller geçerli aboneliği kullanır; cpa/gpt-5.5 gibi ön ekli modeller üçüncü taraf bir API'ye iletilir. Her ikisi de yerel yönlendirme hizmetine bağlıdır.",
+        "confirmEnableTitle": "Üçüncü taraf API yönlendirmesi etkinleştirilsin mi?",
+        "confirmEnableMessage": "Codex model istekleri yerel Cockpit Tools hizmeti üzerinden yönlendirilecektir. Hizmet çalışmıyorsa hem abonelik hem de üçüncü taraf modelleri kullanılamayabilir. Kaydettiğinizde oturum açılışında başlatma etkinleştirilecektir.\n\nYönlendirme etkinleştirilsin mi?",
+        "confirmEnableAction": "Etkinleştir",
+        "confirmDisableTitle": "Üçüncü taraf API yönlendirmesi devre dışı bırakılsın mı?",
+        "confirmDisableMessage": "Bu değişiklik yürürlüğe girdikten sonra yerel ağ geçidi durdurulacak, yerel abonelik erişimi geri yüklenecek ve üçüncü taraf modelleri kullanılamayacaktır.\n\nDevre dışı bırakılsın mı?",
+        "confirmDisableAction": "Devre dışı bırak",
+        "modalTip": "Hem abonelik hem de üçüncü taraf modelleri yerel yönlendirme hizmetinden geçer. Cockpit Tools'u arka planda çalışır durumda tutun. Hizmet otomatik olarak kurtarılır ve yinelenen arızalardan sonra resmi yapılandırmaya geri döner.",
+        "modelRequired": "Etkinleştirilen her API rotası en az bir model içermelidir.",
+        "runningSaveTitle": "Yönlendirme ne zaman geçerli olsun?",
+        "runningSaveMessage": "Bu Codex örneği çalışıyor. Yerel hizmeti şimdi değiştirmek mevcut görüşmeyi kesintiye uğratacaktır.\n\nŞimdi uygulamak için «Kaydet ve Codex'i yeniden başlat»ı veya mevcut oturumu değiştirmemek için «Daha sonra kaydet»i seçin.",
+        "saveAndRestart": "Kaydet ve Codex'i yeniden başlat",
+        "saveForLater": "Daha sonra kaydet",
+        "savedForNextLaunch": "Kaydedildi. Değişiklik, Codex'i bir sonraki kez Cockpit üzerinden başlattığınızda uygulanacak; mevcut oturum değişmeyecek.",
+        "restartRollbackFailed": "Yeni rota başlatılamadı ve orijinal yapılandırma yeniden başlatılamadı: ",
+        "restartRolledBack": "Yeni rota başlatılamadı. Orijinal yapılandırma geri yüklendi ve Codex yeniden başlatıldı: {{error}}"
+      }
     },
     "quota": {
       "unbound": "Hesap bağlı değil",
@@ -555,7 +578,9 @@
       "progress": "Başlatma ilerlemesi",
       "conflictTitle": "Hesap kullanımda",
       "completedTitle": "Örnek başlatıldı",
+      "cancelledTitle": "Başlatma iptal edildi",
       "failedTitle": "Örnek başlatılamadı",
+      "skipAndLaunch": "Atla ve başlat",
       "conflictAccount": "Hesap: {{account}}",
       "conflictDescription": "Bu hesap {{owners}} içinde çalışıyor. Resmî örneklerin refresh_token için yarışmasını önlemek amacıyla bir OAuth hesabı yalnızca bir örnekte çalışabilir.",
       "locate": "Örneği bul",
@@ -744,8 +769,6 @@
       "codexAppUiInjectionPoolLabel": "Hesaplar",
       "codexAppUiInjectionWeeklyLabel": "Hafta",
       "codexAppUiInjectionFiveHourLabel": "5 sa",
-      "codexLoginPageGuard": "Oturum açma sayfası koruması",
-      "codexLoginPageGuardDesc": "Yönetilen Codex örneği yeniden başlatıldıktan sonra CDP çalışan konuşma sayfasını korur ve kabuk OAuth durumunun sayfayı oturum açma ekranıyla değiştirmesini engeller. Yalnızca sayfa geçişini engeller, süresi dolmuş OAuth kimlik bilgilerini onarmaz.",
       "codexWslConfigDir": "WSL Codex dizini",
       "codexWslConfigDirDesc": "WSL içindeki .codex dizinini girin. \\\\wsl.localhost\\ yolları desteklenir.",
       "codexWslConfigDirPlaceholder": "Örnek: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -760,6 +783,14 @@
       "commonTitle": "Genel",
       "antigravitySettingsTitle": "Antigravity IDE Ayarları",
       "codexSettingsTitle": "Codex Ayarları",
+      "codexContextManagement": "experimental_mode = true ayarını aç (deneysel bağlam yönetimi)",
+      "codexContextManagementDesc": "Varsayılan olarak kapalıdır. Yalnızca mevcut profil için resmi Codex deneysel bağlam yönetimi anahtarını yazar; uygulamak için Codex'i tamamen yeniden başlatın. Bağlam penceresini, sıkıştırma eşiğini veya API Service'i değiştirmez.",
+      "codexContextManagementLoadFailed": "Resmi bağlam yönetimi anahtarı okunamadı: {{error}}",
+      "codexContextManagementSaveSuccess": "Resmi bağlam yönetimi anahtarı kaydedildi",
+      "codexContextManagementSaveFailed": "Resmi bağlam yönetimi anahtarı kaydedilemedi: {{error}}",
+      "codexOAuthAppVersion": "OAuth istemci sürümü",
+      "codexOAuthAppVersionDesc": "Uzak varsayılan {{version}} değerini kullanmak için boş bırakın; girilen değer yalnızca OAuth yetkilendirme URL’lerindeki sürüm alanını değiştirir.",
+      "codexOAuthAppVersionPlaceholder": "{{version}} kullanmak için boş bırakın",
       "codexClientPolicyTitle": "Codex app-server istemcilerine genel izin ver",
       "codexClientPolicyDesc": "Etkinleştirildiğinde yalnızca resmi istemcilere izin veren OAuth hesapları üçüncü taraf app-server istemcilerini de kabul eder.",
       "codexAccountPolicies": "Codex OAuth hesap politikaları",
@@ -1304,6 +1335,10 @@
     "copyToken": "Token'ı Kopyala",
     "deleteAccount": "Hesabı Sil",
     "confirmDelete": "{{email}} hesabını silmek istediğinizden emin misiniz?",
+    "badge": {
+      "gcpTos": "GCP ToS hesabı",
+      "gcpTosTitle": "GCP ToS hesabı"
+    },
     "columns": {
       "email": "E-posta",
       "subscription": "Abonelik",
@@ -1962,6 +1997,14 @@
     "other_group": "Diğer modeller"
   },
   "codex": {
+    "teamHistory": {
+      "title": "Önceki Team kotası (yerel anlık görüntü)",
+      "unknown": "Önceki sıfırlama zamanı yok",
+      "hint": "Koltuk kaldırılmadan önce kalan kota; mevcut kullanılabilir kota değildir",
+      "elapsed": "Sıfırlanmış olması bekleniyor; koltuğu geri yükledikten sonra doğrulayın",
+      "resetIn": "Tahmini sıfırlama: {{duration}}",
+      "observed": "Anlık görüntü zamanı: {{time}}"
+    },
     "oauthPolicy": {
       "globalTitle": "Üçüncü taraf app-server'a izin ver",
       "globalDescription": "Etkinleştirildiğinde mevcut politika özeti gösterilir; hesapları toplu veya tek tek yapılandırmak için Yönet'i kullanın.",
@@ -1991,10 +2034,35 @@
       "applyBatch": "Seçilenlere uygula"
     },
     "title": "Codex Hesap Yönetimi",
+    "contextOverride": {
+      "title": "Bağlam yönetimi",
+      "description": "Modeller, sıralama, varsayılan model ve akıl yürütme düzeyleri resmi kataloğu izler. Bağlam yalnızca elle ayarlanırsa geçersiz kılınır.",
+      "dialogDescription": "Bu ayar mevcut Codex örneğindeki tüm hesaplara uygulanır ve hesap değiştirildiğinde korunur. Resmi ayarları, bir ön ayarı veya özel bağlamı seçin.",
+      "followOfficial": "Resmiyi izle",
+      "custom": "Özel bağlam",
+      "automatic": "Otomatik",
+      "adjust": "Bağlamı ayarla",
+      "manage": "Bağlamı yönet",
+      "apply": "Bağlamı uygula"
+    },
+    "modelManagement": {
+      "title": "Model yönetimi",
+      "enabled": "Etkin",
+      "disabled": "Resmiyi izle",
+      "enable": "Model yönetimini aç",
+      "disable": "Model yönetimini kapat",
+      "manage": "Modelleri yönet",
+      "disabledDescription": "Varsayılan olarak kapalıdır. Modeller, sıralama ve akıl yürütme düzeyleri resmi kataloğu izler.",
+      "enabledDescription": "Yapılandırılmış katalog etkin. Model ekleyip kaldırabilirsiniz; liste artık resmi katalogla otomatik güncellenmez.",
+      "enableConfirmTitle": "Model yönetimi açılsın mı?",
+      "enableConfirmDescription": "Codex burada yapılandırılan kataloğu kullanır. Modelleri ayarlayabilirsiniz; ancak liste artık otomatik güncellenmez.",
+      "enableConfirmAction": "Aç ve yapılandır"
+    },
     "experimentalModelCatalog": {
       "title": "Görünür modeller",
       "description": "Görünür modelleri, akıl yürütme düzeyini, bağlamı ve sıkıştırma eşiğini tek yerden yönetin.",
       "enabledHint": "Güncel görünür model listesini kullanır. Uygulamak için Codex’i yeniden başlatın.",
+      "disabledHint": "Devre dışı bırakıldığında Cockpit tarafından yönetilen model kataloğu kaldırılır ve resmi model görünürlüğü geri yüklenir; kullanılabilir modeller resmi hesap yetkisine bağlıdır.",
       "models": {
         "title": "Model listesi",
         "model": "Model adı",
@@ -2008,6 +2076,7 @@
         "followOfficial": "Resmiyi takip et",
         "operation": "İşlemler",
         "manage": "Yönet",
+        "resetDefaults": "Varsayılanlar",
         "inheritHint": "Resmi modeller yetenek alanlarını korur; özel modeller genel bir şablon kullanır. Görünür modeller eklenebilir veya silinebilir.",
         "validation": {
           "required": "En az bir model bırakın.",
@@ -2106,7 +2175,15 @@
       "modelConfigDialogDescription": "Her model için görünür modelleri, akıl yürütme düzeylerini, bağlam pencerelerini ve sıkıştırma eşiklerini yapılandırın.",
       "applyModelConfig": "Ayarları uygula",
       "defaultModel": "Varsayılan model",
-      "repairCompleted": "Oturum görünürlüğü onarıldı"
+      "repairCompleted": "Oturum görünürlüğü onarıldı",
+      "forceRefreshTitle": "Token yenilemeyi zorla",
+      "forceRefreshReady": "OAuth Token manuel olarak yenilenebilir",
+      "forceRefreshDescription": "Yeni access_token ve id_token almak için refresh_token kullanır. Mevcut refresh token döndürülebilir.",
+      "forceRefreshUnavailable": "Bu hesap türü için kullanılamaz",
+      "forceRefreshAction": "Şimdi yenile",
+      "forceRefreshRunning": "Token yenileniyor…",
+      "forceRefreshSuccess": "Token başarıyla yenilendi",
+      "forceRefreshRetry": "Yeniden denetle"
     },
     "switch": "Değiştir",
     "switched": "{{email}} hesabına geçildi",
@@ -2123,7 +2200,12 @@
     "switchAuth": {
       "apiOnlyTitle": "İstemci girişi gerekli",
       "reauthorizeTitle": "Codex yetkilendirmesi sona erdi",
-      "apiOnlyDescription": "Mevcut access_token API hizmetinde geçici olarak kullanılabilir, ancak istemci giriş bilgileri yenilenemediği için resmi Codex/ChatGPT istemcisine geçilmedi.",
+      "apiOnlyDescription": "Geçerli istemci giriş sayfasına yönlendirildi. İstemciyi geri yüklemek için yeniden yetkilendirin; API hizmeti şimdilik kullanılmaya devam edilebilir.",
+      "observationStatus": "Giriş sayfasına yönlendirme algılandı",
+      "observationTime": "Son kontrol: {{time}}",
+      "loginRedirectTime": "Son giriş sayfası yönlendirmesi: {{time}}",
+      "observationInstance": "Gözlemlenen örnek: {{instance}}",
+      "launchTime": "Örneğin başlatılma zamanı: {{time}}",
       "reauthorizeDescription": "Giriş bilgileri yenilenemedi ve access_token artık API hizmetinde kullanılamıyor. Devam etmek için hesabı yeniden yetkilendirin.",
       "idTokenUnavailable": "İstemci kimliği sona erdi ve otomatik yenileme geçerli bir id_token döndürmedi.",
       "reasonLabel": "Neden",
@@ -2136,7 +2218,10 @@
       "startingInstanceAfterReauth": "Yetkilendirme güncellendi. Örnek yeniden başlatılıyor...",
       "startInstanceAfterReauthFailed": "Yetkilendirme güncellendi ancak örnek başlatılamadı: {{error}}",
       "reauthorizedAndStartedInstance": "Yeniden yetkilendirildi ve örnek başlatıldı",
-      "apiOnlyBadge": "Giriş gerekli"
+      "apiOnlyBadge": "Giriş gerekli",
+      "clearClientAuth": "Uyarıyı temizle",
+      "clearClientAuthSuccess": "İstemci uyarısı temizlendi",
+      "clearClientAuthFailed": "İstemci uyarısı temizlenemedi: {{error}}"
     },
     "current": "Geçerli",
     "empty": {
@@ -2304,6 +2389,12 @@
       "summaryMeta": "{{count}} hesap · {{scope}}",
       "summaryMetaUnconfigured": "Yapılandırılmadı · {{scope}}",
       "memberTitle": "Koleksiyon üyeleri",
+      "imagePolicy": {
+        "label": "Görsel politikası",
+        "inherit": "Görsel: Otomatik",
+        "enabled": "Görsel: Açık",
+        "disabled": "Görsel: Kapalı"
+      },
       "memberPriorityLabel": "Öncelik",
       "memberPriorityLowest": "En düşük",
       "memberPriorityNormal": "Olağan",
@@ -2509,18 +2600,22 @@
       "clientBaseUrlHostDesc": "Yalnızca Codex Provider’a yazılan ve istemcilere kopyalanan Base URL’yi etkiler; servisin dinleme adresini değiştirmez.",
       "clientBaseUrlHostSaveSuccess": "İstemci adresi güncellendi",
       "accountPoolHealth": {
-        "title": "Hesap Havuzu",
+        "title": "Hesap Durumu",
         "allAvailable": "Tümü OK {{count}}",
         "availableRatio": "Sağlam {{available}}/{{total}}",
         "issueSummary": "Hata {{abnormal}} · Bekleme {{cooldown}}",
         "detail": "OK {{available}}/{{total}}, hata {{abnormal}}, bekleme {{cooldown}}, eksik {{missing}}, auth {{authError}}, kota {{quotaLimited}}",
-        "openDetails": "Sorunlu hesapları göster",
+        "openDetails": "Hesap sorunlarını göster",
         "recover": "Hesap durumunu kurtar",
         "recoverSuccess": "{{count}} hesap için kurtarma istendi",
         "dialog": {
-          "title": "Sorunlu Hesaplar",
-          "description": "Bu durumlar Sidecar zamanlayıcısından gelir. Kurtarma beklemeyi temizler ve hesabı yeniden dener.",
-          "noIssues": "Sorunlu hesap yok",
+          "title": "Hesap Sorunları",
+      "description": "Her hesap model, kullanılamama nedeni ve varsa kurtarma işlemiyle birlikte gösterilir.",
+          "noIssues": "Hesaplarda sorun yok",
+          "unscopedApiKey": "Geçerli API Key",
+          "poolUnavailable": "Havuzda kullanılabilir hesap yok",
+          "poolUnavailableDetail": "{{model}} modeli için kullanılabilir hesap seçilemedi",
+          "poolDiagnosticDetail": "Model {{model}}: {{candidate}} aday, kapsamda {{scoped}}, kullanılabilir {{available}}, kullanılamaz {{unavailable}}, modelce dışlanan {{modelExcluded}}, kota rezervli {{quotaReserved}}, görsel ilkesiyle engellenen {{imageBlocked}}",
           "missing": "Hesap eksik",
           "cooldown": "Beklemede",
           "quota": "Kota sınırlı",
@@ -2536,7 +2631,8 @@
           "unavailableDetail": "Sidecar şu anda bu hesabı zamanlanabilir görmüyor.",
           "recover": "Kurtar",
           "recovering": "Kurtarılıyor…",
-          "recoverAll": "Tümünü kurtar"
+          "recoverAll": "Tümünü kurtar",
+          "resyncPool": "Hesap havuzunu yeniden eşitle"
         }
       },
       "testChatModel": "Model kimliği",
@@ -2849,7 +2945,8 @@
         "low": "Düşük",
         "medium": "Orta",
         "high": "Yüksek",
-        "xhigh": "Çok yüksek"
+        "xhigh": "Çok yüksek",
+        "max": "Maks."
       },
       "scheduleQuotaResetHint": "Kota sıfırlaması sonrası uyandırma açıldığında otomatik yenileme her 2 dakikaya ayarlanır.",
       "scheduleQuotaResetSummary": "Kota sıfırlamasından sonra çalıştır",
@@ -3667,10 +3764,6 @@
     "switchProgress": {
       "completed": "Geçiş tamamlandı",
       "needsAttention": "İşlem gerekli",
-      "skipOfficialCheck": "Resmî kontrolü atla",
-      "skipOfficialCheckTitle": "Resmî çevrim içi kontrolü atlayıp devam et",
-      "skipOfficialCheckDescription": "access_token yerel olarak süresi dolmuş kabul edilmiyor, ancak resmî hesap kontrolü tamamlanamadı. Hesap durumu bilinmiyorsa devam ettiğinizde giriş sayfası açılabilir.",
-      "skipOfficialCheckConfirm": "Yine de devam et",
       "steps": {
         "credentials": "Hesap bilgilerini oku",
         "accessToken": "access_token kontrol et",
@@ -3700,8 +3793,6 @@
         "notApplicable": "Bu kontrol hesap için geçerli değil",
         "refreshNeeded": "Süresi dolmuş veya güvenlik aralığında; güncelleme gerekli",
         "tokenValid": "Geçerli; güncelleme gerekmiyor",
-        "officialCheckPassed": "Resmî hesap kontrolü başarılı",
-        "officialCheckSkipped": "Resmî çevrim içi kontrol atlandı",
         "stoppingRuntime": "ChatGPT/Codex ve app-server güvenle durduruluyor...",
         "runtimeStopped": "Önceki istemci çalışması güvenle durduruldu",
         "waiting": "Önceki adım bekleniyor",
@@ -4051,7 +4142,8 @@
       },
       "usage": {
         "title": "Kullanım istatistikleri",
-        "lastRecorded": "Son kayıt"
+        "lastRecorded": "Son kayıt",
+        "trendEmpty": "Seçilen aralıkta istek yok"
       },
       "accountModelMappings": {
         "action": "Model haritası",
@@ -4816,6 +4908,11 @@
     },
     "oauth": {
       "desc": "Aşağıdaki düğmeye tıklayın ve tarayıcıda Cursor yetkilendirmesini tamamlayın."
+    },
+    "filters": {
+      "quotaFailed": "Kota sorgusu başarısız ({{count}})",
+      "cleanQuotaFailedAction": "Kota sorgusu başarısız olan hesapları sil ({{count}})",
+      "cleanQuotaFailedConfirm": "Kota sorgusu başarısız olan {{count}} hesabın tümü silinsin mi?"
     }
   },
   "breakout": {
@@ -6131,6 +6228,16 @@
       "preparingRuntime": "Giriş hazırlanıyor...",
       "hint": "Önce yerelde saklar; Claude’a geçişte yazar.",
       "runtimeHint": "İlk kullanımda Electron giriş bileşeni yerel uygulama veri klasörüne indirilip doğrulanabilir; yükleyiciye dahil değildir ve sonra önbellekten yeniden kullanılır.",
+      "uninstall": "Kaldır ve alan aç",
+      "storageTitle": "Giriş bileşeni önbelleği",
+      "storageUsage": "Kullanım {{size}}",
+      "storageCalculating": "Hesaplanıyor…",
+      "uninstallTitle": "Giriş bileşenini kaldır",
+      "uninstallConfirm": "Yerel Electron giriş bileşeni kaldırılsın mı? Claude'a bir sonraki girişte yeniden indirilir.",
+      "uninstalling": "Kaldırılıyor...",
+      "uninstallSuccess": "Claude giriş bileşeni kaldırıldı ve yerel önbellek temizlendi.",
+      "uninstallFailed": "Claude giriş bileşeni kaldırılamadı: {{error}}",
+      "uninstallDesc": "Yerel Electron giriş bileşenini, indirme önbelleğini ve tamamlanmamış giriş dosyalarını siler; kayıtlı Claude hesapları silinmez.",
       "nameLabel": "Hesap adı",
       "namePlaceholder": "İsteğe bağlı, örn. Claude Free",
       "waiting": "Claude penceresinde giriş yapın, burada içe aktarmayı bitirin.",

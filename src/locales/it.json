@@ -232,7 +232,10 @@
         "weekly": "Quota settimanale",
         "resetAt": "Reimpostazione: {{time}}",
         "expiresAt": "Scade il: {{time}}",
-        "leftPercent": "{{value}}% rimanente"
+        "unlimited": "Quota illimitata",
+        "leftPercent": "{{value}}% rimanente",
+        "cachedRefreshFailed": "Aggiornamento non riuscito; vengono mostrati gli ultimi dati validi",
+        "lastSuccessfulQuery": "Ultimo successo: {{time}}"
       },
       "subtitle": "Gestisci i tuoi account GitHub Copilot",
       "time": {
@@ -525,7 +528,27 @@
       "appSpeed": "Velocità",
       "appSpeedDesc": "Scrive la velocità scelta prima di avviare Codex ufficiale",
       "autoSyncThreads": "Sync auto sessioni",
-      "autoSyncThreadsDesc": "Disattivato mantiene isolate le sessioni multi-istanza. Se attivo, l'avvio o la chiusura di un'istanza unisce automaticamente i record locali delle sessioni solo dopo l'arresto di tutte le istanze Codex."
+      "autoSyncThreadsDesc": "Disattivato mantiene isolate le sessioni multi-istanza. Se attivo, l'avvio o la chiusura di un'istanza unisce automaticamente i record locali delle sessioni solo dopo l'arresto di tutte le istanze Codex.",
+      "modelRouting": {
+        "title": "Routing API di terze parti",
+        "summary": "I modelli senza prefisso utilizzano l'abbonamento corrente; i modelli con prefisso come cpa/gpt-5.5 vengono inoltrati a un'API di terze parti. Entrambi dipendono dal servizio di routing locale.",
+        "rowSummary": "I modelli senza prefisso utilizzano l'abbonamento corrente; i modelli con prefisso come cpa/gpt-5.5 vengono inoltrati a un'API di terze parti. Entrambi dipendono dal servizio di routing locale.",
+        "confirmEnableTitle": "Abilitare il routing API di terze parti?",
+        "confirmEnableMessage": "Le richieste dei modelli Codex verranno instradate tramite il servizio locale Cockpit Tools. Se il servizio non è in esecuzione, sia i modelli in abbonamento che quelli di terze parti potrebbero non essere disponibili. L'avvio al login verrà abilitato al salvataggio.\n\nAbilitare il routing?",
+        "confirmEnableAction": "Abilita",
+        "confirmDisableTitle": "Disabilitare il routing API di terze parti?",
+        "confirmDisableMessage": "Dopo che questa modifica avrà effetto, il gateway locale verrà arrestato, verrà ripristinato l'accesso nativo all'abbonamento e i modelli di terze parti non saranno disponibili.\n\nDisabilitare il routing?",
+        "confirmDisableAction": "Disabilita",
+        "modalTip": "Sia i modelli in abbonamento che quelli di terze parti passano attraverso il servizio di routing locale. Mantieni Cockpit Tools in esecuzione in background. Il servizio si ripristina automaticamente e torna alla configurazione ufficiale dopo ripetuti errori.",
+        "modelRequired": "Ogni route API abilitata deve includere almeno un modello.",
+        "runningSaveTitle": "Quando deve avere effetto il routing?",
+        "runningSaveMessage": "Questa istanza di Codex è in esecuzione. Sostituire il servizio locale ora interromperà la conversazione corrente.\n\nScegli «Salva e riavvia Codex» per applicare subito, oppure «Salva per dopo» per mantenere invariata la sessione corrente.",
+        "saveAndRestart": "Salva e riavvia Codex",
+        "saveForLater": "Salva per dopo",
+        "savedForNextLaunch": "Salvato. La modifica verrà applicata al prossimo avvio di Codex tramite Cockpit; la sessione corrente resterà invariata.",
+        "restartRollbackFailed": "Impossibile avviare la nuova route e impossibile riavviare la configurazione originale: ",
+        "restartRolledBack": "Impossibile avviare la nuova route. La configurazione originale è stata ripristinata e Codex è stato riavviato: {{error}}"
+      }
     },
     "quota": {
       "unbound": "Account non collegato",
@@ -555,7 +578,9 @@
       "progress": "Avanzamento avvio",
       "conflictTitle": "Account già in uso",
       "completedTitle": "Istanza avviata",
+      "cancelledTitle": "Avvio annullato",
       "failedTitle": "Avvio istanza non riuscito",
+      "skipAndLaunch": "Ignora e avvia",
       "conflictAccount": "Account: {{account}}",
       "conflictDescription": "Questo account è in esecuzione in {{owners}}. Per evitare che le istanze ufficiali competano per il refresh_token, un account OAuth può essere eseguito in una sola istanza.",
       "locate": "Trova istanza",
@@ -740,8 +765,6 @@
       "codexAppUiInjectionPoolLabel": "Account",
       "codexAppUiInjectionWeeklyLabel": "Settimana",
       "codexAppUiInjectionFiveHourLabel": "5 h",
-      "codexLoginPageGuard": "Protezione pagina di accesso",
-      "codexLoginPageGuardDesc": "Dopo il riavvio di un’istanza Codex gestita, CDP mantiene la pagina di conversazione funzionante e impedisce allo stato OAuth dell’interfaccia di sostituirla con la schermata di accesso. Blocca solo il cambio di pagina e non ripara credenziali OAuth scadute.",
       "codexWslConfigDir": "Directory Codex WSL",
       "codexWslConfigDirDesc": "Inserisci la directory .codex in WSL. I percorsi \\\\wsl.localhost\\ sono supportati.",
       "codexWslConfigDirPlaceholder": "Esempio: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -756,6 +779,14 @@
       "commonTitle": "Generale",
       "antigravitySettingsTitle": "Impostazioni Antigravity IDE",
       "codexSettingsTitle": "Impostazioni Codex",
+      "codexContextManagement": "Attiva experimental_mode = true (gestione sperimentale del contesto)",
+      "codexContextManagementDesc": "Disattivata per impostazione predefinita. Scrive solo l’opzione ufficiale sperimentale di gestione del contesto Codex per il profilo corrente; riavvia completamente Codex per applicarla. Non modifica la finestra di contesto, la soglia di compressione o API Service.",
+      "codexContextManagementLoadFailed": "Impossibile leggere l’opzione ufficiale di gestione del contesto: {{error}}",
+      "codexContextManagementSaveSuccess": "Opzione ufficiale di gestione del contesto salvata",
+      "codexContextManagementSaveFailed": "Impossibile salvare l’opzione ufficiale di gestione del contesto: {{error}}",
+      "codexOAuthAppVersion": "Versione client OAuth",
+      "codexOAuthAppVersionDesc": "Lascia vuoto per seguire il valore predefinito remoto {{version}}; un valore sovrascrive solo il campo versione negli URL di autorizzazione OAuth.",
+      "codexOAuthAppVersionPlaceholder": "Lascia vuoto per usare {{version}}",
       "codexClientPolicyTitle": "Consenti globalmente i client Codex app-server",
       "codexClientPolicyDesc": "Quando attivo, gli account OAuth limitati ai client ufficiali accettano anche client app-server di terze parti.",
       "codexAccountPolicies": "Policy degli account Codex OAuth",
@@ -1304,6 +1335,10 @@
     "copyToken": "Copia Token",
     "deleteAccount": "Elimina Account",
     "confirmDelete": "Sei sicuro di voler eliminare l'account {{email}}?",
+    "badge": {
+      "gcpTos": "Account GCP ToS",
+      "gcpTosTitle": "Account GCP ToS"
+    },
     "columns": {
       "email": "E-mail",
       "subscription": "Abbonamento",
@@ -1962,6 +1997,14 @@
     "other_group": "Altri modelli"
   },
   "codex": {
+    "teamHistory": {
+      "title": "Quota Team precedente (istantanea locale)",
+      "unknown": "Nessun orario di ripristino precedente",
+      "hint": "Quota residua prima della rimozione del posto, non la quota attualmente disponibile",
+      "elapsed": "Ripristino probabilmente avvenuto; verifica dopo aver riattivato il posto",
+      "resetIn": "Ripristino previsto: {{duration}}",
+      "observed": "Istantanea acquisita: {{time}}"
+    },
     "oauthPolicy": {
       "globalTitle": "Consenti app-server di terze parti",
       "globalDescription": "L'attivazione mostra il riepilogo delle policy attuali; usa Gestisci per configurare gli account in blocco o singolarmente.",
@@ -1991,10 +2034,35 @@
       "applyBatch": "Applica alla selezione"
     },
     "title": "Gestione account Codex",
+    "contextOverride": {
+      "title": "Gestione del contesto",
+      "description": "Modelli, ordine, modello predefinito e livelli di ragionamento seguono il catalogo ufficiale. Il contesto viene sostituito solo manualmente.",
+      "dialogDescription": "L’impostazione si applica a tutti gli account dell’istanza Codex corrente e resta invariata al cambio di account. Scegli le impostazioni ufficiali, un preset o un contesto personalizzato.",
+      "followOfficial": "Segui ufficiale",
+      "custom": "Contesto personalizzato",
+      "automatic": "Automatico",
+      "adjust": "Regola contesto",
+      "manage": "Gestisci contesto",
+      "apply": "Applica contesto"
+    },
+    "modelManagement": {
+      "title": "Gestione modelli",
+      "enabled": "Attiva",
+      "disabled": "Segui ufficiale",
+      "enable": "Attiva gestione modelli",
+      "disable": "Disattiva gestione modelli",
+      "manage": "Gestisci modelli",
+      "disabledDescription": "Disattivata per impostazione predefinita. Modelli, ordine e livelli di ragionamento seguono il catalogo ufficiale.",
+      "enabledDescription": "Il catalogo configurato è attivo. Puoi aggiungere o rimuovere modelli e l’elenco non si aggiorna più con il catalogo ufficiale.",
+      "enableConfirmTitle": "Attivare la gestione modelli?",
+      "enableConfirmDescription": "Codex userà il catalogo configurato qui. Puoi regolare i modelli, ma l’elenco non si aggiornerà più automaticamente.",
+      "enableConfirmAction": "Attiva e configura"
+    },
     "experimentalModelCatalog": {
       "title": "Modelli visibili",
       "description": "Gestisci insieme modelli visibili, livello di ragionamento, contesto e soglia di compattazione.",
       "enabledHint": "Usa l'elenco attuale dei modelli visibili. Riavvia Codex per applicarlo.",
+      "disabledHint": "Quando è disattivato, il catalogo dei modelli gestito da Cockpit viene rimosso e la visibilità ufficiale viene ripristinata; i modelli disponibili dipendono dai diritti dell'account ufficiale.",
       "models": {
         "title": "Elenco modelli",
         "model": "Modello",
@@ -2008,6 +2076,7 @@
         "followOfficial": "Segui quello ufficiale",
         "operation": "Azioni",
         "manage": "Gestisci",
+        "resetDefaults": "Ripristina predefiniti",
         "inheritHint": "I modelli ufficiali mantengono le proprie capacità; quelli personalizzati usano un modello generale. Puoi aggiungere o rimuovere i modelli visibili.",
         "validation": {
           "required": "Mantieni almeno un modello.",
@@ -2106,7 +2175,15 @@
       "modelConfigDialogDescription": "Configura modelli visibili, livelli di ragionamento, finestre di contesto e soglie di compattazione per ogni modello.",
       "applyModelConfig": "Applica impostazioni",
       "defaultModel": "Modello predefinito",
-      "repairCompleted": "Visibilità delle sessioni ripristinata"
+      "repairCompleted": "Visibilità delle sessioni ripristinata",
+      "forceRefreshTitle": "Forza aggiornamento Token",
+      "forceRefreshReady": "I token OAuth possono essere aggiornati manualmente",
+      "forceRefreshDescription": "Usa refresh_token per ottenere nuovi access_token e id_token. Il refresh token corrente potrebbe essere ruotato.",
+      "forceRefreshUnavailable": "Non disponibile per questo tipo di account",
+      "forceRefreshAction": "Aggiorna ora",
+      "forceRefreshRunning": "Aggiornamento Token…",
+      "forceRefreshSuccess": "Token aggiornato correttamente",
+      "forceRefreshRetry": "Ricontrolla"
     },
     "switch": "Cambia",
     "switched": "Passato a {{email}}",
@@ -2123,7 +2200,12 @@
     "switchAuth": {
       "apiOnlyTitle": "Accesso client richiesto",
       "reauthorizeTitle": "Autorizzazione Codex scaduta",
-      "apiOnlyDescription": "L’attuale access_token può essere usato temporaneamente dal servizio API, ma non è stato possibile aggiornare le credenziali del client; il client ufficiale Codex/ChatGPT non è quindi stato cambiato.",
+      "apiOnlyDescription": "Il client corrente ha raggiunto la pagina di accesso. Autorizzalo di nuovo per ripristinarne l'uso; il servizio API resta utilizzabile per ora.",
+      "observationStatus": "Rilevato un reindirizzamento alla pagina di accesso",
+      "observationTime": "Ultimo controllo: {{time}}",
+      "loginRedirectTime": "Ultimo reindirizzamento alla pagina di accesso: {{time}}",
+      "observationInstance": "Istanza osservata: {{instance}}",
+      "launchTime": "Ora di avvio dell’istanza: {{time}}",
       "reauthorizeDescription": "Non è stato possibile aggiornare le credenziali e access_token non è più disponibile per il servizio API. Autorizza di nuovo l’account per continuare.",
       "idTokenUnavailable": "L’identità del client è scaduta e l’aggiornamento automatico non ha restituito un id_token valido.",
       "reasonLabel": "Motivo",
@@ -2136,7 +2218,10 @@
       "startingInstanceAfterReauth": "Autorizzazione aggiornata. Riavvio dell’istanza...",
       "startInstanceAfterReauthFailed": "Autorizzazione aggiornata, ma l’istanza non è stata avviata: {{error}}",
       "reauthorizedAndStartedInstance": "Riautorizzato e istanza avviata",
-      "apiOnlyBadge": "Accesso richiesto"
+      "apiOnlyBadge": "Accesso richiesto",
+      "clearClientAuth": "Cancella avviso",
+      "clearClientAuthSuccess": "Avviso del client cancellato",
+      "clearClientAuthFailed": "Impossibile cancellare l’avviso del client: {{error}}"
     },
     "current": "Attuale",
     "empty": {
@@ -2304,6 +2389,12 @@
       "summaryMeta": "{{count}} account · {{scope}}",
       "summaryMetaUnconfigured": "Non configurato · {{scope}}",
       "memberTitle": "Membri della raccolta",
+      "imagePolicy": {
+        "label": "Politica immagini",
+        "inherit": "Immagine: Automatica",
+        "enabled": "Immagine: Attiva",
+        "disabled": "Immagine: Disattiva"
+      },
       "memberPriorityLabel": "Priorità",
       "memberPriorityLowest": "Minima",
       "memberPriorityNormal": "Normale",
@@ -2509,18 +2600,22 @@
       "clientBaseUrlHostDesc": "Influisce solo sulla Base URL scritta nel Codex Provider e copiata ai client; non cambia l’indirizzo di ascolto del servizio.",
       "clientBaseUrlHostSaveSuccess": "Indirizzo client aggiornato",
       "accountPoolHealth": {
-        "title": "Pool account",
+        "title": "Stato account",
         "allAvailable": "Tutti OK {{count}}",
         "availableRatio": "Pronti {{available}}/{{total}}",
         "issueSummary": "Errore {{abnormal}} · Pausa {{cooldown}}",
         "detail": "OK {{available}}/{{total}}, errore {{abnormal}}, pausa {{cooldown}}, mancanti {{missing}}, auth {{authError}}, quota {{quotaLimited}}",
-        "openDetails": "Mostra account con problemi",
+        "openDetails": "Mostra problemi account",
         "recover": "Ripristina stato",
         "recoverSuccess": "Ripristino richiesto per {{count}} account",
         "dialog": {
-          "title": "Account con problemi",
-          "description": "Questi stati provengono dallo scheduler Sidecar. Il ripristino cancella la pausa e riprova l’account.",
-          "noIssues": "Nessun account con problemi",
+          "title": "Problemi account",
+      "description": "Ogni account mostra il modello, il motivo dell’indisponibilità e l’azione di ripristino disponibile.",
+          "noIssues": "Nessun problema negli account",
+          "unscopedApiKey": "API Key corrente",
+          "poolUnavailable": "Nessun account disponibile nel pool",
+          "poolUnavailableDetail": "Non è stato selezionato un account disponibile per il modello {{model}}",
+          "poolDiagnosticDetail": "Modello {{model}}: {{candidate}} candidati, {{scoped}} nell’ambito, {{available}} disponibili, {{unavailable}} non disponibili, {{modelExcluded}} esclusi dal modello, {{quotaReserved}} riservati dalla quota, {{imageBlocked}} bloccati dalla policy immagini",
           "missing": "Account mancante",
           "cooldown": "In pausa",
           "quota": "Quota limitata",
@@ -2536,7 +2631,8 @@
           "unavailableDetail": "Sidecar non considera attualmente questo account pianificabile.",
           "recover": "Ripristina",
           "recovering": "Ripristino…",
-          "recoverAll": "Ripristina tutto"
+          "recoverAll": "Ripristina tutto",
+          "resyncPool": "Risincronizza il pool"
         }
       },
       "testChatModel": "Modello",
@@ -2849,7 +2945,8 @@
         "low": "Basso",
         "medium": "Medio",
         "high": "Alto",
-        "xhigh": "Molto alto"
+        "xhigh": "Molto alto",
+        "max": "Massimo"
       },
       "scheduleQuotaResetHint": "Quando è attivo il risveglio dopo reset quota, l'aggiornamento automatico verrà impostato ogni 2 minuti.",
       "scheduleQuotaResetSummary": "Esegui dopo il reset della quota",
@@ -3667,10 +3764,6 @@
     "switchProgress": {
       "completed": "Cambio completato",
       "needsAttention": "Azione richiesta",
-      "skipOfficialCheck": "Ignora controllo ufficiale",
-      "skipOfficialCheckTitle": "Ignora il controllo ufficiale online e continua",
-      "skipOfficialCheckDescription": "L’access_token non risulta scaduto localmente, ma il controllo ufficiale dell’account non è stato completato. Se lo stato dell’account è sconosciuto, continuando potrebbe apparire la pagina di accesso.",
-      "skipOfficialCheckConfirm": "Continua comunque",
       "steps": {
         "credentials": "Leggi credenziali account",
         "accessToken": "Controlla access_token",
@@ -3700,8 +3793,6 @@
         "notApplicable": "Questo controllo non si applica all’account",
         "refreshNeeded": "Scaduto o nel margine di sicurezza; aggiornamento richiesto",
         "tokenValid": "Valido; nessun aggiornamento richiesto",
-        "officialCheckPassed": "Controllo ufficiale dell'account superato",
-        "officialCheckSkipped": "Controllo ufficiale online ignorato",
         "stoppingRuntime": "Arresto sicuro di ChatGPT/Codex e app-server...",
         "runtimeStopped": "La sessione precedente è stata arrestata in sicurezza",
         "waiting": "In attesa del passaggio precedente",
@@ -4051,7 +4142,8 @@
       },
       "usage": {
         "title": "Statistiche uso",
-        "lastRecorded": "Ultima registrazione"
+        "lastRecorded": "Ultima registrazione",
+        "trendEmpty": "Nessuna richiesta nell'intervallo selezionato"
       },
       "accountModelMappings": {
         "action": "Mappa modelli",
@@ -4816,6 +4908,11 @@
     },
     "oauth": {
       "desc": "Fai clic sul pulsante qui sotto e completa l'autorizzazione di Cursor nel browser."
+    },
+    "filters": {
+      "quotaFailed": "Query della quota non riuscita ({{count}})",
+      "cleanQuotaFailedAction": "Elimina account con query della quota non riuscita ({{count}})",
+      "cleanQuotaFailedConfirm": "Eliminare tutti i {{count}} account con query della quota non riuscita?"
     }
   },
   "breakout": {
@@ -6131,6 +6228,16 @@
       "preparingRuntime": "Preparazione...",
       "hint": "Salva localmente; scrive in Claude solo al cambio.",
       "runtimeHint": "Al primo utilizzo il componente di login Electron può essere scaricato e verificato nella cartella dati locale dell'app; non è incluso nell'installer e verrà riutilizzato in seguito.",
+      "uninstall": "Disinstalla e libera spazio",
+      "storageTitle": "Cache del componente di accesso",
+      "storageUsage": "Spazio usato {{size}}",
+      "storageCalculating": "Calcolo in corso…",
+      "uninstallTitle": "Disinstalla il componente di accesso",
+      "uninstallConfirm": "Disinstallare il componente di login Electron locale? Verrà scaricato di nuovo al prossimo accesso a Claude.",
+      "uninstalling": "Disinstallazione...",
+      "uninstallSuccess": "Componente di login Claude disinstallato e cache locale eliminata.",
+      "uninstallFailed": "Impossibile disinstallare il componente di login Claude: {{error}}",
+      "uninstallDesc": "Rimuove il componente di login Electron locale, la cache del download e i file di accesso incompleti; gli account Claude salvati non vengono eliminati.",
       "nameLabel": "Nome account",
       "namePlaceholder": "Opzionale, es. Claude Free",
       "waiting": "Accedi nella finestra Claude e completa qui.",

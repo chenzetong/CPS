@@ -1621,7 +1621,7 @@ async fn refresh_account_quota_once(
                 sync_subscription_from_token(&mut account, result.plan_type.clone(), None);
             }
             normalize_subscription_retry_state(&mut account);
-            account.quota = Some(result.quota.clone());
+            account.replace_quota_preserving_team_history(result.quota.clone(), now_timestamp());
             account.quota_error = None;
             account.usage_updated_at = Some(now_timestamp());
             codex_account::save_account(&account)?;
@@ -1648,7 +1648,7 @@ async fn refresh_account_quota_once(
         if result.plan_type.is_some() {
             sync_subscription_from_token(&mut account, result.plan_type.clone(), None);
         }
-        account.quota = Some(result.quota.clone());
+        account.replace_quota_preserving_team_history(result.quota.clone(), now_timestamp());
         account.quota_error = None;
         account.usage_updated_at = Some(now_timestamp());
         codex_account::save_account(&account)?;
@@ -1714,7 +1714,7 @@ async fn refresh_account_quota_once(
         ));
     }
 
-    account.quota = Some(result.quota.clone());
+    account.replace_quota_preserving_team_history(result.quota.clone(), now_timestamp());
     account.quota_error = None;
     account.usage_updated_at = Some(now_timestamp());
     codex_account::save_account(&account)?;
@@ -1807,7 +1807,7 @@ pub async fn refresh_freshly_authorized_account_quota(
         sync_subscription_from_token(&mut latest, result.plan_type.clone(), None);
     }
     normalize_subscription_retry_state(&mut latest);
-    latest.quota = Some(result.quota.clone());
+    latest.replace_quota_preserving_team_history(result.quota.clone(), now_timestamp());
     latest.quota_error = None;
     latest.usage_updated_at = Some(now_timestamp());
     codex_account::save_account(&latest)?;

@@ -1373,7 +1373,7 @@ data: {"type":"response.completed","response":{"id":"resp_123","usage":{"input_t
             serde_json::from_slice(&prepared.body).expect("mapped body should be json");
         assert_eq!(
             mapped_body.get("model").and_then(Value::as_str),
-            Some("gpt-5.4-mini")
+            Some("gpt-5.5")
         );
         assert_eq!(
             mapped_body

@@ -34,7 +34,7 @@ const (
 	codexDirectImagesGenerations = "/images/generations"
 	codexDirectImagesEdit        = "/images/edits"
 	codexGPTImage15Model         = "gpt-image-1.5"
-	codexOpenAIImagesMainModel   = "gpt-5.4-mini"
+	codexOpenAIImagesMainModel   = "gpt-5.5"
 )
 
 type codexOpenAIImagePreparedRequest struct {

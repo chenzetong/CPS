@@ -564,7 +564,11 @@ async fn sync_sidecar_scheduler_state(event: &SidecarAuthResultEvent) {
     apply_sidecar_scheduler_state(&mut runtime, event, now);
 }
 
-fn clear_runtime_account_health(runtime: &mut GatewayRuntime, account_ids: &[String]) {
+fn clear_runtime_account_health(
+    runtime: &mut GatewayRuntime,
+    account_ids: &[String],
+    clear_aggregate_pool_health: bool,
+) {
     let account_ids: HashSet<&str> = account_ids
         .iter()
         .map(String::as_str)
@@ -587,10 +591,10 @@ fn clear_runtime_account_health(runtime: &mut GatewayRuntime, account_ids: &[Str
     runtime.account_pool_health.retain(|_, health| {
         if health.account_statuses.is_empty() {
             // Older Sidecars did not report per-account statuses. There is no
-            // safe way to subtract one member from that aggregate diagnostic;
-            // retain it until the next Sidecar diagnostic refresh instead of
-            // hiding every remaining account.
-            return true;
+            // safe way to subtract one member from that aggregate diagnostic.
+            // A full recovery covers every collection member, so the stale
+            // aggregate can be removed without hiding unrelated failures.
+            return !clear_aggregate_pool_health;
         }
         health
             .account_statuses
@@ -675,7 +679,7 @@ async fn restore_removed_local_access_accounts(account_ids: &[String]) {
         }
     }
     let mut runtime = gateway_runtime().lock().await;
-    clear_runtime_account_health(&mut runtime, &account_ids);
+    clear_runtime_account_health(&mut runtime, &account_ids, false);
     clear_runtime_quota_cooldowns(&mut runtime, &account_ids);
 }
 
@@ -714,12 +718,20 @@ pub async fn recover_local_access_accounts(
         return Err("没有找到可恢复的账号".to_string());
     }
 
-    let reset_account_ids =
-        request_sidecar_reset_scheduler(&collection, port, &selected).await?;
+    let reset_account_ids = request_sidecar_reset_scheduler(&collection, port, &selected).await?;
+    let reset_account_id_set = reset_account_ids.iter().collect::<HashSet<_>>();
+    let recovered_entire_collection = selected.len() == collection.account_ids.len()
+        && selected
+            .iter()
+            .all(|account_id| reset_account_id_set.contains(account_id));
 
     let mut runtime = gateway_runtime().lock().await;
     let now = now_ms();
-    clear_runtime_account_health(&mut runtime, &reset_account_ids);
+    clear_runtime_account_health(
+        &mut runtime,
+        &reset_account_ids,
+        recovered_entire_collection,
+    );
     mark_quota_cooldowns_recovered(&mut runtime, &reset_account_ids, now);
     Ok(build_fresh_state_snapshot(&mut runtime))
 }

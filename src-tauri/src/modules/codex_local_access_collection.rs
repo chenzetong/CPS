@@ -2041,7 +2041,7 @@ async fn refresh_bound_oauth_quota_if_due(reason: &'static str, min_interval: Du
         control.last_started_at = Some(Instant::now());
     }
 
-    let result = codex_quota::refresh_account_quota(&account_id).await;
+    let result = codex_quota::refresh_account_quota_background(&account_id).await;
     {
         let mut control = bound_oauth_quota_refresh_control().lock().await;
         control.in_flight = false;

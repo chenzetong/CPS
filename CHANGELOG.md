@@ -7,7 +7,39 @@ All notable changes to CPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
-## [1.3.43] - 2026-09-08
+## [Unreleased]
+
+## [1.3.46] - 2026-09-09
+
+### Changed
+
+- **Route image-generation requests through `gpt-5.5` by default**: the official ChatGPT account channel no longer reliably accepts `gpt-5.4-mini` as the base model for this image path, so the previous transformed request could be rejected upstream with an incompatibility error. The local API Service now uses `gpt-5.5` as the Responses base model while keeping `gpt-image-2` as the image tool model.
+- **Improve Codex protocol compatibility**: normalize tool schemas by removing unsupported JSON Schema dialect metadata, sanitize tool names for Codex upstream rules, recover uniquely identifiable tool namespaces, preserve `service_tier` and cache-write token usage, explicitly forward omitted function-tool `strict=false`, and classify retry-advised server errors as eligible for Codex account failover.
+- **Harden Codex failure and collaboration handling**: simplify large constant tool-schema unions, detect silent zero-token `response.incomplete` terminations, keep quota failures scoped to the affected credential, and restore dotted collaboration tool names after multi-agent optimization.
+
+## [1.3.45] - 2026-09-08
+
+### Fixed
+
+- **Keep DCP-injected quota data aligned with the Cockpit account pool**: quota snapshots now carry account plan types, transient account-file refresh or read failures preserve the last valid quota, and `0/0` is shown only when the account pool is confirmed empty. This prevents the injected quota panel from flickering between valid data and “no quota stats”.
+- **Prevent Windows crashes from stack overflow during Codex quota refreshes**: reduce main-thread stack usage during quota refreshes to prevent unexpected application exits during manual or automatic refreshes. Quota history and existing post-refresh behavior are preserved.
+- **Show the usage statistics area only on the Statistics & Logs tab**: the Service Overview, Client Key, Account Pool, and Models & Capabilities tabs no longer repeat the range picker, metric cards, or trend chart.
+- **Show account recovery feedback inside the account-issues dialog**: successful recovery now reports its result in the active dialog. Recovering the full collection also clears stale aggregate pool diagnostics left by older Sidecars, while single-account recovery preserves unrelated account issues.
+
+### Changed
+
+- **Prioritize manual Codex quota refreshes with bounded resource usage**: manual and background refreshes have independent lanes, each with at most one active account and sixteen queued accounts; duplicate requests for the same account share one refresh. Manual refreshes defer not-yet-started background work from the current round until the next round without interrupting requests already running. Queue waits and execution each have a two-minute timeout, task resources and waiters are released on completion, and busy, timeout, and interruption messages are localized.
+- **Run mixed-routing monitoring only for enabled instances**: enable monitoring when mixed routing is configured, stop its background checks and automatic recovery when disabled, and leave unrelated instances and the independent API Service untouched. Disabling a route does not interrupt an active Codex session; its configuration changes take effect on the next launch through Cockpit.
+- **Restore API Service process monitoring and guarded recovery**: detect unexpected Sidecar exits and retry recovery within the existing limits while the service is enabled. Port cleanup checks the Sidecar command line and parent ownership before stopping a process; manual restart, request retries, and account-pool failover remain available.
+- **Restore mixed-routing configuration cleanup on exit**: restore inactive previously managed profiles on Cockpit exit while preserving profiles still used by running Codex sessions. Ordinary profiles without mixed routing are not included in its process checks.
+
+## [1.3.44] - 2026-09-08
+
+### Changed
+
+- **Restore earlier API Service behavior following Windows crash reports**: return Sidecar exit handling and port cleanup to their 1.3.42 behavior in response to reports of the main application exiting while API Service was running in 1.3.43.
+- **Restore Codex API Service process-status behavior from 1.3.42**: remove the per-second Sidecar exit monitor and automatic restart triggered by process exits or status reads. An unexpected Sidecar exit is reported when status is read; manual restart, existing request retries, and account-pool failover remain available.
+- **Restore API Service port cleanup behavior from 1.3.42**: remove Sidecar command-line and parent-process ownership checks. Startup handles a detected old service as before; the existing Clear Port action terminates processes occupying the configured port and restarts the service if enabled, retaining the existing port-fallback behavior and confirmation text.
 
 ### Added
 
@@ -20,7 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Support the Homebrew 6 Cask installation flow** ([#2279](https://github.com/jlcodes99/cockpit-tools/pull/2279)): remove the deprecated URL verification argument and migrate post-install quarantine cleanup to `postflight_steps`, preserving existing installation behavior without deprecation warnings.
 - **Preserve per-execution WebSocket usage accounting** ([#2292](https://github.com/jlcodes99/cockpit-tools/pull/2292)): every execution on a long-lived Responses WebSocket connection records and deduplicates its own token usage while retaining account attribution; failed handshakes and token-limit blocks continue through the existing diagnostics path.
 - **Fix Antigravity GCP ToS account eligibility and state loss during switching** ([#2286](https://github.com/jlcodes99/cockpit-tools/pull/2286)): account switches and instance launches prepare GCP ToS and project metadata before injection, encode the OAuth metadata correctly, and preserve existing IDE model, feature, and history caches. GCP ToS accounts are identified in the account UI, and switching synchronizes credentials to existing Antigravity and Antigravity IDE data directories.
-- **Fixed Codex API Service recovery remaining unavailable or appearing stuck**: an unexpectedly terminated Sidecar now performs rate-limited background recovery while preserving accounts, API keys, and the existing port configuration. Account recovery no longer waits on durable state writes, ignores stale failures from requests that started before recovery, uses per-account progress feedback, and returns a visible timeout instead of leaving the dialog busy. Normal stops prefer a graceful exit where supported and are never auto-restarted. Port cleanup only stops a matching Sidecar owned by the current instance or an orphan, while live parallel instances, DMG copies, and unrelated processes are preserved and the service moves to an available port instead of interrupting them.
+- **Fixed Codex API Service account recovery remaining unavailable or appearing stuck**: account recovery no longer waits on durable state writes, ignores stale failures from requests that started before recovery, uses per-account progress feedback, and returns a visible timeout instead of leaving the dialog busy. Accounts and API keys are preserved. Normal Sidecar stops prefer a graceful exit where supported.
 - **Fixed third-party API routing being impossible to disable**: disabling routing now persists an explicit off state while retaining channel configuration, so reopening settings or changing the bound account no longer enables it again. Running instances apply the change on the next launch through Cockpit without interrupting the current session.
 - **Fixed instant voice under mixed routing**: voice call setup and realtime control connections now use the same local gateway and account. Exiting Cockpit no longer restores profiles for Codex instances that are still running, avoiding subsequent `401` failures in the active session.
 - **Fixed missing Fast and Ultra options for third-party GPT models**: known GPT models with a channel prefix retain the corresponding reasoning levels, speed tiers, and context capabilities while continuing to follow the user-saved model order.

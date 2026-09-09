@@ -234,7 +234,7 @@ const COMPATIBILITY_CODEX_MODELS: &[&str] = &["gpt-5.3-codex", "gpt-5.3-codex-sp
 const CODEX_IMAGE_MODEL_ID: &str = "gpt-image-2";
 const CODEX_GPT_RESERVE_MODEL_ID: &str = "gpt-reserve";
 const CODEX_AUTO_REVIEW_MODEL_ID: &str = "codex-auto-review";
-const DEFAULT_IMAGES_MAIN_MODEL: &str = "gpt-5.4-mini";
+const DEFAULT_IMAGES_MAIN_MODEL: &str = "gpt-5.5";
 const MAX_MODEL_PRICE_USD_PER_MILLION: f64 = 1_000_000.0;
 const CODEX_LOCAL_ACCESS_LONG_CONTEXT_THRESHOLD_TOKENS: u64 = 272_000;
 /// Long-context input multiplier (OpenAI above-272k rates).

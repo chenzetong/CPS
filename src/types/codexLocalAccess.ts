@@ -120,6 +120,7 @@ export interface CodexLocalAccessCollection {
   accessScope: CodexLocalAccessScope;
   clientBaseUrlHost: CodexLocalAccessClientBaseUrlHost;
   imageGenerationMode: CodexLocalAccessImageGenerationMode;
+  imageGenerationModel: string;
   imageGenerationAccountPolicies: Record<
     string,
     CodexLocalAccessImageGenerationPolicy
@@ -135,6 +136,8 @@ export interface CodexLocalAccessCollection {
   debugLogs: boolean;
   immediateSseResponse: boolean;
   maxConcurrentImageRequests: number;
+  maxAccountConcurrency: number;
+  accountConcurrencyWaitMs: number;
   excludedModels: string[];
   sessionAffinity: boolean;
   sessionAffinityTtlMs: number;

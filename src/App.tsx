@@ -22,6 +22,7 @@ import { GlobalModal } from './components/GlobalModal';
 import { WindowsOperationDialog } from './components/WindowsOperationDialog';
 import { CodexSwitchProgressModal } from './components/CodexSwitchProgressModal';
 import { CodexInstanceLaunchProgressModal } from './components/CodexInstanceLaunchProgressModal';
+import { CodexPelicanHost } from './components/codex/pelican/CodexPelicanHost';
 import { AnnouncementHost } from './components/AnnouncementCenter';
 import { TopCenterPromoBanner } from './components/TopCenterPromoBanner';
 import type { QuickSettingsType } from './components/QuickSettingsPopover';
@@ -1274,6 +1275,17 @@ function MainApp() {
       window.removeEventListener('general-language-updated', handleLanguageChanged);
     };
   }, [fetchSponsorModuleState, fetchTopRightAdState]);
+
+  useEffect(() => {
+    const handleSponsorRoutesUpdated = () => {
+      void useCodexAccountStore.getState().fetchAccounts();
+      void useClaudeAccountStore.getState().fetchAccounts();
+    };
+    window.addEventListener('sponsor-routes-updated', handleSponsorRoutesUpdated);
+    return () => {
+      window.removeEventListener('sponsor-routes-updated', handleSponsorRoutesUpdated);
+    };
+  }, []);
 
   useEffect(() => {
     if (sponsorModuleInitialized && page === 'api-relay' && !sponsorEntryVisible) {
@@ -3721,6 +3733,7 @@ function MainApp() {
       <GlobalModal />
       <CodexSwitchProgressModal />
       <CodexInstanceLaunchProgressModal />
+      <CodexPelicanHost />
       <WindowsOperationDialog />
 
       {/* 关闭确认对话框 */}

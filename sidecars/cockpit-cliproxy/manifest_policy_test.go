@@ -937,11 +937,45 @@ func TestCodexReserveClientCatalogListsLunaReserveWithLunaCapabilities(t *testin
 	}
 }
 
+func TestImageRequestModelIsNotRewrittenToProviderUpstreamModel(t *testing.T) {
+	m := &manifest{ModelIDs: []string{"gpt-5.5", "deepseek-flash"}}
+	spec := &apiKeySpec{
+		ProviderGateway: &providerGatewaySpec{
+			UpstreamModel:  "deepseek-flash",
+			UpstreamModels: []string{"deepseek-flash", "deepseek-v4-pro"},
+		},
+		ImageGenerationAccountIDs: []string{"oauth-1"},
+	}
+
+	rewritten, model, err := rewriteBodyModel(m, spec, "text", []byte(`{"model":"gpt-5.5","input":"hi"}`))
+	if err != nil || model != "gpt-5.5" || rewritten == nil {
+		t.Fatalf("chat request should still be rewritten: model=%q rewritten=%v err=%v", model, rewritten != nil, err)
+	}
+	var chatPayload map[string]any
+	if err := json.Unmarshal(rewritten, &chatPayload); err != nil {
+		t.Fatalf("chat payload: %v", err)
+	}
+	if chatPayload["model"] != "deepseek-flash" {
+		t.Fatalf("chat request model = %v, want deepseek-flash", chatPayload["model"])
+	}
+
+	rewritten, model, err = rewriteBodyModel(m, spec, "image_generation", []byte(`{"model":"gpt-image-2","prompt":"a cat"}`))
+	if err != nil {
+		t.Fatalf("image request must not fail rewrite: %v", err)
+	}
+	if rewritten != nil {
+		t.Fatalf("image request body must stay untouched, got %s", string(rewritten))
+	}
+	if model != "gpt-image-2" {
+		t.Fatalf("image request model = %q, want gpt-image-2", model)
+	}
+}
+
 func TestReserveModelAdmissionKeepsIDAndStillHonorsExplicitAccessFilters(t *testing.T) {
 	m := &manifest{ModelIDs: []string{codexReserveModel, "gpt-5.6-luna"}}
 	spec := &apiKeySpec{AccountIDs: []string{"no-eligible-account"}}
 	body := []byte(`{"model":"gpt-reserve","input":"hello"}`)
-	rewritten, model, err := rewriteBodyModel(m, spec, body)
+	rewritten, model, err := rewriteBodyModel(m, spec, "text", body)
 	if err != nil || rewritten != nil || model != codexReserveModel {
 		t.Fatalf("Reserve must keep the original request unchanged: model=%q, err=%v", model, err)
 	}
@@ -1406,6 +1440,20 @@ func TestLoadManifestIndexesAPIKeyAccounts(t *testing.T) {
 	}
 	if account.ID != "api-account" || account.UpstreamAPIKey != "sk-upstream" {
 		t.Fatalf("unexpected indexed account: %#v", account)
+	}
+}
+
+func TestLoadManifestDefaultsImageGenerationModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "manifest.json")
+	if err := os.WriteFile(path, []byte(`{"modelIds":["gpt-image-2"]}`), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	m, err := loadManifest(path)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	if got := configuredImagesToolModel(m); got != defaultImagesToolModel {
+		t.Fatalf("default image model = %q, want %q", got, defaultImagesToolModel)
 	}
 }
 
@@ -2977,15 +3025,19 @@ func TestResolveModelRoutingRejectsRouteWithoutProviderGateway(t *testing.T) {
 func TestMixedRoutingCatalogPreservesGPTCapabilities(t *testing.T) {
 	spec := mixedRoutingAPIKey(&providerGatewaySpec{
 		UpstreamModels: []string{"gpt-6-astra"},
-		WireAPI: "responses",
+		WireAPI:        "responses",
 	})
 	catalog := buildCodexClientModelsResponse([]string{"gpt-6-astra", "cpa/gpt-6-astra"}, spec, nil)
 	models := catalog["models"].([]map[string]any)
-	if models[1]["slug"] != "cpa/gpt-6-astra" { t.Fatal("lost routing identity") }
+	if models[1]["slug"] != "cpa/gpt-6-astra" {
+		t.Fatal("lost routing identity")
+	}
 	for _, field := range []string{"service_tiers", "additional_speed_tiers", "supported_reasoning_levels", "context_window"} {
 		a, _ := json.Marshal(models[0][field])
 		b, _ := json.Marshal(models[1][field])
-		if string(a) != string(b) { t.Fatalf("%s differs: %s != %s", field, a, b) }
+		if string(a) != string(b) {
+			t.Fatalf("%s differs: %s != %s", field, a, b)
+		}
 	}
 }
 
@@ -3032,8 +3084,8 @@ func TestCockpitSelectorSkipsExhaustedQuotaForRegularModels(t *testing.T) {
 	account := &accountSpec{ID: "account-1", AuthKind: "oauth", RemainingQuota: &zero, GPTReserveAllowed: true}
 	auth := &coreauth.Auth{ID: "auth-1", Provider: "codex"}
 	m := &manifest{
-		ModelIDs:       []string{"gpt-5.5", codexReserveModel},
-		Accounts:       []accountSpec{*account},
+		ModelIDs:        []string{"gpt-5.5", codexReserveModel},
+		Accounts:        []accountSpec{*account},
 		accountByAuthID: map[string]*accountSpec{"auth-1": account},
 	}
 	selector := &cockpitSelector{manifest: m}

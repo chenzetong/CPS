@@ -11,6 +11,7 @@ use crate::models::codex_local_access::{
     CodexLocalAccessApiKeyStats, CodexLocalAccessAppendAccountSkipped,
     CodexLocalAccessAppendAccountsResult, CodexLocalAccessChatMessage, CodexLocalAccessChatResult,
     CodexLocalAccessClientBaseUrlHost, CodexLocalAccessCollection,
+    DEFAULT_CODEX_IMAGE_GENERATION_MODEL,
     CodexLocalAccessCustomRoutingRule, CodexLocalAccessGatewayMode,
     CodexLocalAccessImageGenerationMode, CodexLocalAccessImageGenerationPolicy,
     CodexLocalAccessImageGenerationStatus, CodexLocalAccessModelAlias,
@@ -30,11 +31,13 @@ use crate::models::{CodexInstanceApiRoute, CodexInstanceModelRouting};
 use crate::modules::atomic_write::{write_string_atomic, write_string_atomic_if_hash_matches};
 use crate::modules::{
     account, codex_account, codex_agent_identity, codex_oauth, codex_protocol, codex_quota,
-    codex_wakeup, config, logger, process,
+    codex_wakeup, logger, process,
 };
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{Datelike, Duration as ChronoDuration, Local, LocalResult, NaiveDate, TimeZone, Timelike};
-use futures_util::{stream, SinkExt, StreamExt};
+#[cfg(test)]
+use futures_util::SinkExt;
+use futures_util::{stream, StreamExt};
 use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
 use reqwest::header::{HeaderName, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use reqwest::{Client, Method, Proxy, StatusCode, Url};
@@ -61,15 +64,23 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::process::{Child, Command as TokioCommand};
 use tokio::sync::{oneshot, watch, Mutex as TokioMutex, Notify};
 use tokio::time::{timeout, Duration};
+#[cfg(test)]
+use tokio_tungstenite::client_async_tls_with_config;
+#[cfg(test)]
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+#[cfg(test)]
 use tokio_tungstenite::tungstenite::handshake::client::Request as WsClientRequest;
+#[cfg(test)]
 use tokio_tungstenite::tungstenite::http::header::{
     HeaderName as WsHeaderName, HeaderValue as WsHeaderValue,
 };
+#[cfg(test)]
 use tokio_tungstenite::tungstenite::protocol::Role;
+#[cfg(test)]
 use tokio_tungstenite::tungstenite::Error as WsError;
+#[cfg(test)]
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{client_async_tls_with_config, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use toml_edit::{value, Document};
 
 const CODEX_LOCAL_ACCESS_FILE: &str = "codex_local_access.json";
@@ -159,6 +170,10 @@ const MAX_RETRY_INTERVAL_MIN_MS: u64 = 0;
 const MAX_RETRY_INTERVAL_MAX_MS: u64 = 30 * 1000;
 const DEFAULT_MAX_RETRY_INTERVAL_MS: u64 = 3 * 1000;
 const MAX_CONCURRENT_IMAGE_REQUESTS_PER_ACCOUNT: u16 = 16;
+const MAX_ACCOUNT_CONCURRENCY_LIMIT: u16 = 64;
+const ACCOUNT_CONCURRENCY_WAIT_MIN_MS: u64 = 0;
+const ACCOUNT_CONCURRENCY_WAIT_MAX_MS: u64 = 30 * 60 * 1000;
+const DEFAULT_ACCOUNT_CONCURRENCY_WAIT_MS: u64 = 120 * 1000;
 const LOCAL_ACCESS_TIMEOUT_MIN_MS: u64 = 1_000;
 const LOCAL_ACCESS_TIMEOUT_MAX_MS: u64 = 600_000;
 const LEGACY_STREAM_TOTAL_TIMEOUT_MAX_MS: u64 = 30 * 60 * 1000;
@@ -231,7 +246,8 @@ const CODEX_OFFICIAL_EMPTY_HEADERS: &[&str] = &[
 ];
 const LEGACY_DEFAULT_CODEX_MODELS: &[&str] = &["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
 const COMPATIBILITY_CODEX_MODELS: &[&str] = &["gpt-5.3-codex", "gpt-5.3-codex-spark"];
-const CODEX_IMAGE_MODEL_ID: &str = "gpt-image-2";
+const CODEX_IMAGE_MODEL_ID: &str = "gpt-image-2.5";
+const LEGACY_CODEX_IMAGE_MODEL_ID: &str = "gpt-image-2";
 const CODEX_GPT_RESERVE_MODEL_ID: &str = "gpt-reserve";
 const CODEX_AUTO_REVIEW_MODEL_ID: &str = "codex-auto-review";
 const DEFAULT_IMAGES_MAIN_MODEL: &str = "gpt-5.5";
@@ -285,7 +301,6 @@ static BOUND_OAUTH_QUOTA_REFRESH_CONTROL: OnceLock<TokioMutex<BoundOauthQuotaRef
 static SIDECAR_AUTO_RESTART_CONTROL: OnceLock<Mutex<SidecarAutoRestartControl>> = OnceLock::new();
 static SIDECAR_CRASH_RECOVERY_CONTROL: OnceLock<Mutex<SidecarAutoRestartControl>> = OnceLock::new();
 static BOUND_OAUTH_QUOTA_MONITOR_STARTED: AtomicBool = AtomicBool::new(false);
-static CODEX_CLIENT_POLICY_SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 static MODEL_PROVIDER_CHAT_TEST_CANCELLATION: OnceLock<ModelProviderChatTestCancellationState> =
     OnceLock::new();
 
@@ -1455,12 +1470,6 @@ fn account_uses_personal_access_token(account: &CodexAccount) -> bool {
     account_is_access_token_only(account) && account.tokens.access_token.trim().starts_with("at-")
 }
 
-fn account_uses_codex_fingerprint_convergence(account: &CodexAccount) -> bool {
-    !account.is_api_key_auth()
-        && !account.is_agent_identity_auth()
-        && account.token_source_mode.trim() != "chatgpt_web_session"
-        && !account_is_access_token_only(account)
-}
 
 fn prune_prepared_account_cache(runtime: &mut GatewayRuntime, now: i64) {
     let allowed_account_ids = runtime.collection.as_ref().map(|collection| {
@@ -2429,9 +2438,20 @@ fn apply_codex_image_model_visibility(
     {
         model_ids.push(CODEX_IMAGE_MODEL_ID.to_string());
     }
+    if image_allowed
+        && !model_ids
+            .iter()
+            .any(|model| model.eq_ignore_ascii_case(LEGACY_CODEX_IMAGE_MODEL_ID))
+    {
+        model_ids.push(LEGACY_CODEX_IMAGE_MODEL_ID.to_string());
+    }
     model_ids
         .into_iter()
-        .filter(|model| image_allowed || !model.eq_ignore_ascii_case(CODEX_IMAGE_MODEL_ID))
+        .filter(|model| {
+            image_allowed
+                || (!model.eq_ignore_ascii_case(CODEX_IMAGE_MODEL_ID)
+                    && !model.eq_ignore_ascii_case(LEGACY_CODEX_IMAGE_MODEL_ID))
+        })
         .collect()
 }
 
@@ -3217,8 +3237,11 @@ fn normalize_image_response_format(value: Option<&Value>) -> String {
 fn validate_image_model(model: &str) -> Result<String, String> {
     let trimmed = model.trim();
     let base_model = normalize_image_model_base(trimmed);
-    if base_model == CODEX_IMAGE_MODEL_ID {
+    if base_model.eq_ignore_ascii_case(CODEX_IMAGE_MODEL_ID) {
         return Ok(CODEX_IMAGE_MODEL_ID.to_string());
+    }
+    if base_model.eq_ignore_ascii_case(LEGACY_CODEX_IMAGE_MODEL_ID) {
+        return Ok(LEGACY_CODEX_IMAGE_MODEL_ID.to_string());
     }
 
     Err(format!(

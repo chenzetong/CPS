@@ -55,7 +55,8 @@ const codexReserveModel = "gpt-reserve"
 const codexSparkModel = "gpt-5.3-codex-spark"
 const codexSparkCatalogTemplateModel = "gpt-5.3-codex"
 const defaultImagesMainModel = "gpt-5.5"
-const defaultImagesToolModel = "gpt-image-2"
+const defaultImagesToolModel = "gpt-image-2.5"
+const legacyImagesToolModel = "gpt-image-2"
 const imagesGenerationsPath = "/v1/images/generations"
 const imagesEditsPath = "/v1/images/edits"
 const anthropicMessagesPath = "/v1/messages"
@@ -92,6 +93,7 @@ type manifest struct {
 	APIKeys                    []apiKeySpec        `json:"apiKeys"`
 	Accounts                   []accountSpec       `json:"accounts"`
 	ModelIDs                   []string            `json:"modelIds"`
+	ImageGenerationModel       string              `json:"imageGenerationModel"`
 	ModelAliases               []modelAliasSpec    `json:"modelAliases"`
 	ExcludedModels             []string            `json:"excludedModels"`
 	AccountModelRules          []accountModelRule  `json:"accountModelRules"`
@@ -99,7 +101,11 @@ type manifest struct {
 	CustomRoutingRules         []customRoutingRule `json:"customRoutingRules"`
 	ImmediateSSEResponse       bool                `json:"immediateSseResponse"`
 	MaxConcurrentImageRequests int                 `json:"maxConcurrentImageRequests"`
-	DebugLogs                  *bool               `json:"debugLogs,omitempty"`
+	// MaxAccountConcurrency 限制单个账号同时处理的会话数；0 表示不限制。
+	MaxAccountConcurrency int `json:"maxAccountConcurrency"`
+	// AccountConcurrencyWaitMs 账号并发达到上限后的等待时长（毫秒）；0 表示不等待，直接拒绝。
+	AccountConcurrencyWaitMs int   `json:"accountConcurrencyWaitMs"`
+	DebugLogs                *bool `json:"debugLogs,omitempty"`
 
 	apiKeyByValue     map[string]*apiKeySpec
 	accountByID       map[string]*accountSpec
@@ -114,20 +120,22 @@ type manifest struct {
 }
 
 type apiKeySpec struct {
-	ID                  string               `json:"id"`
-	Label               string               `json:"label"`
-	Key                 string               `json:"key"`
-	ProviderGateway     *providerGatewaySpec `json:"providerGateway,omitempty"`
-	ModelRouting        *modelRoutingSpec    `json:"modelRouting,omitempty"`
-	BoundOAuth          bool                 `json:"boundOAuth,omitempty"`
-	AccountIDs          []string             `json:"accountIds"`
-	ModelPrefix         string               `json:"modelPrefix,omitempty"`
-	ResponsesWebsockets bool                 `json:"responsesWebsockets,omitempty"`
-	AllowedModels       []string             `json:"allowedModels"`
-	ExcludedModels      []string             `json:"excludedModels"`
-	TokenLimit          uint64               `json:"tokenLimit,omitempty"`
-	TokenUsed           uint64               `json:"tokenUsed,omitempty"`
-	Enabled             bool                 `json:"enabled"`
+	ID              string               `json:"id"`
+	Label           string               `json:"label"`
+	Key             string               `json:"key"`
+	ProviderGateway *providerGatewaySpec `json:"providerGateway,omitempty"`
+	ModelRouting    *modelRoutingSpec    `json:"modelRouting,omitempty"`
+	BoundOAuth      bool                 `json:"boundOAuth,omitempty"`
+	// 生图转发账号池：生图请求只允许落到这些 OAuth 账号。
+	ImageGenerationAccountIDs []string `json:"imageGenerationAccountIds,omitempty"`
+	AccountIDs                []string `json:"accountIds"`
+	ModelPrefix               string   `json:"modelPrefix,omitempty"`
+	ResponsesWebsockets       bool     `json:"responsesWebsockets,omitempty"`
+	AllowedModels             []string `json:"allowedModels"`
+	ExcludedModels            []string `json:"excludedModels"`
+	TokenLimit                uint64   `json:"tokenLimit,omitempty"`
+	TokenUsed                 uint64   `json:"tokenUsed,omitempty"`
+	Enabled                   bool     `json:"enabled"`
 }
 
 type modelRoutingSpec struct {
@@ -533,6 +541,12 @@ type requestUsageTracker struct {
 	imageJobs        map[string]map[string]struct{}
 	imageInFlight    map[string]int
 	imageJobsChanged chan struct{}
+
+	// 账号并发槽位：按 requestID 记录其占用的账号，用于请求结束时统一释放。
+	accountSlots        map[string]map[string]struct{}
+	accountInFlight     map[string]int
+	accountWaiters      int
+	accountSlotsChanged chan struct{}
 }
 
 func newRequestUsageTracker() *requestUsageTracker {
@@ -542,6 +556,11 @@ func newRequestUsageTracker() *requestUsageTracker {
 		imageJobs:        make(map[string]map[string]struct{}),
 		imageInFlight:    make(map[string]int),
 		imageJobsChanged: make(chan struct{}),
+
+		accountSlots:        make(map[string]map[string]struct{}),
+		accountInFlight:     make(map[string]int),
+		accountWaiters:      0,
+		accountSlotsChanged: make(chan struct{}),
 	}
 }
 
@@ -621,6 +640,119 @@ func (t *requestUsageTracker) releaseImageJobs(requestID string) {
 	}
 	delete(t.imageJobs, requestID)
 	t.notifyImageJobChangeLocked()
+}
+
+// accountConcurrencyChangeSignal 返回账号并发变化通知通道，等待中的请求据此唤醒。
+func (t *requestUsageTracker) accountConcurrencyChangeSignal() <-chan struct{} {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	changed := t.accountSlotsChanged
+	t.mu.Unlock()
+	return changed
+}
+
+func (t *requestUsageTracker) notifyAccountConcurrencyChangeLocked() {
+	if t == nil || t.accountSlotsChanged == nil {
+		return
+	}
+	close(t.accountSlotsChanged)
+	t.accountSlotsChanged = make(chan struct{})
+}
+
+// tryReserveAccountSlot 在 authID 上为 requestID 保留一个账号并发槽位。
+// 同一 requestID 重复保留同一账号是幂等的（重试场景），不会重复计数。
+// requestID/authID 缺失或 maxConcurrent 非正数时视为「不限制」，直接放行。
+func (t *requestUsageTracker) tryReserveAccountSlot(requestID, authID string, maxConcurrent int) bool {
+	if t == nil {
+		return true
+	}
+	requestID = strings.TrimSpace(requestID)
+	authID = strings.TrimSpace(authID)
+	if requestID == "" || authID == "" || maxConcurrent < 1 {
+		return true
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	slots := t.accountSlots[requestID]
+	if slots == nil {
+		slots = make(map[string]struct{})
+		t.accountSlots[requestID] = slots
+	}
+	if _, reserved := slots[authID]; reserved {
+		return true
+	}
+	if t.accountInFlight[authID] >= maxConcurrent {
+		return false
+	}
+	slots[authID] = struct{}{}
+	t.accountInFlight[authID]++
+	return true
+}
+
+// releaseAccountSlots 释放 requestID 持有的全部账号并发槽位。
+func (t *requestUsageTracker) releaseAccountSlots(requestID string) {
+	if t == nil {
+		return
+	}
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	slots := t.accountSlots[requestID]
+	if len(slots) == 0 {
+		delete(t.accountSlots, requestID)
+		return
+	}
+	for authID := range slots {
+		if t.accountInFlight[authID] <= 1 {
+			delete(t.accountInFlight, authID)
+		} else {
+			t.accountInFlight[authID]--
+		}
+	}
+	delete(t.accountSlots, requestID)
+	t.notifyAccountConcurrencyChangeLocked()
+}
+
+func (t *requestUsageTracker) accountInFlightCount(authID string) int {
+	if t == nil {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.accountInFlight[strings.TrimSpace(authID)]
+}
+
+// tryBeginAccountWait 登记一个等待账号并发槽位的请求；超过排队上限时返回 false。
+func (t *requestUsageTracker) tryBeginAccountWait(maxWaiting int) bool {
+	if t == nil {
+		return true
+	}
+	if maxWaiting <= 0 {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.accountWaiters >= maxWaiting {
+		return false
+	}
+	t.accountWaiters++
+	return true
+}
+
+func (t *requestUsageTracker) endAccountWait() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.accountWaiters > 0 {
+		t.accountWaiters--
+	}
 }
 
 func (t *requestUsageTracker) record(payload usagePayload) {
@@ -796,6 +928,7 @@ func loadManifest(path string) (*manifest, error) {
 			continue
 		}
 		m.APIKeys[i].Key = key
+		m.APIKeys[i].ImageGenerationAccountIDs = normalizeStringList(m.APIKeys[i].ImageGenerationAccountIDs)
 		if gateway := m.APIKeys[i].ProviderGateway; gateway != nil {
 			if !normalizeProviderGatewaySpec(gateway) {
 				m.APIKeys[i].ProviderGateway = nil
@@ -879,12 +1012,52 @@ func loadManifest(path string) (*manifest, error) {
 		m.aliasToSource[strings.ToLower(name)] = source
 	}
 	m.ModelIDs = normalizeStringList(m.ModelIDs)
+	m.ImageGenerationModel = strings.TrimSpace(m.ImageGenerationModel)
+	if m.ImageGenerationModel == "" {
+		m.ImageGenerationModel = defaultImagesToolModel
+	}
 	m.ExcludedModels = normalizeStringList(m.ExcludedModels)
 	for index := range m.AccountModelRules {
 		m.AccountModelRules[index].AccountID = strings.TrimSpace(m.AccountModelRules[index].AccountID)
 		m.AccountModelRules[index].ExcludedModels = normalizeStringList(m.AccountModelRules[index].ExcludedModels)
 	}
 	return &m, nil
+}
+
+func configuredImagesToolModel(m *manifest) string {
+	if m == nil {
+		return defaultImagesToolModel
+	}
+	if model := strings.TrimSpace(m.ImageGenerationModel); model != "" {
+		return model
+	}
+	return defaultImagesToolModel
+}
+
+// imageGenerationAccountIDsForSpec 返回该 API Key 配置的生图转发账号池。
+func imageGenerationAccountIDsForSpec(spec *apiKeySpec) []string {
+	if spec == nil || len(spec.ImageGenerationAccountIDs) == 0 {
+		return nil
+	}
+	return normalizeStringList(spec.ImageGenerationAccountIDs)
+}
+
+// isConfiguredImagesToolModel 判断模型名是否是生图工具模型（含历史名称）。
+func isConfiguredImagesToolModel(m *manifest, model string) bool {
+	trimmed := strings.TrimSpace(model)
+	if trimmed == "" {
+		return false
+	}
+	for _, candidate := range []string{
+		configuredImagesToolModel(m),
+		defaultImagesToolModel,
+		legacyImagesToolModel,
+	} {
+		if candidate != "" && strings.EqualFold(trimmed, candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeProviderGatewaySpec(gateway *providerGatewaySpec) bool {
@@ -1065,6 +1238,11 @@ func (p *requestPolicy) middleware() gin.HandlerFunc {
 			p.emitRequestStarted(c, requestID, spec, requestKind, model, startedAt)
 		}
 		defer func() {
+			// 账号并发槽位在请求结束（含失败、取消、断流）时无条件归还，
+			// 避免账号被永久占满；诊断事件的发送开关不影响这里。
+			if p.tracker != nil {
+				p.tracker.releaseAccountSlots(requestID)
+			}
 			if startLogged {
 				p.emitRequestCompleted(c, requestID, spec, requestKind, model, startedAt)
 			}
@@ -1130,7 +1308,7 @@ func (p *requestPolicy) middleware() gin.HandlerFunc {
 			return
 		}
 
-		nextBody, model, err := rewriteBodyModel(p.manifest, spec, body)
+		nextBody, model, err := rewriteBodyModel(p.manifest, spec, requestKind, body)
 		if model != "" {
 			ctx := context.WithValue(c.Request.Context(), requestModelContextKey, model)
 			c.Request = c.Request.WithContext(ctx)
@@ -1609,20 +1787,28 @@ func buildCodexClientModelsResponse(models []string, spec *apiKeySpec, windows m
 	if data, ok := response["models"].([]map[string]any); ok {
 		hydrateCodexCompatibilityModels(data)
 		// Only declared routes to a known GPT template inherit capabilities.
-		var catalog struct { Models []map[string]any `json:"models"` }
+		var catalog struct {
+			Models []map[string]any `json:"models"`
+		}
 		_ = json.Unmarshal(registry.GetCodexClientModelsJSON(), &catalog)
 		for _, model := range data {
 			slug, _ := model["slug"].(string)
 			_, upstream, status := resolveModelRouting(spec, slug)
-			if status != "matched" || !strings.HasPrefix(upstream, "gpt-") { continue }
+			if status != "matched" || !strings.HasPrefix(upstream, "gpt-") {
+				continue
+			}
 			for _, template := range catalog.Models {
-				if template["slug"] != upstream { continue }
+				if template["slug"] != upstream {
+					continue
+				}
 				for _, field := range []string{
 					"supported_reasoning_levels", "default_reasoning_level",
 					"service_tiers", "additional_speed_tiers",
 					"context_window", "max_context_window",
 				} {
-					if value, exists := template[field]; exists { model[field] = value }
+					if value, exists := template[field]; exists {
+						model[field] = value
+					}
 				}
 				break
 			}
@@ -1758,6 +1944,8 @@ func displayNameForModel(model string) string {
 		return "GPT-5.1 Codex Mini"
 	case "gpt-image-2":
 		return "GPT Image 2"
+	case defaultImagesToolModel:
+		return "GPT Image 2.5"
 	case codexAutoReviewModel:
 		return "Codex Auto Review"
 	default:
@@ -1767,7 +1955,7 @@ func displayNameForModel(model string) string {
 
 func isHiddenCodexClientModel(model string) bool {
 	switch model {
-	case codexAutoReviewModel, "gpt-image-2", "grok-imagine-image", "grok-imagine-video", "grok-imagine-image-quality":
+	case codexAutoReviewModel, legacyImagesToolModel, defaultImagesToolModel, "grok-imagine-image", "grok-imagine-video", "grok-imagine-image-quality":
 		return true
 	default:
 		return false
@@ -1888,7 +2076,7 @@ func decodeRelayRequestBody(
 	return body, nil
 }
 
-func rewriteBodyModel(m *manifest, spec *apiKeySpec, body []byte) ([]byte, string, error) {
+func rewriteBodyModel(m *manifest, spec *apiKeySpec, requestKind string, body []byte) ([]byte, string, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, "", nil
@@ -1897,6 +2085,11 @@ func rewriteBodyModel(m *manifest, spec *apiKeySpec, body []byte) ([]byte, strin
 	model := strings.TrimSpace(rawModel)
 	if model == "" {
 		return nil, "", nil
+	}
+	// 生图请求里的 model 是图片模型（例如内置 image_gen 工具的 gpt-image-2），
+	// 不能按对话模型目录改写或校验，否则会被替换成实例的默认对话模型并被生图链路拒绝。
+	if isImageRequestKind(requestKind) {
+		return nil, model, nil
 	}
 	if _, _, status := resolveModelRouting(spec, model); status != "none" {
 		// Keep the namespaced client model intact so the executor can route
@@ -1933,6 +2126,10 @@ func visibleModelsForAPIKey(m *manifest, spec *apiKeySpec) []string {
 				}
 			}
 			models = append(models, clientModel)
+		}
+		// 配置了生图转发账号时，图片模型对实例 API Key 可见（对话模型列表不受影响）。
+		if len(imageGenerationAccountIDsForSpec(spec)) > 0 {
+			models = append(models, configuredImagesToolModel(m))
 		}
 		return normalizeStringList(models)
 	}
@@ -2256,6 +2453,10 @@ func validateClientModelVisible(m *manifest, spec *apiKeySpec, model, canonical 
 		return true
 	}
 	if spec != nil && spec.ProviderGateway != nil {
+		if (isConfiguredImagesToolModel(m, withoutPrefix) || isConfiguredImagesToolModel(m, canonical)) &&
+			len(imageGenerationAccountIDsForSpec(spec)) > 0 {
+			return true
+		}
 		if len(spec.ProviderGateway.UpstreamModels) == 0 {
 			return true
 		}
@@ -2267,7 +2468,8 @@ func validateClientModelVisible(m *manifest, spec *apiKeySpec, model, canonical 
 		return false
 	}
 	visible := visibleModelsForAPIKey(m, nil)
-	visibleMatch := false
+	visibleMatch := strings.EqualFold(withoutPrefix, configuredImagesToolModel(m)) ||
+		strings.EqualFold(canonical, configuredImagesToolModel(m))
 	for _, item := range visible {
 		if strings.EqualFold(item, withoutPrefix) || strings.EqualFold(item, canonical) || strings.EqualFold(resolveSupportedModelAlias(m, item), canonical) {
 			visibleMatch = true

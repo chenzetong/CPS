@@ -2,7 +2,24 @@ use super::{load_index_from_paths, sample_account, TestDir};
 use crate::models::grok::GrokAccount;
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use rand::{rngs::OsRng, Rng};
 use std::{fs, path::Path};
+
+fn load_or_create_key(root: &Path) -> [u8; 32] {
+    let path = root.join("secure-account-storage.key");
+    if path.exists() {
+        return STANDARD
+            .decode(fs::read_to_string(path).unwrap().trim())
+            .unwrap()
+            .try_into()
+            .unwrap();
+    }
+
+    let mut rng = OsRng;
+    let key: [u8; 32] = rng.gen();
+    fs::write(path, STANDARD.encode(key)).unwrap();
+    key
+}
 
 fn seed(root: &Path, id: &str, encrypted: bool) -> GrokAccount {
     let mut account = sample_account();
@@ -11,13 +28,9 @@ fn seed(root: &Path, id: &str, encrypted: bool) -> GrokAccount {
     fs::create_dir_all(&details).unwrap();
     let plain = serde_json::to_string(&account).unwrap();
     let content = if encrypted {
-        let key = [7u8; 32];
-        let nonce = [3u8; 12];
-        fs::write(
-            root.join("secure-account-storage.key"),
-            STANDARD.encode(key),
-        )
-        .unwrap();
+        let mut rng = OsRng;
+        let key = load_or_create_key(root);
+        let nonce: [u8; 12] = rng.gen();
         let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
         let ciphertext = cipher
             .encrypt(Nonce::from_slice(&nonce), plain.as_bytes())
@@ -72,7 +85,11 @@ fn unavailable_or_wrong_key_does_not_create_key_or_replace_index() {
         if missing {
             fs::remove_file(&key).unwrap();
         } else {
-            fs::write(&key, STANDARD.encode([9u8; 32])).unwrap();
+            let mut wrong_key = STANDARD
+                .decode(fs::read_to_string(&key).unwrap().trim())
+                .unwrap();
+            wrong_key[0] ^= 0xff;
+            fs::write(&key, STANDARD.encode(wrong_key)).unwrap();
         }
         let index = temp.0.join("grok_accounts.json");
         fs::write(&index, "{broken").unwrap();

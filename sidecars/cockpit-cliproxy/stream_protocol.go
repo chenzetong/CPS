@@ -75,7 +75,7 @@ func (s *relayServer) streamTimeoutsForRequest(r *http.Request, body []byte, mod
 }
 
 func isImageGenerationRequest(r *http.Request, body []byte, model string) bool {
-	if modelBase(model) == "gpt-image-2" {
+	if modelBase(model) == defaultImagesToolModel || modelBase(model) == legacyImagesToolModel {
 		return true
 	}
 	if r != nil && r.URL != nil {
@@ -234,24 +234,6 @@ func (s *relayServer) writeExecutorError(c *gin.Context, err error) {
 		if waitErr := util.SleepContext(ctx, s.downstreamExecutorErrorDelay()); waitErr != nil {
 			return
 		}
-	}
-	var transient interface{ IsTransientRequestScoped() bool }
-	if errors.As(err, &transient) && transient.IsTransientRequestScoped() {
-		message := errorMessage(err)
-		var body struct {
-			Error struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		if json.Unmarshal([]byte(message), &body) == nil && body.Error.Message != "" {
-			message = body.Error.Message
-		}
-		c.JSON(status, gin.H{"error": gin.H{
-			"message": message,
-			"type":    "server_error",
-			"code":    "server_error",
-		}})
-		return
 	}
 	writeAPIError(c, status, errorMessage(err), code)
 }

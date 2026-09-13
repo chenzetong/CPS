@@ -191,6 +191,8 @@ export async function updateCodexLocalAccessRoutingOptions(payload: {
   disableCooling: boolean;
   immediateSseResponse: boolean;
   maxConcurrentImageRequests: number;
+  maxAccountConcurrency: number;
+  accountConcurrencyWaitMs: number;
 }): Promise<CodexLocalAccessState> {
   return await invoke("codex_local_access_update_routing_options", payload);
 }
@@ -236,6 +238,14 @@ export async function updateCodexLocalAccessDebugLogs(
 ): Promise<CodexLocalAccessState> {
   return await invoke("codex_local_access_update_debug_logs", {
     debugLogs,
+  });
+}
+
+export async function updateCodexLocalAccessImageGenerationModel(
+  imageGenerationModel: string,
+): Promise<CodexLocalAccessState> {
+  return await invoke("codex_local_access_update_image_generation_model", {
+    imageGenerationModel,
   });
 }
 

@@ -1,24 +1,28 @@
 {
   "name": "cockpit-tools",
   "private": true,
-  "version": "1.3.46",
+  "version": "1.3.50",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test:codex-api-key-scope": "node --test src/utils/codexApiKeyAccountScope.test.ts",
+    "test": "node scripts/run_ts_tests.cjs",
+    "test:release": "node --test scripts/release/*.test.cjs",
+    "test:go": "cd sidecars/cockpit-cliproxy && go test ./...",
+    "test:codex-api-key-scope": "tsx --test src/utils/codexApiKeyAccountScope.test.ts",
     "test:sync-upstream-version": "node --test scripts/sync-upstream-version.test.cjs",
     "typecheck": "tsc --noEmit",
     "prebuild": "npm run typecheck",
     "build": "npm run sync-version && tsc && vite build",
     "release:preflight": "node scripts/release/preflight.cjs",
     "security:scan": "node scripts/security/scan-sensitive.cjs",
-    "sync-upstream-version": "node scripts/sync-upstream-version.cjs",
     "preview": "vite preview",
     "pretauri:dev": "npm run typecheck",
     "tauri:dev": "node scripts/tauri-dev.cjs",
     "pretauri": "npm run typecheck",
     "tauri": "node scripts/tauri.cjs",
-    "sync-version": "node scripts/sync-version.js"
+    "sync-version": "node scripts/sync-version.js",
+    "sync-upstream-version": "node scripts/sync-upstream-version.cjs",
+    "test:rust:core": "cargo test --package cockpit-core -- --test-threads=1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -54,6 +58,7 @@
     "electron": "^42.4.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
+    "tsx": "4.20.5",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

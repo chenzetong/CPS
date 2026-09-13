@@ -12,3 +12,24 @@ test("Tauri updater endpoints match per-bundle release manifest names", () => {
     "https://github.com/chenzetong/CPS/releases/latest/download/latest.json",
   ]);
 });
+
+test("unsigned CI builds disable updater artifact signing", () => {
+  const root = path.resolve(__dirname, "..", "..");
+  const signedConfig = JSON.parse(
+    fs.readFileSync(path.join(root, "src-tauri", "tauri.ci.conf.json"), "utf8"),
+  );
+  const unsignedConfig = JSON.parse(
+    fs.readFileSync(path.join(root, "src-tauri", "tauri.unsigned.conf.json"), "utf8"),
+  );
+  const workflow = fs.readFileSync(
+    path.join(root, ".github", "workflows", "build-matrix.yml"),
+    "utf8",
+  );
+
+  assert.equal(signedConfig.bundle.createUpdaterArtifacts, true);
+  assert.equal(unsignedConfig.bundle.createUpdaterArtifacts, false);
+  assert.match(
+    workflow,
+    /Build app \(Unsigned CI\)[\s\S]*?--config src-tauri\/tauri\.unsigned\.conf\.json/,
+  );
+});

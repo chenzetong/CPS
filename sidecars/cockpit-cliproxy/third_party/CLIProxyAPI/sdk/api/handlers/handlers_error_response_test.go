@@ -86,6 +86,38 @@ func TestWriteErrorResponseDirectResponse(t *testing.T) {
 	}
 }
 
+func TestAppendAPIResponsePreservesExistingData(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, test := range []struct {
+		name     string
+		existing string
+		want     string
+	}{
+		{name: "adds separator", existing: "first", want: "first\nsecond"},
+		{name: "keeps separator", existing: "first\n", want: "first\nsecond"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			existing := []byte(test.existing)
+			c.Set("API_RESPONSE", existing)
+
+			appendAPIResponse(c, []byte("second"))
+
+			response, exists := c.Get("API_RESPONSE")
+			if !exists {
+				t.Fatal("API_RESPONSE was not stored")
+			}
+			if got := string(response.([]byte)); got != test.want {
+				t.Fatalf("API_RESPONSE = %q, want %q", got, test.want)
+			}
+			if got := string(existing); got != test.existing {
+				t.Fatalf("existing response was mutated: %q", got)
+			}
+		})
+	}
+}
+
 func TestInternalConcurrencyBusyWritesRetryAfterWithoutPassthrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

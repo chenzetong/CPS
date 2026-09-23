@@ -537,6 +537,8 @@
                 CodexLocalAccessRequestKind::Text,
                 None,
                 None,
+                None,
+                None,
                 true,
                 Some(200),
                 None,
@@ -643,7 +645,8 @@
         cleanup_provider_gateway_profile_model_overrides, codex_price,
         collect_local_access_profile_takeover_dirs_from_store, compare_routing_candidates,
         count_request_logs_for_model_ids, default_codex_model_ids, effective_api_key_account_ids,
-        empty_stats_snapshot, extract_usage_capture, filter_bound_oauth_quota_reserve_account,
+        empty_stats_snapshot, ensure_local_compaction_for_account_pool, extract_usage_capture,
+        filter_bound_oauth_quota_reserve_account,
         filter_websocket_client_message, insert_local_access_usage_event,
         load_stats_windows_and_recent_events_from_conn,
         inspect_local_access_profile_attachment, inspect_local_access_profile_config,
@@ -658,19 +661,22 @@
         merge_collection_and_account_excluded_models, model_pricing,
         model_provider_direct_test_client_model, model_provider_test_uses_provider_gateway,
         normalize_account_id_list, normalize_account_model_rules, normalize_collection_api_keys,
-        normalize_custom_routing_rules, normalized_sidecar_error_category,
+        normalize_custom_routing_rules, new_empty_local_access_collection,
+        normalized_sidecar_error_category,
         open_local_access_logs_db_once, parse_codex_retry_after,
         parse_responses_payload_from_upstream, parse_websocket_upstream_error,
         pin_account_to_front_for_strategy, prepare_gateway_request,
         prepare_gateway_request_with_default_service_tier, prepare_sidecar_launch_config_in_dir,
         prepare_websocket_initial_request, profile_api_key_supports_websockets,
+        profile_config_path,
         profile_base_url_matches, provider_gateway_api_key_id,
         provider_gateway_bound_oauth_account_id_for_account,
         provider_gateway_default_model_for_account,
         provider_gateway_image_generation_mode_for_account, provider_gateway_model_slots,
         provider_gateway_models_for_account, provider_model_slots_need_upstream_rewrite,
         read_http_request, read_request_log_reprice_batch, recompute_time_windows,
-        recover_invalid_stats_file, remove_account_refs_from_collection,
+        reapply_deepseek_profile_compaction_fallback, recover_invalid_stats_file,
+        remove_account_refs_from_collection,
         remove_codex_local_access_config, reprice_request_logs_for_collection,
         request_image_generation_mode, request_logs_has_column, request_ordered_account_ids,
         resolve_collection_api_key, resolve_effective_model_pricing, resolve_plan_rank,
@@ -713,7 +719,8 @@
         CODEX_LOCAL_ACCESS_DISABLE_HOSTED_IMAGE_GENERATION_HEADER,
         CODEX_LOCAL_ACCESS_DISABLE_HOSTED_IMAGE_GENERATION_HEADER_VALUE,
         CODEX_LOCAL_ACCESS_MODEL_CATALOG_FILE, CODEX_PROFILE_AUTH_FILE, CODEX_PROFILE_CONFIG_FILE,
-        CODEX_PROVIDER_MODEL_BACKUP_FILE, CODEX_PROVIDER_MODEL_CATALOG_FILE,
+        CODEX_LOCAL_ACCESS_RUNTIME_PROVIDER_ID, CODEX_PROVIDER_MODEL_BACKUP_FILE,
+        CODEX_PROVIDER_MODEL_CATALOG_FILE,
         DEFAULT_ACCOUNT_CONCURRENCY_WAIT_MS, DEFAULT_MAX_RETRY_INTERVAL_MS,
         DEFAULT_MODEL_PRICING_VERSION,
         DEFAULT_SESSION_AFFINITY_TTL_MS, MAX_HTTP_REQUEST_BYTES,
@@ -1300,6 +1307,28 @@
     }
 
     #[test]
+    fn sidecar_manifest_exposes_image_generation_accounts_for_default_key() {
+        let mut collection = test_local_access_collection(vec!["chat-account".to_string()]);
+        collection.image_generation_account_ids = vec![
+            "gpt-image-account".to_string(),
+            "gpt-image-account".to_string(),
+        ];
+
+        let legacy = sidecar_api_key_manifest_values(&collection)
+            .into_iter()
+            .find(|value| value.get("id").and_then(Value::as_str) == Some("legacy"))
+            .expect("default API key should be emitted");
+        let image_account_ids = legacy
+            .get("imageGenerationAccountIds")
+            .and_then(Value::as_array)
+            .expect("imageGenerationAccountIds should be an array")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(image_account_ids, vec!["gpt-image-account"]);
+    }
+
+    #[test]
     fn api_key_priority_queue_respects_custom_scope_session_affinity_and_fallbacks() {
         let mut collection = test_local_access_collection(vec![
             "account-a".to_string(),
@@ -1649,6 +1678,147 @@ HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings
     }
 
     #[test]
+    fn account_pool_with_deepseek_switches_profile_to_local_compaction() {
+        let deepseek_gateway = CodexLocalAccessProviderGateway {
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            api_key: "sk-deepseek".to_string(),
+            upstream_model: "deepseek-v4-pro".to_string(),
+            upstream_models: vec!["deepseek-v4-pro".to_string()],
+            wire_api: Some("chat_completions".to_string()),
+            supports_vision: false,
+            model_capabilities: HashMap::new(),
+            vision_routing_model: None,
+        };
+        let mut key = CodexLocalAccessApiKey {
+            id: "provider_gateway_deepseek".to_string(),
+            label: "Provider Gateway: deepseek".to_string(),
+            key: "agt_test".to_string(),
+            provider_gateway: Some(deepseek_gateway.clone()),
+            model_routing: None,
+            inherit_account_pool: Some(false),
+            account_ids: Vec::new(),
+            priority_account_ids: Vec::new(),
+            preferred_account_id: None,
+            model_prefix: None,
+            allowed_models: Vec::new(),
+            excluded_models: Vec::new(),
+            token_limit: None,
+            token_used: 0,
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+            last_used_at: None,
+        };
+        let mut collection = new_empty_local_access_collection().expect("collection");
+        collection.enabled = true;
+        collection.api_keys = vec![key.clone()];
+        assert!(super::collection_pool_contains_official_deepseek_account(&collection));
+
+        // 账号池没有能承接官方 GPT 模型的账号（这里是第三方 Chat 协议供应商）时，
+        // 压缩同样回到本地流程：这类上游没有可用的服务端压缩，远端压缩还会带着旧模型 ID 发出。
+        key.provider_gateway = Some(CodexLocalAccessProviderGateway {
+            base_url: "https://token-plan-cn.xiaomimimo.com/v1".to_string(),
+            ..deepseek_gateway.clone()
+        });
+        let mut other_collection = new_empty_local_access_collection().expect("collection");
+        other_collection.enabled = true;
+        other_collection.api_keys = vec![key.clone()];
+        assert!(!super::collection_pool_contains_official_deepseek_account(&other_collection));
+
+        let profile_dir = make_temp_dir("codex-pool-local-compaction");
+        let config_path = profile_config_path(&profile_dir);
+        let original = "model = \"gpt-5.6-sol\"\nservice_tier = \"priority\"\n\n[features]\njs_repl = false\n";
+        crate::modules::codex_config_format::write_codex_config_toml_atomic(
+            &config_path,
+            original,
+        )
+        .expect("write profile config");
+
+        ensure_local_compaction_for_account_pool(&profile_dir, &other_collection)
+            .expect("apply local compaction for non-gpt pool");
+        let non_gpt_applied = fs::read_to_string(&config_path).expect("read profile config");
+        assert!(
+            non_gpt_applied.contains("remote_compaction_v2 = false"),
+            "非 GPT 账号池必须回到本地压缩: {non_gpt_applied}"
+        );
+        assert!(
+            non_gpt_applied.contains("service_tier = \"priority\""),
+            "压缩兜底只动压缩键，其它配置保持不变: {non_gpt_applied}"
+        );
+
+        ensure_local_compaction_for_account_pool(&profile_dir, &collection)
+            .expect("apply deepseek pool fallback");
+        let applied = fs::read_to_string(&config_path).expect("read profile config");
+        assert!(applied.contains("remote_compaction_v2 = false"));
+        assert!(!applied.contains("token_budget"));
+        assert!(applied.contains("js_repl = false"));
+        // 混合账号池只动压缩键，官方账号的 service_tier 必须保留。
+        assert!(applied.contains("service_tier = \"priority\""));
+
+        fs::remove_dir_all(&profile_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn deepseek_provider_gateway_profile_keeps_local_compaction_fallback() {
+        let profile_dir = make_temp_dir("codex-deepseek-gateway-compaction");
+        let config_path = profile_config_path(&profile_dir);
+        crate::modules::codex_config_format::write_codex_config_toml_atomic(
+            &config_path,
+            "model = \"gpt-5.6-sol\"\n\n[features]\njs_repl = false\n\n[model_providers.codex_local_access]\nname = \"OpenAI\"\n",
+        )
+        .expect("write profile config");
+
+        let mut deepseek = CodexAccount::new_api_key(
+            "local-account-id".to_string(),
+            "deepseek@example.com".to_string(),
+            "sk-test".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("https://api.deepseek.com".to_string()),
+            Some("deepseek".to_string()),
+            Some("DeepSeek".to_string()),
+            vec!["deepseek-v4-flash".to_string()],
+        );
+        deepseek.api_wire_api = Some("responses".to_string());
+        deepseek.api_sync_model_catalog_to_codex = true;
+
+        reapply_deepseek_profile_compaction_fallback(&profile_dir, &deepseek)
+            .expect("reapply deepseek fallback");
+        let applied = fs::read_to_string(&config_path).expect("read profile config");
+        assert!(applied.contains("remote_compaction_v2 = false"));
+        assert!(!applied.contains("token_budget"));
+        assert!(applied.contains("js_repl = false"));
+
+        // 其它供应商的网关 profile 不做任何改写。
+        let other_dir = make_temp_dir("codex-generic-gateway-compaction");
+        let other_config_path = profile_config_path(&other_dir);
+        let original = "model = \"gpt-5.6-sol\"\n\n[features]\njs_repl = false\n";
+        crate::modules::codex_config_format::write_codex_config_toml_atomic(
+            &other_config_path,
+            original,
+        )
+        .expect("write other profile config");
+        let other = CodexAccount::new_api_key(
+            "other-account-id".to_string(),
+            "other@example.com".to_string(),
+            "sk-other".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("https://api.moonshot.cn/v1".to_string()),
+            Some("moonshot".to_string()),
+            Some("Moonshot".to_string()),
+            vec!["kimi-k2".to_string()],
+        );
+        reapply_deepseek_profile_compaction_fallback(&other_dir, &other)
+            .expect("skip non-deepseek fallback");
+        assert_eq!(
+            fs::read_to_string(&other_config_path).expect("read other profile config"),
+            original
+        );
+
+        fs::remove_dir_all(&profile_dir).expect("cleanup temp dir");
+        fs::remove_dir_all(&other_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
     fn official_template_catalog_keeps_shell_slug_and_upstream_metadata() {
         let slots = provider_gateway_model_slots(&[
             "deepseek-v4-flash".to_string(),
@@ -1875,14 +2045,28 @@ HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings
     }
 
     #[test]
-    fn provider_gateway_model_slots_keep_identity_for_gpt_6_astra() {
-        let slots = provider_gateway_model_slots(&["gpt-6-astra".to_string()]);
+    fn provider_gateway_model_slots_keep_identity_for_gpt_6_family() {
+        let slots = provider_gateway_model_slots(&[
+            "gpt-6-astra".to_string(),
+            "gpt-6-sol".to_string(),
+            "gpt-6-luna".to_string(),
+        ]);
         assert_eq!(
             slots,
-            vec![super::ProviderGatewayModelSlot {
-                client_model: "gpt-6-astra".to_string(),
-                upstream_model: "gpt-6-astra".to_string(),
-            }]
+            vec![
+                super::ProviderGatewayModelSlot {
+                    client_model: "gpt-6-astra".to_string(),
+                    upstream_model: "gpt-6-astra".to_string(),
+                },
+                super::ProviderGatewayModelSlot {
+                    client_model: "gpt-6-sol".to_string(),
+                    upstream_model: "gpt-6-sol".to_string(),
+                },
+                super::ProviderGatewayModelSlot {
+                    client_model: "gpt-6-luna".to_string(),
+                    upstream_model: "gpt-6-luna".to_string(),
+                },
+            ]
         );
     }
 
@@ -3251,11 +3435,15 @@ http_headers = { "x-cockpit-instance-id" = "default" }
             vec![
                 existing.id.clone(),
                 "preserved".to_string(),
-                "added".to_string()
+                "added".to_string(),
+                "chat".to_string()
             ]
         );
-        assert_eq!(synced_ids, vec![existing.id, "added".to_string()]);
-        assert_eq!(added_ids, vec!["added".to_string()]);
+        assert_eq!(
+            synced_ids,
+            vec![existing.id, "added".to_string(), "chat".to_string()]
+        );
+        assert_eq!(added_ids, vec!["added".to_string(), "chat".to_string()]);
         assert_eq!(
             skipped
                 .iter()
@@ -3263,7 +3451,6 @@ http_headers = { "x-cockpit-instance-id" = "default" }
                 .collect::<Vec<_>>(),
             vec![
                 (free.id.as_str(), "free_restricted"),
-                ("chat", "chat_completions_api_key"),
                 ("missing", "not_found"),
             ]
         );
@@ -3622,6 +3809,14 @@ http_headers = { "x-cockpit-instance-id" = "default" }
         );
         assert!(account.api_supports_websockets);
         assert_eq!(account.api_wire_api.as_deref(), Some("responses"));
+        assert_eq!(
+            account.api_provider_name.as_deref(),
+            Some("Codex API Service")
+        );
+        assert_eq!(
+            account.api_provider_id.as_deref(),
+            Some(CODEX_LOCAL_ACCESS_RUNTIME_PROVIDER_ID)
+        );
     }
 
     #[test]
@@ -3690,6 +3885,7 @@ http_headers = { "x-cockpit-instance-id" = "default" }
                     model_capabilities: HashMap::new(),
                     vision_routing_model: None,
                 },
+                native_provider: None,
             }],
         });
         collection.api_keys = vec![api_key];
@@ -3727,4 +3923,155 @@ http_headers = { "x-cockpit-instance-id" = "default" }
             &collection,
             "mixed-local-key"
         ));
+    }
+
+    /// 混合路由的可见模型清单由路由配置推导，因此不依赖用户是否开启「模型管理」。
+    #[test]
+    fn mixed_model_catalog_definitions_include_official_models_without_routes() {
+        let routing = crate::models::CodexInstanceModelRouting {
+            enabled: true,
+            version: 1,
+            routes: Vec::new(),
+        };
+        let definitions = super::mixed_model_catalog_definitions(&routing)
+            .expect("build mixed catalog definitions");
+        assert!(!definitions.is_empty(), "至少包含官方模型");
+        assert!(
+            definitions.iter().all(|(model_id, _)| !model_id.contains('/')),
+            "没有路由配置时不应出现带命名空间前缀的模型"
+        );
+        assert!(
+            definitions
+                .iter()
+                .any(|(model_id, display_name)| model_id.starts_with("gpt-")
+                    && !display_name.trim().is_empty()),
+            "官方模型需要带展示名"
+        );
+    }
+
+    /// 只加了 DeepSeek + Grok 等第三方账号时，客户端目录里不能出现 GPT-5.6 Reserve。
+    #[test]
+    fn profile_catalog_only_offers_reserve_when_official_gpt_models_are_present() {
+        let third_party_only = serde_json::json!({
+            "models": [
+                {"slug": "deepseek-flash"},
+                {"slug": "deepseek-v4-pro"},
+                {"slug": "grok-4.6"},
+                {"slug": "codex-auto-review", "visibility": "hide"},
+            ]
+        });
+        assert!(!super::profile_catalog_allows_reserve(&third_party_only));
+
+        let with_official = serde_json::json!({
+            "models": [{"slug": "gpt-5.6-sol"}, {"slug": "grok-4.6"}]
+        });
+        assert!(super::profile_catalog_allows_reserve(&with_official));
+
+        // 用户显式列出 gpt-reserve 时保持原样，不做二次隐藏。
+        let explicit_reserve = serde_json::json!({"models": [{"slug": "gpt-reserve"}]});
+        assert!(super::profile_catalog_allows_reserve(&explicit_reserve));
+    }
+
+    /// 模型管理目录必须等于客户端实际会渲染的模型：无 GPT 能力时去掉官方 GPT，并补入账号池 extras。
+    #[tokio::test]
+    async fn experimental_catalog_overlays_pool_models_and_hides_gpt_without_capability() {
+        let _lock = crate::modules::test_support::env_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let _env = LocalAccessTestDataGuard::new("catalog-overlay-pool");
+        let profile_dir = make_temp_dir("catalog-overlay-profile");
+
+        let mut deepseek = CodexAccount::new_api_key(
+            "deepseek-overlay".to_string(),
+            "deepseek-overlay@example.com".to_string(),
+            "sk-deepseek-overlay".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("https://api.deepseek.com".to_string()),
+            Some("deepseek".to_string()),
+            Some("DeepSeek".to_string()),
+            vec!["deepseek-flash".to_string(), "deepseek-v4-pro".to_string()],
+        );
+        deepseek.api_wire_api = Some("responses".to_string());
+        let mut grok = CodexAccount::new_api_key(
+            "grok-overlay".to_string(),
+            "grok-overlay@example.com".to_string(),
+            String::new(),
+            CodexApiProviderMode::Custom,
+            None,
+            Some("grok".to_string()),
+            Some("Grok".to_string()),
+            vec![
+                "grok-4.6".to_string(),
+                "grok-4.5".to_string(),
+                "grok-4.3".to_string(),
+            ],
+        );
+        grok.api_wire_api = Some("responses".to_string());
+        grok.upstream_grok_account_id = Some("grok-source".to_string());
+        grok.openai_api_key = None;
+        crate::modules::codex_account::save_account(&deepseek).expect("save deepseek");
+        crate::modules::codex_account::save_account(&grok).expect("save grok");
+
+        let mut collection = test_local_access_collection(vec![deepseek.id.clone(), grok.id.clone()]);
+        collection.restrict_free_accounts = false;
+        super::save_collection_to_disk(&collection).expect("save collection");
+        write_local_access_profile_takeover(&profile_dir, &collection, None, true)
+            .await
+            .expect("attach profile");
+
+        let official = vec![
+            crate::models::codex::CodexExperimentalModelDefinition {
+                model_id: "gpt-5.6-luna".to_string(),
+                display_name: "5.6 Luna".to_string(),
+                reasoning_efforts: None,
+                context_window: Some(516000),
+                auto_compact_token_limit: Some(460000),
+            },
+            crate::models::codex::CodexExperimentalModelDefinition {
+                model_id: "gpt-reserve".to_string(),
+                display_name: "GPT-5.6 Reserve".to_string(),
+                reasoning_efforts: None,
+                context_window: None,
+                auto_compact_token_limit: None,
+            },
+        ];
+        let overlaid = super::overlay_rendered_pool_models_on_experimental_catalog(
+            &profile_dir,
+            official,
+        );
+        let ids = overlaid
+            .iter()
+            .map(|model| model.model_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            vec![
+                "deepseek-flash",
+                "deepseek-v4-pro",
+                "grok-4.6",
+                "grok-4.5",
+                "grok-4.3",
+            ],
+            "无 GPT 能力时应只保留账号池可见模型: {ids:?}"
+        );
+        assert_eq!(
+            overlaid[0].display_name,
+            crate::modules::codex_account::provider_model_display_name("deepseek-flash")
+        );
+
+        let mut with_context = overlaid.clone();
+        with_context[2].context_window = Some(1_000_000);
+        with_context[2].auto_compact_token_limit = Some(900_000);
+        let preserved = super::overlay_rendered_pool_models_on_experimental_catalog(
+            &profile_dir,
+            with_context,
+        );
+        let grok_46 = preserved
+            .iter()
+            .find(|model| model.model_id == "grok-4.6")
+            .expect("grok-4.6");
+        assert_eq!(grok_46.context_window, Some(1_000_000));
+        assert_eq!(grok_46.auto_compact_token_limit, Some(900_000));
+
+        fs::remove_dir_all(profile_dir).expect("cleanup overlay profile");
     }

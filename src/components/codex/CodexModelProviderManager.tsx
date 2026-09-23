@@ -126,6 +126,7 @@ import {
   shouldSyncCodexModelProviderAccountName,
 } from "../../utils/codexModelProviderAccountName";
 import { findCodexAccountsReferencingModelProvider } from "../../utils/codexModelProviderAccountSync";
+import { providerModelDefaultsToVisionInput } from "../../utils/codexModelProviderVision";
 import { CodexModelProviderManagerView } from "./CodexModelProviderManagerView";
 
 
@@ -148,6 +149,10 @@ interface CodexModelProviderManagerProps {
   resolveLaunchPreviewActions?: (
     account: CodexAccount,
   ) => CodexLaunchPreviewAction[];
+  /** 启动预览里的 OAuth 绑定状态（仅 API Key 账号展示）。 */
+  resolveBoundOAuthAccount?: (account: CodexAccount) => CodexAccount | null;
+  onBindOAuth?: (account: CodexAccount) => void;
+  onReauthorizeOAuth?: (account: CodexAccount) => void;
 }
 
 function maskApiKey(value: string): string {
@@ -599,6 +604,9 @@ export function useCodexModelProviderManagerController({
   onProvidersChanged,
   resolveLaunchPreviewSummary,
   resolveLaunchPreviewActions,
+  resolveBoundOAuthAccount: resolveAccountBoundOAuthAccount,
+  onBindOAuth,
+  onReauthorizeOAuth,
 }: CodexModelProviderManagerProps) {
   const { t } = useTranslation();
   const updateAccountInstanceAccess = useCodexAccountStore(
@@ -2265,7 +2273,14 @@ export function useCodexModelProviderManagerController({
       if (!key) continue;
       // 未操作过的关闭状态不写，交给供应商级默认值决定；已保存过的显式值原样保留。
       const baseline = form.visionModelStatesBaseline[key];
-      if (baseline === undefined && !supportsVision) continue;
+      // gpt-5.5+ 默认支持识图，显式关闭必须落盘，否则会被默认值覆盖。
+      if (
+        baseline === undefined &&
+        !supportsVision &&
+        !providerModelDefaultsToVisionInput(key)
+      ) {
+        continue;
+      }
       modelCapabilities[key] = { supportsVision };
     }
     const visionRoutingModel = form.visionRoutingModel.trim();
@@ -3547,6 +3562,24 @@ export function useCodexModelProviderManagerController({
       getInstanceName(resolveInstanceById(providerLaunchPreview.instanceId))
     : t("codex.modelProviders.instance.default", "默认实例");
 
+  /** 启动预览里的 OAuth 绑定状态（仅 API Key 账号展示）。 */
+  const providerLaunchOAuthBinding = useMemo(() => {
+    if (!providerLaunchAccount || !isCodexApiKeyAccount(providerLaunchAccount)) {
+      return null;
+    }
+    const boundAccount =
+      resolveAccountBoundOAuthAccount?.(providerLaunchAccount) ?? null;
+    return {
+      boundAccountLabel: boundAccount
+        ? maskAccountText(
+            boundAccount.account_name || boundAccount.email || boundAccount.id,
+          )
+        : null,
+      needsReauth: Boolean(boundAccount?.requires_reauth),
+      reauthDescription: boundAccount?.reauth_reason?.trim() || null,
+    };
+  }, [maskAccountText, providerLaunchAccount, resolveAccountBoundOAuthAccount]);
+
   // 与账号总览共用同一个 Codex 启动预览弹框。
   const providerLaunchDialog = providerLaunchPreview && providerLaunchAccount ? (
     <CodexLaunchPreviewModal
@@ -3554,6 +3587,15 @@ export function useCodexModelProviderManagerController({
       accountLabel={providerLaunchAccountLabel}
       summary={resolveLaunchPreviewSummary?.(providerLaunchAccount)}
       actions={resolveLaunchPreviewActions?.(providerLaunchAccount)}
+      oauthBinding={providerLaunchOAuthBinding}
+      onBindOAuth={
+        onBindOAuth ? () => onBindOAuth(providerLaunchAccount) : undefined
+      }
+      onReauthorizeOAuth={
+        providerLaunchOAuthBinding?.needsReauth && onReauthorizeOAuth
+          ? () => onReauthorizeOAuth(providerLaunchAccount)
+          : undefined
+      }
       instanceId={providerLaunchPreview.instanceId}
       instanceLabel={providerLaunchInstanceLabel}
       instanceOptions={launchPreviewInstanceOptions}

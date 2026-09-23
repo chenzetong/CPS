@@ -125,6 +125,12 @@
   color: #15803d;
 }
 
+.codex-api-service-pill.fast {
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+
 .codex-api-service-status.stopped,
 .codex-api-service-message.warning {
   border-color: color-mix(in srgb, var(--warning) 28%, transparent);
@@ -2439,6 +2445,24 @@ html[data-reduced-motion="true"] .codex-api-service-key-advanced-toggle[aria-exp
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-api-service-log-model {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.codex-api-service-log-model-upstream {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

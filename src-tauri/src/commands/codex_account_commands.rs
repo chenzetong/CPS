@@ -952,6 +952,39 @@ pub async fn codex_clear_client_auth_observation(account_id: String) -> Result<b
 }
 
 /// 切换 Codex 账号（包含 token 刷新检查）
+/// 默认实例切换到非 OAuth 账号时，关闭它的混合模型路由并释放对应的实例网关。
+///
+/// 混合路由只在绑定「可直接登录的 OAuth 订阅账号」时有意义，切换账号不应该被它拦住。
+async fn disable_default_model_routing_for_non_oauth_switch() {
+    let routing_enabled = crate::modules::codex_instance::load_default_settings()
+        .ok()
+        .and_then(|settings| settings.model_routing)
+        .is_some_and(|routing| routing.enabled);
+    if !routing_enabled {
+        return;
+    }
+    if let Err(error) = crate::modules::codex_instance::disable_model_routing(
+        crate::modules::codex_instance::CODEX_DEFAULT_INSTANCE_ID,
+    ) {
+        logger::log_warn(&format!(
+            "[Codex切号] 关闭默认实例混合模型路由失败: {}",
+            error
+        ));
+        return;
+    }
+    if let Ok(default_dir) = crate::modules::codex_instance::get_default_codex_home() {
+        if let Err(error) =
+            crate::modules::codex_local_access::release_instance_gateway_for_profile(&default_dir)
+                .await
+        {
+            logger::log_warn(&format!(
+                "[Codex切号] 停止默认实例混合模型路由网关失败: {}",
+                error
+            ));
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn switch_codex_account(
     app: AppHandle,
@@ -989,6 +1022,11 @@ pub async fn switch_codex_account(
     let is_oauth_account = !initial_account.is_api_key_auth()
         && !initial_account.is_agent_identity_auth()
         && !initial_account.is_web_session_auth();
+    if !is_oauth_account {
+        // 默认实例切到普通 API Key / 其他非 OAuth 账号时，混合模型路由必须自动关闭：
+        // 路由的底座账号已经不存在，继续保留会拦住启动，并让后台监控反复尝试恢复网关。
+        disable_default_model_routing_for_non_oauth_switch().await;
+    }
     let access_token_present = !initial_account.tokens.access_token.trim().is_empty();
     let refresh_token_present = codex_account::account_has_refresh_token(&initial_account);
     let access_token_expires_at =
@@ -1677,7 +1715,7 @@ fn apply_codex_switch_auth_projections(account: &CodexAccount, user_config: &con
 }
 
 /// Re-activate current account after import when needed, then project auth side effects.
-async fn reactivate_imported_current_if_needed(imported: &[CodexAccount]) {
+pub(crate) async fn reactivate_imported_current_if_needed(imported: &[CodexAccount]) {
     if let Some(account) = codex_account::reactivate_if_imported_matches_current(imported).await {
         let user_config = config::get_user_config();
         apply_codex_switch_auth_projections(&account, &user_config);
@@ -1687,7 +1725,7 @@ async fn reactivate_imported_current_if_needed(imported: &[CodexAccount]) {
     }
 }
 
-async fn refresh_imported_codex_accounts(
+pub(crate) async fn refresh_imported_codex_accounts(
     app: &AppHandle,
     accounts: Vec<CodexAccount>,
 ) -> Vec<CodexAccount> {
@@ -1750,10 +1788,34 @@ pub async fn import_codex_access_token_account(
         .ok_or_else(|| "Account could not be loaded after import".to_string())
 }
 
+/// 解析「获取本地账号」要读取的 profile 目录。
+///
+/// 未指定实例（默认实例）时读取默认 `CODEX_HOME`；指定多开实例时读取该实例自己的
+/// profile 目录，避免多开场景下只能拿到默认实例的本地账号。
+fn resolve_codex_local_import_dir(instance_id: Option<&str>) -> Result<PathBuf, String> {
+    match instance_id.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(instance_id) => {
+            crate::modules::codex_instance::profile_dir_for_instance(instance_id)
+        }
+        None => Ok(crate::modules::codex_account::get_codex_home()),
+    }
+}
+
 /// 从官方 Codex 本机凭据存储导入账号（auth.json / macOS Keychain）
+///
+/// `instance_id` 为空表示默认实例；传入多开实例 ID 时读取该实例 profile 目录下的凭据。
 #[tauri::command]
-pub async fn import_codex_from_local(app: AppHandle) -> Result<CodexAccount, String> {
-    let account = codex_account::import_from_local()?;
+pub async fn import_codex_from_local(
+    app: AppHandle,
+    instance_id: Option<String>,
+) -> Result<CodexAccount, String> {
+    let base_dir = resolve_codex_local_import_dir(instance_id.as_deref())?;
+    logger::log_info(&format!(
+        "Codex 获取本地账号: instance_id={}, profile_dir={}",
+        instance_id.as_deref().unwrap_or("<default>"),
+        base_dir.display()
+    ));
+    let account = codex_account::import_from_local_at(&base_dir)?;
     reactivate_imported_current_if_needed(std::slice::from_ref(&account)).await;
     let mut accounts = refresh_imported_codex_accounts(&app, vec![account]).await;
     accounts
@@ -2157,6 +2219,30 @@ pub fn add_codex_account_with_api_key(
 #[tauri::command]
 pub fn update_codex_account_name(account_id: String, name: String) -> Result<CodexAccount, String> {
     codex_account::update_account_name(&account_id, name)
+}
+
+/// 通过 Grok 平台账号添加 Codex 供应商账号。
+///
+/// 账号自身不保存上游 API Key：运行态使用绑定的 Grok 平台账号 OAuth 令牌。
+#[tauri::command]
+pub fn add_codex_account_from_grok(
+    grok_account_id: String,
+    api_model_catalog: Option<Vec<String>>,
+    account_name: Option<String>,
+) -> Result<CodexAccount, String> {
+    let grok_id = grok_account_id.trim();
+    if grok_id.is_empty() {
+        return Err("请选择要绑定的 Grok 账号".to_string());
+    }
+    let grok_account = grok_account::load_account(grok_id)
+        .ok_or_else(|| "Grok 账号不存在，请先在 Grok 页面登录".to_string())?;
+    let account = codex_account::upsert_grok_provider_account(
+        &grok_account.id,
+        &grok_account.email,
+        api_model_catalog,
+        account_name,
+    )?;
+    codex_account::load_account(&account.id).ok_or_else(|| "账号保存后无法读取".to_string())
 }
 
 #[tauri::command]

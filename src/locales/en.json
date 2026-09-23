@@ -1,6 +1,9 @@
 {
   "pelican": {
     "results": "Test results",
+    "usageTokens": "{{tokens}} tok",
+    "quotaUsed": "5h used {{percent}}%",
+    "quotaLeft": "5h left {{percent}}%",
     "openBrowser": "Open in browser",
     "error": {
       "stateUnavailable": "Task state unavailable. Try again.",
@@ -83,6 +86,7 @@
     "viewError": "View error"
   },
   "common": {
+    "retry": "Retry",
     "quotaRefreshScheduler": {
       "busy": "The refresh queue is full. Try again shortly.",
       "timeout": "Quota refresh timed out. Please retry.",
@@ -120,6 +124,8 @@
     "windowsOperation": {
       "title": "Windows operation incomplete",
       "accessDeniedDescription": "Windows denied this operation. The target may be running with higher privileges or stored in a protected location.",
+      "storeLaunchBlockedDescription": "Windows rejected every way of launching the Store version of the Codex client (direct launch, PowerShell launch, and package-identity launch), so launching was blocked to avoid opening the wrong account. In most cases the Store version of Codex needs repair or reinstallation (check for updates and reinstall it from the Microsoft Store). You can also use \"Re-detect path and retry\"; if it still fails, switch this instance to CLI launch mode.",
+      "repairPath": "Re-detect path and retry",
       "fileInUseDescription": "The target file is in use by another program. Close the program and try again.",
       "programNotFoundDescription": "Windows could not find the program required for this operation. Check the installation or configured path.",
       "portDeniedDescription": "Windows blocked access to the port. A system policy or another program may be using it.",
@@ -359,7 +365,11 @@
     "deleteTagWarning": "Are you sure you want to delete this tag from all accounts?",
     "expand": "Expand",
     "processing": "Processing...",
-    "selectAll": "Select All"
+    "selectAll": "Select All",
+    "quota": {
+      "weeklyWindow": "Weekly"
+    },
+    "optional": " (optional)"
   },
   "floatingCard": {
     "selectPlatform": "Switch platform",
@@ -491,7 +501,7 @@
   "apiKeyFun": {
     "eyebrow": "Relay",
     "title": "APIKEY.FUN",
-    "description": "The official Cockpit partner relay, providing stable, open, and cost-effective large-model API access. It supports mainstream models such as Claude, OpenAI, and Gemini, and is suitable for unified configuration across Codex, Gemini CLI, Claude Code, and other developer tools. Register through the Cockpit exclusive link to get a permanent top-up discount of up to 5%.",
+    "description": "The official Cockpit partner relay provides stable, open and cost-effective API access to large models. It supports leading models such as Claude, ChatGPT, Grok, Gemini, Zhipu GLM, Kimi and DeepSeek, and is suitable for unified configuration in Codex, Gemini CLI, Claude Code and other developer tools. Registering via the exclusive Cockpit link gives you a permanent discount of up to 5% on top-ups.",
     "register": "Exclusive signup",
     "docs": "Official docs",
     "viewNow": "View now",
@@ -605,10 +615,31 @@
       "addToClaudeDesktop": "Add to Claude",
       "addToClaudeCli": "Add to Claude CLI",
       "codexShort": "Codex",
-      "claudeShort": "Claude"
+      "claudeShort": "Claude",
+      "deployToCodex": "Quick deploy to Codex",
+      "deploying": "Fetching models…",
+      "deploySuccess": "Deployed to Codex: {{count}} models",
+      "deployFailed": "Deployment failed: {{error}}",
+      "useKey": "Use key"
     },
     "prefill": {
       "claudeDesktopReady": "APIKEY.FUN settings are filled in. Confirm to add them to Claude."
+    },
+    "table": {
+      "name": "Name",
+      "usage": "Usage",
+      "status": "Status",
+      "createdAt": "Added",
+      "actions": "Actions",
+      "statusOk": "Available",
+      "statusBad": "Error",
+      "statusUnknown": "Not checked"
+    },
+    "config": {
+      "title": "Use API key",
+      "family": "Group",
+      "platform": "Current system",
+      "unsupportedGroup": "No one-click clients are available for this group yet."
     }
   },
   "platformLayout": {
@@ -811,7 +842,7 @@
         "summary": "Unprefixed models use the current subscription; prefixed models such as cpa/gpt-5.5 are forwarded to a third-party API. Both depend on the local routing service.",
         "rowSummary": "Unprefixed models use the current subscription; prefixed models such as cpa/gpt-5.5 are forwarded to a third-party API. Both depend on the local routing service.",
         "confirmEnableTitle": "Enable third-party API routing?",
-        "confirmEnableMessage": "Codex model requests will be routed through the local Cockpit Tools service. If the service is not running, both subscription and third-party models may be unavailable. Launch at login will be enabled when you save.\n\nEnable routing?",
+        "confirmEnableMessage": "Codex model requests will be routed through the local Cockpit Tools service. If the service is not running, both subscription and third-party models may be unavailable.\n\nEnable routing?",
         "confirmEnableAction": "Enable",
         "confirmDisableTitle": "Disable third-party API routing?",
         "confirmDisableMessage": "After this change takes effect, the local gateway will stop, native subscription access will be restored, and third-party models will be unavailable.\n\nDisable routing?",
@@ -1046,10 +1077,11 @@
       "codexSyncWsl": "Sync Codex to WSL",
       "codexSyncWslDesc": "After switching the default Codex account, also write auth.json and config.toml to the WSL Codex directory.",
       "codexAppUiInjection": "Show API Service quota",
-      "codexAppUiInjectionDesc": "After restarting a Codex instance, show the CPS API Service account count, weekly quota, and 5-hour quota below the composer. Keep CPS running in the background; updates stop when it is fully quit or the network is unavailable.",
+      "codexAppUiInjectionDesc": "After restarting a Codex instance, the quota badge below the composer follows the selected model: DeepSeek shows the account balance, Grok shows its quota, and GPT models show the weekly and 5-hour quota. Keep CPS running in the background; updates stop when it is fully quit or the network is unavailable.",
       "codexAppUiInjectionPoolLabel": "Accounts",
       "codexAppUiInjectionWeeklyLabel": "Week",
       "codexAppUiInjectionFiveHourLabel": "5h",
+      "codexAppUiInjectionMissingLabel": "—",
       "codexWslConfigDir": "WSL Codex Directory",
       "codexWslConfigDirDesc": "Enter the .codex directory inside WSL. \\\\wsl.localhost\\ paths are supported.",
       "codexWslConfigDirPlaceholder": "Example: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -2274,12 +2306,13 @@
     "modelManagement": {
       "title": "Model management",
       "enabled": "Enabled",
-      "disabled": "Follow official",
+      "disabled": "Follow account pool",
       "enable": "Enable model management",
       "disable": "Disable model management",
       "manage": "Manage models",
-      "disabledDescription": "Off by default. When off, models, ordering, the default model, and reasoning levels follow the official catalog.",
+      "disabledDescription": "Default: follow the account pool. Only models the instance or API service pool can serve are listed, and official models older than 5.5 are hidden. Use the button to customize.",
       "enabledDescription": "The configured model catalog is active. You can add or remove models, and the list no longer updates with the official catalog.",
+      "routingManagedHint": "Mixed model routing uses this model catalog only temporarily while the instance runs and restores it after the instance stops; it does not change this switch.",
       "enableConfirmTitle": "Enable model management?",
       "enableConfirmDescription": "After enabling, Codex uses the model catalog configured here. You can add, remove, and adjust models, but the list will no longer update automatically with the official catalog.",
       "enableConfirmAction": "Enable and configure"
@@ -2384,10 +2417,18 @@
     "refreshAllSuccess": "Refresh completed, {{count}} account(s) succeeded",
     "refreshAllPartialFailed": "Refresh completed, {{success}} / {{total}} account(s) succeeded and some failed",
     "launchPreview": {
+      "configLoading": "Loading instance configuration…",
+      "configRefreshing": "Checking instance configuration. Existing details remain available.",
+      "configLoadTimeout": "Loading instance configuration timed out. Please retry.",
+      "configChanged": "Instance configuration changed elsewhere. Reload it before saving or starting.",
       "accessModeTitle": "Start mode",
       "prosLabel": "Pros:",
       "consLabel": "Cons:",
-      "accessModeDescription": "Choose how DeepSeek starts; the modes differ in model switching, OAuth, and image forwarding.",
+      "accessModeDescription": "Choose how this provider starts; the modes differ in model switching, OAuth and image-generation forwarding.",
+      "accessModeApiServiceFixed": "API Service always uses gateway mode; it cannot be changed.",
+      "imageGenApiServiceFixed": "Image-generation forwarding for API Service is managed in API Service → Settings; this row only shows the current state.",
+      "oauthBindingApiServiceHint": "OAuth binding for API Service is managed in API Service → Settings; this row only shows the entry status.",
+      "oauthBindingApiServiceManaged": "Managed by the API Service account pool",
       "accessModeGatewayPros": "1: Switch models inside Codex\n2: Bind OAuth accounts and use OAuth features such as remote compaction and browser control\n3: Configure GPT accounts to forward image generation",
       "accessModeGatewayCons": "1: Requires the instance local gateway, so it is slightly slower than direct",
       "accessModeDirectPros": "1: Skips the gateway and is the fastest option",
@@ -2400,6 +2441,8 @@
       "imageGenSwitchYes": "Yes",
       "imageGenSwitchNo": "No",
       "imageGenTitle": "Enable GPT image generation",
+      "oauthBindingHint": "After binding, launching is identical to a normal account and all OAuth capabilities are available (remote compaction, browser control, plugins, and more); conversations still run on the current API Key provider.",
+      "oauthBindingChange": "Change",
       "title": "Codex Launch Preview",
       "description": "Configure and inspect first; the client changes only after you choose Switch or Start.",
       "notApplied": "Not applied yet",
@@ -2687,6 +2730,8 @@
       "imageGenerationLabel": "image_generation",
       "imageGenerationDesc": "Controls whether chat requests declare the image tool and whether image endpoints are available.",
       "imageGenerationSaveSuccess": "image_generation setting updated",
+      "imageForwardLabel": "Enable GPT image generation",
+      "imageForwardHint": "After enabling, choose GPT accounts: image generation and image editing requests run on the selected accounts and consume their quota, while chat requests keep using the account pool.",
       "imageGenerationMode": {
         "enabled": "Enabled",
         "imagesOnly": "Images Only",
@@ -2709,6 +2754,7 @@
       },
       "statusRunning": "Running",
       "statusStopped": "Stopped",
+      "internalSchedulerLabel": "Internal scheduler",
       "statusDisabled": "Disabled",
       "statusUnconfigured": "Not Configured",
       "emptyMembers": "Add accounts to the API service, then click Start. No extra setup is required.",
@@ -2885,10 +2931,14 @@
           "recover": "Recover",
           "recovering": "Recovering…",
           "recoverAll": "Recover all",
-          "resyncPool": "Resync account pool"
+          "resyncPool": "Resync account pool",
+          "reauthorizeHint": "This account's credentials are no longer valid; sign in again with the official login flow. Resetting the scheduler alone cannot fix it."
         }
       },
       "memberTitle": "Collection Members",
+      "memberPlatformLabel": "Platform",
+      "memberPlatformAll": "All platforms",
+      "memberPlatformGrok": "Grok platform accounts",
       "memberPriorityLabel": "Priority",
       "memberPriorityLowest": "Lowest",
       "memberPriorityNormal": "Normal",
@@ -2943,8 +2993,6 @@
         "restrictFreeToggle": "Limit Free Accounts",
         "sessionAffinityConfirmTitle": "Enable session affinity?",
         "sessionAffinityDescription": "When enabled, the same conversation will try to keep using the same account. If that account is unavailable, routing can still switch accounts; a new account is selected after the expiration time.",
-        "chatApiKeyUnsupported": "Chat Completions unsupported",
-        "deepseekUnsupported": "DeepSeek not supported yet",
         "pendingOauthUnsupported": "Pending auth cannot join",
         "freeNoticeRestricted": "Free accounts are limited. Turn this off to select them.",
         "freeNoticeUnstable": "Free-account proxying can be unstable. Use with caution.",
@@ -3179,6 +3227,9 @@
       "refreshHint": "Click refresh to sync stats for this API key.",
       "dailyStats": "Daily Stats"
     },
+    "grokAdd": {
+      "tab": "Grok Account"
+    },
     "deepSeek": {
       "start": {
         "title": "Start DeepSeek",
@@ -3214,6 +3265,13 @@
       }
     },
     "modelProviders": {
+      "keyModels": {
+        "title": "Key models",
+        "override": "Override",
+        "help": "When off, inherit the provider’s model settings. When on, only this key uses its own catalog and capabilities.",
+        "saved": "Key model settings saved. Restart running clients to apply them.",
+        "inherit": "Inherit provider"
+      },
       "tab": "Model Providers",
       "desc": "Manage model providers and multiple API keys in one place, then reuse them directly when adding Codex API-key accounts.",
       "add": "Add Provider",
@@ -3222,6 +3280,7 @@
       "emptyTitle": "No model providers yet",
       "emptyDesc": "Click \"Add Provider\" in the top right to start.",
       "baseUrl": "Base URL",
+      "customEndpointHint": "Custom endpoint in use: this address is not the official endpoint of \"{{preset}}\". It is treated as a third-party compatible endpoint, so set the protocol and model catalog to match the upstream.",
       "modelCatalog": "Models",
       "modelCatalogEmpty": "No model catalog",
       "gatewayHint": "Third-party providers start through the local gateway for instance isolation and protocol conversion. Official OpenAI providers stay direct.",
@@ -3232,6 +3291,8 @@
       "unnamedKey": "Unnamed Key",
       "createTitle": "Add Model Provider",
       "editTitle": "Edit Model Provider",
+      "copySuffix": "Copy",
+      "duplicate": "Duplicate provider (new copy without key)",
       "existingApiKeys": "Existing API Keys",
       "fields": {
         "name": "Provider Name",
@@ -3280,7 +3341,8 @@
         "responses": "Responses Native",
         "chatCompletions": "Chat Completions",
         "deepseekResponsesHint": "Start DeepSeek to choose gateway or official-direct, then pick Flash or Pro. Gateway lists models in Codex; direct skips the gateway.",
-        "deepseekChatHint": "DeepSeek Chat Completions uses the local gateway bridge for legacy paths. Choose Responses when you need official Codex tool behavior."
+        "deepseekChatHint": "DeepSeek Chat Completions uses the local gateway bridge for legacy paths. Choose Responses when you need official Codex tool behavior.",
+        "deepseekThirdPartyHint": "This address is not an official DeepSeek endpoint, so it is handled as a third-party compatible endpoint; put the real upstream model IDs in the model catalog instead of the official model names."
       },
       "selectSavedProvider": "Saved Providers",
       "selectSavedApiKey": "Saved API Keys",
@@ -3455,6 +3517,9 @@
           "planName": "Plan",
           "remaining": "Remaining",
           "balance": "Balance",
+          "totalBalance": "Total balance",
+          "grantedBalance": "Granted balance",
+          "toppedUpBalance": "Topped-up balance",
           "todayRequests": "Today Requests",
           "todayTokens": "Today Tokens",
           "todayCost": "Today Cost",
@@ -3499,7 +3564,17 @@
       "renameApiKeyPrompt": "Rename API key",
       "renameApiKeySuccess": "API key renamed",
       "renameApiKeyFailed": "Failed to rename API key: {{error}}",
-      "existingApiKeysSearch": "Search existing API keys…"
+      "existingApiKeysSearch": "Search existing API keys…",
+      "copyConfig": "Copy config (no key)",
+      "copyConfigSuccess": "Provider config copied without the API key; paste it when adding a provider.",
+      "copyConfigFailed": "Failed to copy provider config: {{error}}",
+      "importConfig": "Import config from clipboard",
+      "importConfigSuccess": "Provider config imported from the clipboard; enter the API key and save.",
+      "importConfigInvalid": "No provider config found in the clipboard (use Copy config on a provider card).",
+      "importConfigFailed": "Failed to import from clipboard: {{error}}",
+      "importConfigPlaceholder": "Use Copy config on a provider card, then paste the content here",
+      "importConfigAction": "Import config",
+      "importConfigFromClipboard": "Read clipboard"
     },
     "quickSwitch": {
       "action": "Quick Switch Provider",
@@ -3522,8 +3597,41 @@
       "desc": "Import the currently logged-in account from ~/.codex/auth.json",
       "import": "Get Local Account"
     },
+    "tempLogin": {
+      "tab": "Official login",
+      "desc": "Sign-in happens entirely inside the official desktop client: the authorization URL is generated by the official client, and the authorization callback and the token exchange are handled by the official client as well. Cockpit does not take part in the authorization callback — it only reads and imports the credentials after the official client has written them to disk.",
+      "note": "The temporary profile is an empty folder under the app data directory. After the account is read it is deleted together with the client's runtime directory and keychain entry, so the default instance and multi-open instances are untouched.",
+      "start": "Open official client and sign in",
+      "cancel": "Cancel sign-in",
+      "cancelling": "Cancelling the official sign-in…",
+      "waitingHint": "Finish signing in inside the official client. It closes automatically once the credentials are detected (up to 10 minutes).",
+      "cancelled": "Official sign-in cancelled and the temporary profile was removed.",
+      "failed": "Official sign-in failed: {{error}}",
+      "success": "Account imported: {{email}}",
+      "intercept": {
+        "toggle": "Intercept the browser jump and show the authorization URL here",
+        "hint": "When enabled, clicking Continue in the official client no longer opens your browser — it only shows the authorization URL generated by the official client here so you can copy it. After you sign in from any browser, the authorization callback and the token exchange are still handled by the official desktop client; Cockpit does not take part in authorization. When disabled, the official flow runs unchanged."
+      },
+      "authUrl": {
+        "label": "Authorization URL (generated by the official client)",
+        "open": "Open in default browser",
+        "openFailed": "Failed to open the authorization URL: {{error}}",
+        "hint": "The URL comes from the official client and only works in a browser on this machine. Keep the official window open until sign-in finishes.",
+        "unavailable": "Cockpit could not capture the authorization URL this time. The official client opens your browser as usual, so you can sign in there."
+      },
+      "phase": {
+        "prepare": "Prepare temporary profile",
+        "launch": "Open official client",
+        "wait": "Wait for sign-in",
+        "import": "Read credentials",
+        "close": "Close official client",
+        "clean": "Remove temporary profile"
+      }
+    },
     "import": {
       "localDesc": "Import Codex accounts from locally signed-in sessions.",
+      "localInstanceTitle": "Select instance",
+      "localInstanceDesc": "Multiple Codex instances were found. Choose which instance to import the local account from:",
       "importing": "Importing local account...",
       "successMsg": "Import successful: {{email}}"
     },
@@ -3564,6 +3672,7 @@
       "resetCreditGrantedAt": "Granted",
       "resetCreditExpiresAt": "Expires",
       "windowAccountCostHint": "Account billed (estimated from model prices)",
+      "windowEstimatedFullCostHint": "Scaled from current usage: account-billed cost this window would reach at 100%",
       "windowUserCostHint": "User billed",
       "windowWeeks": "{{count}}-week quota",
       "windowDays": "{{count}}-day quota",
@@ -3672,36 +3781,32 @@
     "editTags": "Edit Tags",
     "wakeup": {
       "tab": "Wakeup Tasks",
-      "subtitle": "Schedule Codex wakeup jobs, test official chat, and review execution history.",
+      "subtitle": "Schedule Codex wakeup jobs, test the CLI path, and review execution history.",
       "heroTitle": "Codex Wakeup Tasks",
       "heroSubtitle": "Create time-based wakeup jobs for OAuth Codex accounts, run ad-hoc tests, and inspect every trigger in one place.",
-      "runtimeReady": "Official direct ready",
-      "runtimeMissing": "Official direct unavailable",
-      "runtimeCardTitle": "Execution method",
+      "runtimeReady": "Codex CLI ready",
+      "runtimeMissing": "Codex CLI required",
+      "runtimeCardTitle": "Execution",
       "runtimeUnknownPath": "Path not detected",
-      "officialChatRuntimeTitle": "Official direct",
-      "officialChatRuntimePath": "ChatGPT official Codex chat",
-      "officialChatRuntimeSource": "Official direct",
-      "officialChatRuntimeMessage": "Direct OAuth account chat",
       "runtimeUnchecked": "Recheck to fetch the latest status",
       "runtimeVersion": "Version {{version}}",
-      "installTitle": "Check official direct",
-      "installSubtitle": "Wakeup tasks need access to the ChatGPT official Codex service.",
-      "installFootnote": "Check network, proxy, and account status, then retry.",
-      "runtimeConfigTitle": "Official direct status",
-      "runtimeConfigHint": "Wakeup tasks use the OAuth account to call ChatGPT official Codex chat directly.",
-      "runtimeConfigCodexCliLabel": "Official route",
-      "runtimeConfigCodexCliPlaceholder": "ChatGPT official Codex chat",
-      "runtimeConfigNodeLabel": "Network environment",
-      "runtimeConfigNodePlaceholder": "Use the current system network and proxy",
-      "runtimeConfigApplyHint": "Recheck refreshes the current official connection status.",
+      "installTitle": "Install Codex CLI first",
+      "installSubtitle": "Before testing or running jobs, the app must be able to resolve the `codex` command.",
+      "installFootnote": "Recheck after install. You can also customize the Codex CLI and node paths above.",
+      "runtimeConfigTitle": "Custom runtime paths",
+      "runtimeConfigHint": "Use either an executable path or a directory path. Leave blank to auto-detect from system PATH.",
+      "runtimeConfigCodexCliLabel": "Codex CLI path",
+      "runtimeConfigCodexCliPlaceholder": "e.g. /opt/homebrew/bin/codex",
+      "runtimeConfigNodeLabel": "node path",
+      "runtimeConfigNodePlaceholder": "e.g. /opt/homebrew/bin/node",
+      "runtimeConfigApplyHint": "Click \"Recheck CLI\" to save changes and apply them immediately.",
       "copyCommand": "Copy command",
       "copied": "Copied",
       "addTask": "Add task",
       "testNow": "Test wakeup",
       "enableAll": "Enable all tasks",
       "disableAll": "Disable all tasks",
-      "refreshRuntime": "Recheck",
+      "refreshRuntime": "Recheck CLI",
       "statsEnabledTasks": "Enabled tasks",
       "statsHistory": "History records",
       "statsSuccess": "Successful runs",
@@ -3907,7 +4012,13 @@
         "pickRestoreOne": "Please select at least one session to restore",
         "syncNeedTwo": "At least two instances are required to sync sessions",
         "repairVisibilitySkippedOnly": "No writable session index differences were found; skipped {{count}} invalid or corrupted SQLite session database(s). Codex must regenerate them before their records can be repaired.",
-        "repairVisibilitySkippedWithBase": "{{message}}; skipped {{count}} invalid or corrupted SQLite session database(s). Codex must regenerate them before their records can be repaired."
+        "repairVisibilitySkippedWithBase": "{{message}}; skipped {{count}} invalid or corrupted SQLite session database(s). Codex must regenerate them before their records can be repaired.",
+        "trashSummary": "Moved {{count}} conversations to the trash and deleted them in official Codex",
+        "trashSummaryFallback": "Moved {{count}} conversations to the trash and triggered an official Codex session index rebuild",
+        "trashSummaryRunningHint": "Running instances may need a refresh or restart before the change appears",
+        "trashSummaryFallbackHint": "Official deletion did not finish for {{count}} instances; files were removed directly and Codex will sync after a restart",
+        "trashSummaryRebuildFailedHint": "Official sidebar index rebuild did not finish for {{count}} instances; Codex will reload it after a restart",
+        "trashSummaryEmpty": "The selected conversations are not present in the current instance set, nothing to do"
       },
       "groupCount": "{{count}} sessions",
       "updatedAt": "Updated",
@@ -4095,7 +4206,12 @@
         "subagent": "Subagent",
         "all": "All types"
       },
-      "pickInstancePrompt": "This session exists on multiple instances. Enter instance ID:"
+      "locationPicker": {
+        "title": "Choose instance",
+        "hint": "This session exists on multiple instances. Choose which instance to open the file location in:",
+        "rolloutHint": "This session exists on multiple instances. Choose which instance to open the session file in:",
+        "running": "Running"
+      }
     },
     "sessionUsage": {
       "tab": "Usage",
@@ -4440,7 +4556,8 @@
         "reasoningEffort": "Reasoning",
         "reasoningEffortValue": "Think {{effort}}",
         "serviceTier": "Service tier",
-        "serviceTierValue": "Tier {{tier}}"
+        "serviceTierValue": "Tier {{tier}}",
+        "upstreamModel": "Upstream model"
       }
     },
     "apiKey": {
@@ -4647,6 +4764,33 @@
     "accounts": {
       "showRelayQuota": "Show relay quota",
       "hideRelayQuota": "Hide relay quota"
+    },
+    "instanceGateways": {
+      "entry": "Instance gateways",
+      "entryCount": "Instance gateways {{count}}",
+      "issueCount": "{{count}} abnormal",
+      "title": "Instance gateways",
+      "subtitle": "Local gateways started with Codex instances",
+      "summary": "{{total}} total · {{running}} running · {{issues}} abnormal",
+      "empty": "No instance-level gateways",
+      "emptyHint": "They appear automatically after binding a Chat-protocol API key account or enabling mixed model routing.",
+      "kindProviderGateway": "Provider gateway",
+      "kindMixedModel": "Mixed model routing",
+      "kindBoundOauth": "OAuth local gateway",
+      "statusUnreachable": "Started but unreachable",
+      "statusPortConflict": "Port in use",
+      "statusNotStarted": "Not started",
+      "fieldAccount": "Account",
+      "fieldAddress": "Local address",
+      "fieldProtocol": "Protocol",
+      "fieldModels": "Upstream models",
+      "loadFailed": "Failed to load instance gateways",
+      "stop": "Stop",
+      "restart": "Restart",
+      "stopConfirmTitle": "Stop this instance gateway?",
+      "stopConfirmDescription": "Stopping a mixed model routing gateway also turns off that instance's mixed model routing (channel configuration is kept); other gateways can be started again with Restart.",
+      "stopFailed": "Failed to stop the gateway: {{error}}",
+      "restartFailed": "Failed to start the gateway: {{error}}"
     }
   },
   "codebuddy": {
@@ -4747,13 +4891,7 @@
     "oauthSuccessCloseNowLabel": "Close WebView",
     "oauthSuccessCloseLaterLabel": "Later",
     "oauthSuccessCloseNowStatus": "✅ Account added. Closing window...",
-    "oauthSuccessCloseLaterStatus": "✅ Account added. This WebView stays open.",
-    "sessions": {
-      "title": "Local session files",
-      "desc": "Scan local CodeBuddy data paths for session JSON/JSONL files and open their location.",
-      "empty": "No session files found",
-      "open": "Open location"
-    }
+    "oauthSuccessCloseLaterStatus": "✅ Account added. This WebView stays open."
   },
   "githubCopilot": {
     "title": "GitHub Copilot Account",

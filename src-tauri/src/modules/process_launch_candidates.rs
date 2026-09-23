@@ -376,8 +376,33 @@ fn spawn_command_with_trace(cmd: &mut Command) -> std::io::Result<Child> {
     result
 }
 
+#[cfg(any(test, target_os = "windows"))]
+fn windows_powershell_executable_candidates(system_root: Option<&str>) -> Vec<PathBuf> {
+    // Appx/StartApps 探测依赖 Windows PowerShell 模块，因此绝对路径优先于 pwsh。
+    let mut candidates = vec![PathBuf::from("powershell.exe")];
+    let system_root = system_root
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(r"C:\Windows");
+    let system_root = system_root.trim_end_matches(['\\', '/']);
+    candidates.push(PathBuf::from(format!(
+        r"{}\System32\WindowsPowerShell\v1.0\powershell.exe",
+        system_root
+    )));
+    candidates.push(PathBuf::from("pwsh.exe"));
+    candidates
+}
+
 #[cfg(target_os = "windows")]
-fn build_powershell_command(args: &[&str]) -> Command {
+fn windows_powershell_executable_candidates_for_host() -> Vec<PathBuf> {
+    let system_root = std::env::var("SystemRoot")
+        .ok()
+        .or_else(|| std::env::var("windir").ok());
+    windows_powershell_executable_candidates(system_root.as_deref())
+}
+
+#[cfg(target_os = "windows")]
+fn build_powershell_command(executable: &Path, args: &[&str]) -> Command {
     use std::os::windows::process::CommandExt;
 
     let mut final_args: Vec<String> = vec![
@@ -412,24 +437,45 @@ fn build_powershell_command(args: &[&str]) -> Command {
         index += 1;
     }
 
-    let mut command = Command::new("powershell");
+    let mut command = Command::new(executable);
     command.creation_flags(CREATE_NO_WINDOW).args(final_args);
     command
 }
 
 #[cfg(target_os = "windows")]
 fn powershell_output(args: &[&str]) -> std::io::Result<std::process::Output> {
-    let spawn_guard = crate::modules::app_lifecycle::acquire_process_spawn_guard("PowerShell")?;
-    let mut command = build_powershell_command(args);
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let preview = format_command_preview(&command);
-    log_command_trace_exec(&preview);
-    let start = Instant::now();
-    let child = command.spawn();
-    drop(spawn_guard);
-    let result = child.and_then(Child::wait_with_output);
-    log_command_trace_result(&preview, &result, start.elapsed());
-    result
+    let mut last_error = None;
+    for executable in windows_powershell_executable_candidates_for_host() {
+        let spawn_guard = crate::modules::app_lifecycle::acquire_process_spawn_guard("PowerShell")?;
+        let mut command = build_powershell_command(&executable, args);
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let preview = format_command_preview(&command);
+        log_command_trace_exec(&preview);
+        let start = Instant::now();
+        match command.spawn() {
+            Ok(child) => {
+                drop(spawn_guard);
+                let result = child.wait_with_output();
+                log_command_trace_result(&preview, &result, start.elapsed());
+                return result;
+            }
+            Err(error) => {
+                drop(spawn_guard);
+                crate::modules::logger::log_warn(&format!(
+                    "[PowerShell] 启动候选失败，尝试下一个: exe={} error={}",
+                    executable.display(),
+                    error
+                ));
+                last_error = Some(error);
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "未找到可用的 PowerShell（powershell.exe / pwsh.exe）",
+        )
+    }))
 }
 
 #[cfg(target_os = "windows")]
@@ -439,27 +485,47 @@ fn powershell_output_with_timeout(
 ) -> std::io::Result<std::process::Output> {
     use std::io::{Error, ErrorKind, Read};
 
-    let spawn_guard = crate::modules::app_lifecycle::acquire_process_spawn_guard("PowerShell")?;
-    let mut command = build_powershell_command(args);
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let preview = format_command_preview(&command);
-    log_command_trace_exec(&preview);
-    let child = command.spawn();
-    drop(spawn_guard);
-    let mut child = match child {
-        Ok(child) => child,
-        Err(err) => {
-            if command_trace_enabled() {
-                crate::modules::logger::log_warn(&format!(
-                    "[CmdTrace] SPAWN_ERROR elapsed=0ms cmd={} err={}",
-                    preview, err
-                ));
+    let mut last_error = None;
+    let (mut child, preview) = 'spawn: {
+        for executable in windows_powershell_executable_candidates_for_host() {
+            let spawn_guard =
+                crate::modules::app_lifecycle::acquire_process_spawn_guard("PowerShell")?;
+            let mut command = build_powershell_command(&executable, args);
+            command
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            let preview = format_command_preview(&command);
+            log_command_trace_exec(&preview);
+            match command.spawn() {
+                Ok(child) => {
+                    drop(spawn_guard);
+                    break 'spawn (child, preview);
+                }
+                Err(error) => {
+                    drop(spawn_guard);
+                    crate::modules::logger::log_warn(&format!(
+                        "[PowerShell] 启动候选失败，尝试下一个: exe={} error={}",
+                        executable.display(),
+                        error
+                    ));
+                    last_error = Some(error);
+                }
             }
-            return Err(err);
         }
+        let error = last_error.unwrap_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "未找到可用的 PowerShell（powershell.exe / pwsh.exe）",
+            )
+        });
+        if command_trace_enabled() {
+            crate::modules::logger::log_warn(&format!(
+                "[CmdTrace] SPAWN_ERROR elapsed=0ms err={}",
+                error
+            ));
+        }
+        return Err(error);
     };
     let start = Instant::now();
 
@@ -936,14 +1002,17 @@ fn push_app_launch_candidate(
         return;
     }
 
-    let normalized_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let target = normalized_path.to_string_lossy().to_string();
-    let dedupe_key = target.to_lowercase();
+    // canonicalize 只用于去重：它会加上 \\?\ 前缀并把 junction 解析成真实卷路径
+    // （C:\Program Files\WindowsApps\... → \\?\E:\WindowsApps\...），
+    // 不能拿它的结果去做展示或写回配置。
+    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let target = normalize_windows_user_facing_path(&path.to_string_lossy());
+    let dedupe_key = canonical_path.to_string_lossy().to_lowercase();
     if !seen.insert(dedupe_key) {
         return;
     }
 
-    let file_name = normalized_path
+    let file_name = canonical_path
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("");

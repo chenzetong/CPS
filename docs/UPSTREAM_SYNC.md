@@ -4,7 +4,7 @@ CPS 是 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) �
 
 ## 版本策略
 
-- CPS 的发行版本号与当时合入的上游 `package.json` 版本保持一致。
+- 常规同步的 CPS 发行版本号与当时合入的上游 `package.json` 版本保持一致；CPS 自身的紧急修复可使用独立补丁版本（如更新公钥修复版 v1.3.61）。
 - CPS 不在同一上游版本上追加新的 SemVer 后缀；对应 Release 标题使用 `CPS vX.Y.Z`。
 - 上游尚未提升版本号的普通提交可以合入 `main`，但不会覆盖已有同版本标签或重复发布 Release。
 
@@ -13,6 +13,7 @@ CPS 是 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) �
 `.github/workflows/sync-upstream.yml` 每 6 小时运行一次，也支持手动触发：
 
 1. 以 `CPS/main` 为基础，无标签抓取 `jlcodes99/cockpit-tools:main`。
+   若上游最新提交已包含在 CPS 历史中，则直接结束，不改写版本号、不推送或重新调度 Release。失败的发布通过 Release workflow 的恢复流程处理。
 2. 使用正常 Git merge 保留双方历史，不重写 CPS 提交。
 3. 将 `package.json`、`package-lock.json`、Tauri 和 Cargo 的应用版本统一为上游版本。
 4. 运行版本脚本测试、敏感内容扫描、TypeScript、locale、SSH 事务测试和 `cargo check --locked`。

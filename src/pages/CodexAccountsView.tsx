@@ -8,7 +8,9 @@ import { CodexSessionManager } from "../components/codex/CodexSessionManager";
 import { CodexCliLaunchDialog } from "../components/codex/CodexCliLaunchDialog";
 import { CodexWakeupContent } from "../components/codex/CodexWakeupContent";
 import { CodexModelProviderManager } from "../components/codex/CodexModelProviderManager";
+import { isCodexApiKeyAccount, type CodexAccount } from "../types/codex";
 import type { useCodexAccountsPageController } from "./CodexAccountsPage";
+import { CodexOAuthBindingModal } from "./CodexOAuthBindingModal";
 import { CodexAccountsOverviewPanel } from "./CodexAccountsOverviewPanel";
 
 
@@ -39,6 +41,7 @@ export function CodexAccountsView(props: CodexAccountsViewProps) {
     batchImportSelectedSelectableCount,
     batchImportTagsInput,
     batchImportVisibleItems,
+    boundLocalAccessOAuthAccount,
     buildAccountLaunchPreviewActions,
     buildAccountLaunchPreviewSummary,
     buildLocalAccessLaunchPreviewActions,
@@ -76,8 +79,12 @@ export function CodexAccountsView(props: CodexAccountsViewProps) {
     localAccessLaunchPreviewOpen,
     localAccessSaving,
     maskAccountText,
+    openCodexAddModal,
+    openLocalAccessOAuthBindingModal,
+    openOAuthBindingModal,
     overviewLayoutMode,
     prepareCodexCliLaunch,
+    resolveBoundOAuthAccount,
     renderApiKeyUsageDetailModal,
     renderCockpitApiServicePanel,
     renderQuotaErrorDetailModal,
@@ -86,10 +93,10 @@ export function CodexAccountsView(props: CodexAccountsViewProps) {
     selectReadyBatchImportAccounts,
     setActiveTab,
     setBatchImportOpen,
-    setBatchImportTagsInput,
-    setLaunchPreviewAccount,
-    setLaunchPreviewInstanceId,
-    setLocalAccessLaunchPreviewOpen,
+     setBatchImportTagsInput,
+     setLaunchPreviewAccount,
+     handleLaunchPreviewInstanceChange,
+     setLocalAccessLaunchPreviewOpen,
     setManagedProviders,
     setSelectedTerminal,
     setWakeupPresetManagerSignal,
@@ -101,6 +108,61 @@ export function CodexAccountsView(props: CodexAccountsViewProps) {
     updateCodexCliWorkingDir,
     wakeupPresetManagerSignal,
   } = props;
+
+  /** 启动预览里的 OAuth 绑定信息（仅 API Key 账号展示）。 */
+  const launchPreviewOAuthBindingAccount =
+    activeLaunchPreviewAccount && isCodexApiKeyAccount(activeLaunchPreviewAccount)
+      ? resolveBoundOAuthAccount(activeLaunchPreviewAccount)
+      : null;
+  const launchPreviewOAuthBinding =
+    activeLaunchPreviewAccount && isCodexApiKeyAccount(activeLaunchPreviewAccount)
+      ? {
+          boundAccountLabel: launchPreviewOAuthBindingAccount
+            ? maskAccountText(
+                launchPreviewOAuthBindingAccount.account_name ||
+                  launchPreviewOAuthBindingAccount.email ||
+                  launchPreviewOAuthBindingAccount.id,
+              )
+            : null,
+          needsReauth: Boolean(
+            launchPreviewOAuthBindingAccount?.requires_reauth,
+          ),
+          reauthDescription:
+            launchPreviewOAuthBindingAccount?.reauth_reason?.trim() || null,
+        }
+      : null;
+
+  /** API 服务启动预览的 OAuth 绑定信息；与卡片里的绑定状态共用同一数据源。 */
+  const localAccessLaunchPreviewOAuthBindingAccount =
+    boundLocalAccessOAuthAccount ?? null;
+  const localAccessLaunchPreviewOAuthBinding = {
+    boundAccountLabel: localAccessLaunchPreviewOAuthBindingAccount
+      ? maskAccountText(
+          localAccessLaunchPreviewOAuthBindingAccount.account_name ||
+            localAccessLaunchPreviewOAuthBindingAccount.email ||
+            localAccessLaunchPreviewOAuthBindingAccount.id,
+        )
+      : null,
+    needsReauth: Boolean(
+      localAccessLaunchPreviewOAuthBindingAccount?.requires_reauth,
+    ),
+    reauthDescription:
+      localAccessLaunchPreviewOAuthBindingAccount?.reauth_reason?.trim() || null,
+  };
+
+  /** 打开账号级 OAuth 绑定弹框；弹框已提升到视图层，任意页签都能显示。 */
+  const handlePreviewBindOAuth = (account: CodexAccount) => {
+    openOAuthBindingModal(account);
+  };
+
+  /** 绑定的 OAuth 账号需要重新授权时，沿用账号卡片的重新授权入口。 */
+  const handlePreviewReauthorizeOAuth = (account: CodexAccount) => {
+    const boundAccount = resolveBoundOAuthAccount(account);
+    if (boundAccount) {
+      openCodexAddModal("oauth", boundAccount);
+    }
+  };
+
   return (
     <div
       className={`codex-accounts-page codex-accounts-page--${overviewLayoutMode}`}
@@ -812,10 +874,17 @@ export function CodexAccountsView(props: CodexAccountsViewProps) {
           )}
           summary={buildAccountLaunchPreviewSummary(activeLaunchPreviewAccount)}
           actions={buildAccountLaunchPreviewActions(activeLaunchPreviewAccount)}
+          oauthBinding={launchPreviewOAuthBinding}
+          onBindOAuth={() => handlePreviewBindOAuth(activeLaunchPreviewAccount)}
+          onReauthorizeOAuth={
+            launchPreviewOAuthBinding?.needsReauth
+              ? () => handlePreviewReauthorizeOAuth(activeLaunchPreviewAccount)
+              : undefined
+          }
           instanceId={launchPreviewInstanceId}
           instanceLabel={launchPreviewInstanceLabel}
           instanceOptions={launchPreviewInstanceOptions}
-          onInstanceChange={setLaunchPreviewInstanceId}
+          onInstanceChange={handleLaunchPreviewInstanceChange}
           onClose={() => setLaunchPreviewAccount(null)}
           onExecute={handleExecuteLaunchPreview}
         />
@@ -829,12 +898,26 @@ export function CodexAccountsView(props: CodexAccountsViewProps) {
           instanceId={launchPreviewInstanceId}
           instanceLabel={launchPreviewInstanceLabel}
           instanceOptions={launchPreviewInstanceOptions}
-          onInstanceChange={setLaunchPreviewInstanceId}
+          onInstanceChange={handleLaunchPreviewInstanceChange}
           mode="apiService"
+          oauthBinding={localAccessLaunchPreviewOAuthBinding}
+          onBindOAuth={() => openLocalAccessOAuthBindingModal()}
+          onReauthorizeOAuth={
+            localAccessLaunchPreviewOAuthBindingAccount?.requires_reauth
+              ? () =>
+                  openCodexAddModal(
+                    "oauth",
+                    localAccessLaunchPreviewOAuthBindingAccount,
+                  )
+              : undefined
+          }
           onClose={() => setLocalAccessLaunchPreviewOpen(false)}
           onExecute={handleExecuteLocalAccessLaunchPreview}
         />
       )}
+
+      {/* 账号级 OAuth 绑定弹框放在启动预览之后，保证从预览里打开时显示在最上层。 */}
+      <CodexOAuthBindingModal {...props} />
 
       {activeTab === "instances" && (
         <CodexInstancesContent
@@ -866,6 +949,9 @@ export function CodexAccountsView(props: CodexAccountsViewProps) {
           }}
           resolveLaunchPreviewSummary={buildAccountLaunchPreviewSummary}
           resolveLaunchPreviewActions={buildAccountLaunchPreviewActions}
+          resolveBoundOAuthAccount={resolveBoundOAuthAccount}
+          onBindOAuth={handlePreviewBindOAuth}
+          onReauthorizeOAuth={handlePreviewReauthorizeOAuth}
         />
       )}
 

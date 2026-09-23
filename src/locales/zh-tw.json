@@ -1,6 +1,9 @@
 {
   "pelican": {
     "results": "測試結果",
+    "usageTokens": "{{tokens}} Token",
+    "quotaUsed": "5h 消耗 {{percent}}%",
+    "quotaLeft": "5h 剩餘 {{percent}}%",
     "openBrowser": "瀏覽器開啟",
     "error": {
       "stateUnavailable": "工作狀態無法取得，請重試",
@@ -83,6 +86,7 @@
     "viewError": "查看錯誤"
   },
   "common": {
+    "retry": "重試",
     "quotaRefreshScheduler": {
       "busy": "重新整理佇列忙碌，請稍後再試。",
       "timeout": "額度重新整理等候或執行逾時，請重試。",
@@ -120,6 +124,8 @@
     "windowsOperation": {
       "title": "Windows 操作尚未完成",
       "accessDeniedDescription": "Windows 拒絕了這次操作。目標程式可能以較高權限執行，或位於受保護的位置。",
+      "storeLaunchBlockedDescription": "Windows 無法執行目前設定的 Codex 用戶端：商店版應用程式目錄可能已被更新替換，或該目錄已不允許執行。為免開啟錯誤的帳號，已阻止直接啟動。可「重新偵測路徑並重試」；仍失敗時請將此執行個體的啟動方式改為 CLI。",
+      "repairPath": "重新偵測路徑並重試",
       "fileInUseDescription": "目標檔案正由其他程式使用。請關閉占用程式後再試一次。",
       "programNotFoundDescription": "Windows 找不到完成操作所需的程式。請檢查安裝狀態或設定路徑。",
       "portDeniedDescription": "Windows 阻擋了連接埠存取。連接埠可能被系統原則或其他程式占用。",
@@ -359,7 +365,11 @@
     "deleteTagWarning": "確定要從所有帳號刪除此標籤嗎？",
     "expand": "展開",
     "processing": "處理中...",
-    "selectAll": "全選"
+    "selectAll": "全選",
+    "quota": {
+      "weeklyWindow": "週"
+    },
+    "optional": "（可選）"
   },
   "nav": {
     "overview": "Antigravity IDE",
@@ -607,7 +617,7 @@
         "summary": "普通模型使用目前訂閱；帶前綴模型（如 cpa/gpt-5.5）轉發到第三方 API。兩者皆依賴本機分流服務。",
         "rowSummary": "普通模型使用目前訂閱；帶前綴模型（如 cpa/gpt-5.5）轉發到第三方 API。兩者皆依賴本機分流服務。",
         "confirmEnableTitle": "開啟第三方 API 路由？",
-        "confirmEnableMessage": "開啟後，Codex 的模型請求將透過 Cockpit Tools 本地服務分流。服務未運行時，官方訂閱與第三方模型皆可能無法使用。儲存時將預設啟用開機自啟。\n\n確認開啟嗎？",
+        "confirmEnableMessage": "開啟後，Codex 的模型請求將透過 Cockpit Tools 本地服務分流。服務未運行時，官方訂閱與第三方模型皆可能無法使用。\n\n確認開啟嗎？",
         "confirmEnableAction": "確認開啟",
         "confirmDisableTitle": "關閉第三方 API 路由？",
         "confirmDisableMessage": "關閉並生效後將停止本機閘道、恢復官方原生直連，所有第三方模型將不可用。\n\n確認關閉嗎？",
@@ -834,10 +844,11 @@
       "codexSyncWsl": "同步 Codex 到 WSL",
       "codexSyncWslDesc": "切換預設 Codex 帳號後，也會把 auth.json 和 config.toml 寫入 WSL 的 Codex 設定目錄。",
       "codexAppUiInjection": "顯示 API 服務額度",
-      "codexAppUiInjectionDesc": "重新啟動 Codex 實例後，在輸入框下方顯示 CPS API 服務的帳號數、週額度和 5 小時額度。需保持 CPS 在背景執行；完全結束或網路無法使用時，額度不會繼續更新。",
+      "codexAppUiInjectionDesc": "重新啟動 Codex 實例後，輸入框下方的額度徽章會跟隨目前選用的模型：DeepSeek 顯示帳號餘額、Grok 顯示 Grok 額度、GPT 顯示週額度和 5 小時額度。需保持 CPS 在背景執行；完全結束或網路無法使用時，額度不會繼續更新。",
       "codexAppUiInjectionPoolLabel": "帳號",
       "codexAppUiInjectionWeeklyLabel": "週",
       "codexAppUiInjectionFiveHourLabel": "5 小時",
+      "codexAppUiInjectionMissingLabel": "—",
       "codexWslConfigDir": "WSL Codex 目錄",
       "codexWslConfigDirDesc": "填入 WSL 內的 .codex 目錄，支援 \\\\wsl.localhost\\ 路徑。",
       "codexWslConfigDirPlaceholder": "例如：\\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -2081,6 +2092,7 @@
       "manage": "管理模型",
       "disabledDescription": "預設關閉；關閉時模型、排序、預設模型與推理強度皆跟隨官方目錄。",
       "enabledDescription": "目前以設定的模型目錄為準，可新增或移除模型，不再自動跟隨官方目錄。",
+      "routingManagedHint": "混合模型路由只在執行個體時暫時使用這份模型目錄，停止後自動還原；不會更動這裡的開關狀態。",
       "enableConfirmTitle": "啟用模型管理？",
       "enableConfirmDescription": "啟用後，Codex 將以這裡設定的模型目錄為準。你可以新增、刪除及調整模型，但清單不會再自動跟隨官方變更。",
       "enableConfirmAction": "啟用並設定"
@@ -2185,10 +2197,18 @@
     "refreshAllSuccess": "重新整理完成，成功 {{count}} 個帳號",
     "refreshAllPartialFailed": "重新整理完成，成功 {{success}} / {{total}} 個帳號，部分失敗",
     "launchPreview": {
+      "configLoading": "正在讀取執行個體設定…",
+      "configRefreshing": "正在核對執行個體設定，現有內容仍可檢視。",
+      "configLoadTimeout": "讀取執行個體設定逾時，請重試。",
+      "configChanged": "執行個體設定已在其他位置變更。請重新載入後再儲存或啟動。",
       "accessModeTitle": "啟動方式",
       "prosLabel": "優點：",
       "consLabel": "缺點：",
-      "accessModeDescription": "選擇 DeepSeek 的啟動方式；不同方式在模型切換、OAuth 與生圖轉發上不同。",
+      "accessModeDescription": "選擇該供應商的啟動方式；不同方式在模型切換、OAuth 與生圖轉發上不同。",
+      "accessModeApiServiceFixed": "API 服務固定使用閘道模式，不可切換。",
+      "imageGenApiServiceFixed": "API 服務的生圖轉發在「API 服務 → 設定」裡統一管理，這裡只顯示目前狀態。",
+      "oauthBindingApiServiceHint": "API 服務的 OAuth 綁定在「API 服務 → 設定」裡統一管理，這裡只顯示入口狀態。",
+      "oauthBindingApiServiceManaged": "由 API 服務帳號池管理",
       "accessModeGatewayPros": "1：支援在 codex 內切換模型\n2：支援綁定 OAuth 帳號，使用 OAuth 的功能，如遠端壓縮、控制瀏覽器等\n3：支援設定 GPT 帳號轉發生圖",
       "accessModeGatewayCons": "1：需要實例本地閘道，速度略低於直連",
       "accessModeDirectPros": "1：不經閘道，速度最快",
@@ -2201,6 +2221,8 @@
       "imageGenSwitchYes": "是",
       "imageGenSwitchNo": "否",
       "imageGenTitle": "啟用 GPT 生圖",
+      "oauthBindingHint": "綁定後啟動與一般帳號沒有任何差異，可使用 OAuth 的全部能力（遠端壓縮，瀏覽器操作，各類外掛等）；對話仍由目前的 API Key 供應商處理。",
+      "oauthBindingChange": "更換",
       "title": "Codex 啟動預覽",
       "description": "先設定與檢查；只有點擊切換或啟動後才會修改客戶端狀態。",
       "notApplied": "尚未套用",
@@ -2349,6 +2371,7 @@
       "apiKey": "金鑰",
       "statusRunning": "執行中",
       "statusStopped": "未執行",
+      "internalSchedulerLabel": "內部排程",
       "statusDisabled": "已停用",
       "emptyMembers": "目前集合沒有帳號",
       "footerHint": "監聽範圍：{{scope}}",
@@ -2379,8 +2402,6 @@
         "restrictFreeToggle": "限制 Free 帳號使用",
         "sessionAffinityConfirmTitle": "開啟會話親和？",
         "sessionAffinityDescription": "開啟後，同一個會話會盡量持續使用同一個帳號進行對話；帳號不可用時仍會依調度策略切換，超過過期時間後會重新選擇帳號。",
-        "chatApiKeyUnsupported": "Chat Completions 不支援加入",
-        "deepseekUnsupported": "DeepSeek 暫不支援加入",
         "pendingOauthUnsupported": "待授權不可加入",
         "freeNoticeRestricted": "已限制 Free 帳號，關閉後才可勾選。",
         "freeNoticeUnstable": "Free 帳號反代可能不穩定，請謹慎使用。",
@@ -2432,6 +2453,9 @@
       "summaryMeta": "{{count}} 個帳號 · {{scope}}",
       "summaryMetaUnconfigured": "未設定 · {{scope}}",
       "memberTitle": "集合成員",
+      "memberPlatformLabel": "平台",
+      "memberPlatformAll": "全部平台",
+      "memberPlatformGrok": "Grok 平台帳號",
       "imagePolicy": {
         "label": "生圖策略",
         "inherit": "生圖：自動",
@@ -2616,6 +2640,8 @@
       "requestLogSuccess": "成功",
       "requestLogFailed": "失敗",
       "requestLogTokens": "{{value}} 個 Tokens",
+      "imageForwardLabel": "啟用 GPT 生圖",
+      "imageForwardHint": "勾選後選擇 GPT 帳號：生圖與圖片編輯請求交給所選帳號執行並消耗其額度，對話請求仍依帳號池調度。",
       "imageGenerationMode": {
         "enabled": "啟用",
         "imagesOnly": "僅圖片",
@@ -2685,7 +2711,8 @@
           "recover": "恢復",
           "recovering": "恢復中…",
           "recoverAll": "全部恢復",
-          "resyncPool": "重新同步帳號池"
+          "resyncPool": "重新同步帳號池",
+          "reauthorizeHint": "帳號憑證已失效，需要重新走官方登入；僅恢復排程狀態無法修復。"
         }
       },
       "testChatModel": "模型",
@@ -2835,8 +2862,41 @@
       "desc": "從 ~/.codex/auth.json 匯入目前已登入的帳號",
       "import": "取得本機帳號"
     },
+    "tempLogin": {
+      "tab": "官方登入",
+      "desc": "登入全程在官方桌面用戶端內完成：授權位址由官方用戶端產生，授權回呼與 token 交換也都由官方用戶端處理。Cockpit 不參與授權回呼，只在官方將登入憑證寫入磁碟後讀取並匯入。",
+      "note": "暫存設定建立於應用資料目錄下的獨立空目錄中，帳號讀取完成後會連同官方用戶端執行目錄與鑰匙圈項目一併刪除，預設實例與多開實例都不受影響。",
+      "start": "開啟官方用戶端並登入",
+      "cancel": "取消登入",
+      "cancelling": "正在取消官方登入…",
+      "waitingHint": "請在官方用戶端完成登入，讀取到登入資訊後會自動關閉用戶端（最長等待 10 分鐘）。",
+      "cancelled": "已取消官方登入，暫存設定已清理。",
+      "failed": "官方登入失敗：{{error}}",
+      "success": "已取得帳號：{{email}}",
+      "intercept": {
+        "toggle": "攔截瀏覽器跳轉，直接顯示授權地址",
+        "hint": "開啟後，在官方用戶端點「繼續登入」不會再開啟瀏覽器，只把官方產生的授權位址顯示在這裡供複製；複製到任意瀏覽器登入後，授權回呼與 token 交換仍由官方桌面用戶端完成，Cockpit 不參與授權。關閉後完全走官方原生流程。"
+      },
+      "authUrl": {
+        "label": "授權地址（官方產生）",
+        "open": "用預設瀏覽器開啟",
+        "openFailed": "開啟授權地址失敗：{{error}}",
+        "hint": "地址由官方客戶端產生，只能在本機瀏覽器開啟；請在官方視窗保持開啟的情況下完成登入。",
+        "unavailable": "本次未能截取官方授權地址，官方客戶端會照常開啟瀏覽器，可直接在那裡完成登入。"
+      },
+      "phase": {
+        "prepare": "準備暫存設定",
+        "launch": "開啟官方用戶端",
+        "wait": "等待登入完成",
+        "import": "讀取登入資訊",
+        "close": "關閉官方用戶端",
+        "clean": "清理暫存設定"
+      }
+    },
     "import": {
       "localDesc": "從本機已登入的會話匯入 Codex 帳號。",
+      "localInstanceTitle": "選擇實例",
+      "localInstanceDesc": "偵測到多個 Codex 實例，請選擇要從哪個實例取得本機帳號：",
       "importing": "正在匯入本地帳號...",
       "successMsg": "匯入成功: {{email}}"
     },
@@ -2877,6 +2937,7 @@
       "resetCreditGrantedAt": "發放",
       "resetCreditExpiresAt": "到期",
       "windowAccountCostHint": "帳號計費（依模型價格估算）",
+      "windowEstimatedFullCostHint": "依已用額度換算：本視窗滿額約合多少帳號計費",
       "windowUserCostHint": "使用者計費",
       "windowWeeks": "{{count}} 週配額",
       "windowDays": "{{count}} 天配額",
@@ -2971,7 +3032,7 @@
       "heroSubtitle": "為 OAuth Codex 帳號建立定時喚醒任務、執行即時測試，並在同一頁集中查看每次觸發。",
       "runtimeReady": "Codex CLI 已就緒",
       "runtimeMissing": "需要安裝 Codex CLI",
-      "runtimeCardTitle": "Codex CLI 環境",
+      "runtimeCardTitle": "執行方式",
       "runtimeUnknownPath": "未偵測到路徑",
       "runtimeUnchecked": "重新檢查以取得最新狀態",
       "runtimeVersion": "版本 {{version}}",
@@ -3150,11 +3211,7 @@
       "runtimeConfigCodexCliPlaceholder": "例如：/opt/homebrew/bin/codex",
       "runtimeConfigNodeLabel": "node 路徑",
       "runtimeConfigNodePlaceholder": "例如：/opt/homebrew/bin/node",
-      "runtimeConfigApplyHint": "修改後點擊「重新檢測 CLI」會儲存並立即生效。",
-      "officialChatRuntimeTitle": "官方直連",
-      "officialChatRuntimePath": "ChatGPT 官方 Codex 對話",
-      "officialChatRuntimeSource": "官方直連",
-      "officialChatRuntimeMessage": "OAuth 帳號直接對話"
+      "runtimeConfigApplyHint": "修改後點擊「重新檢測 CLI」會儲存並立即生效。"
     },
     "sessionManager": {
       "title": "會話管理",
@@ -3201,7 +3258,13 @@
         "syncNeedTwo": "至少需要兩個實例才能同步會話",
         "pickRestoreOne": "請至少選擇一個要還原的工作階段",
         "repairVisibilitySkippedOnly": "未發現需要寫入的 provider 差異；已略過 {{count}} 個無效或損毀的 state_5.sqlite，需由 Codex 重新產生後才能修復其中的 SQLite 記錄。",
-        "repairVisibilitySkippedWithBase": "{{message}}；已略過 {{count}} 個無效或損毀的 state_5.sqlite，需由 Codex 重新產生後才能修復其中的 SQLite 記錄。"
+        "repairVisibilitySkippedWithBase": "{{message}}；已略過 {{count}} 個無效或損毀的 state_5.sqlite，需由 Codex 重新產生後才能修復其中的 SQLite 記錄。",
+        "trashSummary": "已將 {{count}} 個工作階段移到垃圾桶，並已在官方 Codex 中刪除",
+        "trashSummaryFallback": "已將 {{count}} 個工作階段移到垃圾桶，並已觸發官方 Codex 重建工作階段索引",
+        "trashSummaryRunningHint": "執行中的執行個體可能需要重新整理或重新啟動後才會顯示",
+        "trashSummaryFallbackHint": "{{count}} 個執行個體的官方刪除未完成，已改以檔案方式移除，Codex 重新啟動後會同步",
+        "trashSummaryRebuildFailedHint": "{{count}} 個執行個體的官方側邊欄索引重建未完成，重新啟動 Codex 後會重新載入",
+        "trashSummaryEmpty": "所選工作階段不存在於目前的執行個體集合中，無需處理"
       },
       "groupCount": "{{count}} 條會話",
       "updatedAt": "最近更新",
@@ -3389,7 +3452,12 @@
         "subagent": "子代理",
         "all": "全部類型"
       },
-      "pickInstancePrompt": "此工作階段存在於多個實例，請輸入實例 ID："
+      "locationPicker": {
+        "title": "選擇實例",
+        "hint": "此工作階段存在於多個實例，請選擇要開啟檔案位置的實例：",
+        "rolloutHint": "此工作階段存在於多個實例，請選擇要開啟工作階段檔案的實例：",
+        "running": "執行中"
+      }
     },
     "sessionUsage": {
       "tab": "會話用量",
@@ -3467,6 +3535,9 @@
         "cost": "費用"
       }
     },
+    "grokAdd": {
+      "tab": "Grok 帳號"
+    },
     "deepSeek": {
       "start": {
         "title": "啟動 DeepSeek",
@@ -3502,6 +3573,13 @@
       }
     },
     "modelProviders": {
+      "keyModels": {
+        "title": "Key 模型設定",
+        "override": "獨立設定",
+        "help": "關閉時沿用供應商模型設定；開啟後僅此 Key 使用獨立目錄與能力。",
+        "saved": "Key 模型設定已儲存；執行中的用戶端請重新啟動以套用。",
+        "inherit": "沿用供應商"
+      },
       "tab": "模型供應商",
       "desc": "集中管理模型供應商與多個 API Key，新增 Codex API Key 帳號時可直接重複使用。",
       "add": "新增供應商",
@@ -3510,6 +3588,7 @@
       "emptyTitle": "尚無模型供應商",
       "emptyDesc": "點擊右上角「新增供應商」開始設定。",
       "baseUrl": "基礎 URL",
+      "customEndpointHint": "已使用自訂端點：此位址不是「{{preset}}」的官方端點，將以第三方相容位址處理，協議與模型目錄請依上游實際情況填寫。",
       "modelCatalog": "模型",
       "modelCatalogEmpty": "未設定模型目錄",
       "gatewayHint": "第三方供應商啟動時會透過本機閘道隔離實例並完成協定轉換；OpenAI 官方供應商維持直連。",
@@ -3520,6 +3599,8 @@
       "unnamedKey": "未命名 Key",
       "createTitle": "新增模型供應商",
       "editTitle": "編輯模型供應商",
+      "copySuffix": "副本",
+      "duplicate": "複製供應商（建立新副本，不含 Key）",
       "existingApiKeys": "現有 API Keys",
       "fields": {
         "name": "供應商名稱",
@@ -3568,7 +3649,8 @@
         "responses": "Responses 原生",
         "chatCompletions": "Chat Completions 協定",
         "deepseekResponsesHint": "啟動 DeepSeek 時選擇閘道或官方直連，並確認 Flash / Pro。閘道可在 Codex 內切換模型；直連不走閘道。",
-        "deepseekChatHint": "DeepSeek Chat Completions 走本機閘道協定轉換，適合相容舊鏈路；需要官方 Codex 工具形態時請選 Responses。"
+        "deepseekChatHint": "DeepSeek Chat Completions 走本機閘道協定轉換，適合相容舊鏈路；需要官方 Codex 工具形態時請選 Responses。",
+        "deepseekThirdPartyHint": "此位址不是官方 DeepSeek 端點，將以第三方相容位址處理；模型目錄請填上游真實模型 ID，請勿套用官方模型名稱。"
       },
       "selectSavedProvider": "已儲存供應商",
       "selectSavedApiKey": "已儲存 API Key",
@@ -3743,6 +3825,9 @@
           "planName": "訂閱",
           "remaining": "剩餘額度",
           "balance": "餘額",
+          "totalBalance": "總餘額",
+          "grantedBalance": "贈金餘額",
+          "toppedUpBalance": "儲值餘額",
           "todayRequests": "今日請求",
           "todayTokens": "今日 Token",
           "todayCost": "今日消耗",
@@ -3787,7 +3872,17 @@
       "renameApiKeyPrompt": "重新命名 API Key",
       "renameApiKeySuccess": "API Key 已重新命名",
       "renameApiKeyFailed": "重新命名 API Key 失敗：{{error}}",
-      "existingApiKeysSearch": "搜尋既有 API Key…"
+      "existingApiKeysSearch": "搜尋既有 API Key…",
+      "copyConfig": "複製設定（不含 Key）",
+      "copyConfigSuccess": "已複製供應商設定（不含 API Key），可在新增供應商時貼上匯入。",
+      "copyConfigFailed": "複製供應商設定失敗：{{error}}",
+      "importConfig": "從剪貼簿匯入設定",
+      "importConfigSuccess": "已從剪貼簿匯入供應商設定，請填寫 API Key 後儲存。",
+      "importConfigInvalid": "剪貼簿裡沒有可用的供應商設定（請在模型供應商卡片上點「複製設定」）。",
+      "importConfigFailed": "從剪貼簿匯入失敗：{{error}}",
+      "importConfigPlaceholder": "在供應商卡片上點「複製設定」後，把內容貼到這裡",
+      "importConfigAction": "匯入設定",
+      "importConfigFromClipboard": "一鍵讀取剪貼簿"
     },
     "quickSwitch": {
       "action": "快速切換供應商",
@@ -4150,7 +4245,8 @@
         "reasoningEffort": "思考強度",
         "reasoningEffortValue": "思考 {{effort}}",
         "serviceTier": "服務等級",
-        "serviceTierValue": "等級 {{tier}}"
+        "serviceTierValue": "等級 {{tier}}",
+        "upstreamModel": "實際模型"
       },
       "timeouts": {
         "entryLabel": "進階參數",
@@ -4448,6 +4544,33 @@
     "accounts": {
       "showRelayQuota": "顯示中轉額度",
       "hideRelayQuota": "隱藏中轉額度"
+    },
+    "instanceGateways": {
+      "entry": "執行個體閘道",
+      "entryCount": "執行個體閘道 {{count}}",
+      "issueCount": "{{count}} 異常",
+      "title": "執行個體閘道",
+      "subtitle": "隨 Codex 執行個體啟動的本機閘道",
+      "summary": "共 {{total}} · 執行中 {{running}} · 異常 {{issues}}",
+      "empty": "目前沒有執行個體層級閘道",
+      "emptyHint": "綁定 Chat 協定 API Key 帳號或開啟混合模型路由後會自動出現。",
+      "kindProviderGateway": "供應商閘道",
+      "kindMixedModel": "混合模型路由",
+      "kindBoundOauth": "OAuth 本機閘道",
+      "statusUnreachable": "已啟動但無法使用",
+      "statusPortConflict": "連接埠被占用",
+      "statusNotStarted": "未啟動",
+      "fieldAccount": "帳號",
+      "fieldAddress": "本機位址",
+      "fieldProtocol": "通訊協定",
+      "fieldModels": "上游模型",
+      "loadFailed": "讀取執行個體閘道失敗",
+      "stop": "關閉",
+      "restart": "重新啟動",
+      "stopConfirmTitle": "關閉這個實例閘道？",
+      "stopConfirmDescription": "混合模型路由閘道會同時停用該實例的混合模型路由（渠道設定保留）；其他閘道關閉後可隨時按「重新啟動」恢復。",
+      "stopFailed": "關閉閘道失敗：{{error}}",
+      "restartFailed": "重新啟動閘道失敗：{{error}}"
     }
   },
   "githubCopilot": {
@@ -5383,12 +5506,6 @@
     },
     "quota": {
       "usedOfTotal": "{{used}} / {{total}}"
-    },
-    "sessions": {
-      "title": "本機會話檔案",
-      "desc": "掃描本機 CodeBuddy 資料目錄中的會話相關 JSON/JSONL 檔案，可開啟所在位置。",
-      "empty": "未找到會話檔案",
-      "open": "開啟位置"
     }
   },
   "qoder": {
@@ -5980,7 +6097,7 @@
   "apiKeyFun": {
     "eyebrow": "中轉站",
     "title": "APIKEY.FUN 中轉站",
-    "description": "Cockpit 官方合作中轉站，為使用者提供穩定、開放、高性價比的大模型 API 接入服務。支援 Claude、OpenAI、Gemini 等主流模型，適合在 Codex、Gemini CLI、Claude Code 及其他開發工具中統一配置使用。透過 Cockpit 專屬連結註冊，可享最高儲值永久 95 折優惠。",
+    "description": "Cockpit 官方合作中轉站，為使用者提供穩定、開放、高性價比的大模型 API 接入服務。支援 Claude、ChatGPT、Grok、Gemini、智譜 GLM、Kimi、DeepSeek 等主流模型，適合在 Codex、Gemini CLI、Claude Code 及其他開發工具中統一設定使用。透過 Cockpit 專屬連結註冊，可享最高儲值永久 95 折優惠。",
     "register": "專屬註冊連結",
     "docs": "官方文件",
     "viewNow": "立即查看",
@@ -6092,13 +6209,34 @@
       "addToClaudeDesktop": "加入 Claude",
       "addToClaudeCli": "加入 Claude CLI",
       "codexShort": "Codex",
-      "claudeShort": "Claude CLI"
+      "claudeShort": "Claude CLI",
+      "deployToCodex": "快速部署到 Codex",
+      "deploying": "正在拉取模型…",
+      "deploySuccess": "已部署到 Codex：{{count}} 個模型",
+      "deployFailed": "部署失敗：{{error}}",
+      "useKey": "使用密鑰"
     },
     "prefill": {
       "claudeDesktopReady": "已帶入 APIKEY.FUN 設定，請確認後加入 Claude。"
     },
     "copyKey": "複製金鑰",
-    "clearKey": "清除輸入"
+    "clearKey": "清除輸入",
+    "table": {
+      "name": "名稱",
+      "usage": "用量",
+      "status": "狀態",
+      "createdAt": "加入時間",
+      "actions": "操作",
+      "statusOk": "可用",
+      "statusBad": "異常",
+      "statusUnknown": "未檢測"
+    },
+    "config": {
+      "title": "使用 API 密鑰",
+      "family": "分組",
+      "platform": "目前系統",
+      "unsupportedGroup": "該分組暫無可一鍵寫入的用戶端。"
+    }
   },
   "grok": {
     "search": "搜尋 Grok CLI 帳號...",

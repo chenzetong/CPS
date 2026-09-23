@@ -9,6 +9,27 @@ pub async fn codex_local_access_get_state() -> Result<CodexLocalAccessState, Str
     codex_local_access::get_local_access_state().await
 }
 
+/// 列出实例级本地网关（provider gateway / 混合模型路由 / 绑定 OAuth 本地网关）的只读快照。
+#[tauri::command]
+pub async fn codex_list_instance_gateways() -> Result<Vec<CodexInstanceGatewayView>, String> {
+    codex_local_access::snapshot_instance_gateways().await
+}
+
+/// 停止某个实例网关；混合模型路由网关会同时关闭该实例的路由（渠道配置保留）。
+#[tauri::command]
+pub async fn codex_stop_instance_gateway(instance_id: String, kind: String) -> Result<(), String> {
+    codex_local_access::stop_instance_gateway_for(&instance_id, &kind).await
+}
+
+/// 重新启动某个实例网关。
+#[tauri::command]
+pub async fn codex_restart_instance_gateway(
+    instance_id: String,
+    kind: String,
+) -> Result<(), String> {
+    codex_local_access::restart_instance_gateway_for(&instance_id, &kind).await
+}
+
 #[tauri::command]
 pub async fn codex_local_access_save_accounts(
     account_ids: Vec<String>,
@@ -261,6 +282,14 @@ pub async fn codex_local_access_update_image_generation_model(
     image_generation_model: String,
 ) -> Result<CodexLocalAccessState, String> {
     codex_local_access::update_local_access_image_generation_model(image_generation_model).await
+}
+
+/// 更新 API 服务的生图转发账号池（生图请求交给所选 OAuth 账号执行）。
+#[tauri::command]
+pub async fn codex_local_access_update_image_generation_accounts(
+    account_ids: Vec<String>,
+) -> Result<CodexLocalAccessState, String> {
+    codex_local_access::update_local_access_image_generation_accounts(account_ids).await
 }
 
 #[tauri::command]

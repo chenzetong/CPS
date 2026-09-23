@@ -402,13 +402,13 @@ npm run tauri build
 - CPS 基于 [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) 持续维护，并尽量通过纯源码 PR 将通用修复回馈上游；感谢原作者和所有贡献者建立并维护完整的跨平台基础。
 - Codex 账号切换与记录同步方案调研参考了 [angusdevgo/OC-Codex](https://github.com/angusdevgo/OC-Codex)。CPS 在此基础上结合自身 SSH 场景实现了事务化文件投影、SQLite/rollout 对齐、孤立会话恢复和 app-server 重载；感谢其公开实现提供思路。
 - Antigravity 账号切号逻辑参考：[Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager)
-- Codex API 服务集成 CLIProxyAPI，Codex Live WebRTC/sideband、Responses WebSocket 状态安全、canonical token accounting v2、Multi-Agent V2 兼容以及 Grok CLI 账号与 OAuth 实现方向亦参考其开源实现：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（MIT）
+- Codex API 服务集成 CLIProxyAPI，Codex Live WebRTC/sideband、Responses WebSocket 状态安全、canonical token accounting v2、Multi-Agent V2 兼容、Grok CLI 账号与 OAuth，以及 Grok `apply_patch` 协议兼容方向亦参考其开源实现：[router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)（MIT）
 - Grok 图标造型参考：[LobeHub/lobe-icons](https://github.com/lobehub/lobe-icons)（MIT）
 - Grok CLI 任务用量查询与兼容解析方向参考：[junhoyeo/tokscale](https://github.com/junhoyeo/tokscale)（MIT）
 - Grok CLI 第三方 BYOK 与 custom model 配置格式对照上游实现及文档：[xai-org/grok-build](https://github.com/xai-org/grok-build)
 - Codex API 服务协议兼容方向参考：[codex-proxy](https://github.com/icebear0828/codex-proxy)
 - Codex Agent Identity 导入、动态签名、task 失效恢复、账号备份格式兼容，以及官方账号窗口用量（req / token / A$）展示口径参考：[sub2api](https://github.com/Wei-Shaw/sub2api)。API 服务的客户端兼容、指纹、容量错误与请求级重试处理以 CLIProxyAPI 为准，不再保留“仅官方客户端／允许第三方客户端”等 Sub2API 式独立策略；API Key 鉴权与账号范围控制保持不变，Agent Identity 兼容暂保留为本地扩展。
-- Codex Agent Identity runtime 注册协议、Ed25519 密钥格式，以及鹈鹕测智的响应生命周期与生成产物处理思路参考官方实现：[openai/codex](https://github.com/openai/codex)（Apache-2.0）；鹈鹕测智使用直接对话请求，不等同于官方客户端的完整编码 Agent 流程。
+- Codex Agent Identity runtime 注册协议、Ed25519 密钥格式、Responses 客户端 freeform 工具调用（`custom_tool_call`）事件语义，以及鹈鹕测智的响应生命周期与生成产物处理思路参考官方实现：[openai/codex](https://github.com/openai/codex)（Apache-2.0）；鹈鹕测智使用直接对话请求，不等同于官方客户端的完整编码 Agent 流程。
 - Codex、Claude CLI 与 Claude Desktop Gateway 第三方供应商预设、模型映射，以及从会话 JSONL 汇总真实用量的方向参考：[CC Switch](https://github.com/farion1231/cc-switch)
 - Codex 模型目录、前端模型显示、loopback CDP 诊断、官方 live auth 保留策略，以及历史会话 Provider、SQLite 本地目录和工作区状态修复方向参考：[CodexPlusPlus](https://github.com/BigPizzaV3/CodexPlusPlus)
 - Codex 用量统计看板、走势图和 Studio 风格界面设计方向参考：[Antigravity Studio](https://github.com/yuzhiqiang1993/antigravity-studio)

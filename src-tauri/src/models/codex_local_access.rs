@@ -436,6 +436,12 @@ pub struct CodexLocalAccessModelRoute {
     pub namespace: String,
     pub provider_account_id: String,
     pub provider_gateway: CodexLocalAccessProviderGateway,
+    /// 原生 provider 路由：非空时 sidecar 直接交给该 provider 的执行器（当前为 xai）。
+    ///
+    /// Grok 供应商账号没有上游 API Key，请求不能走 Provider Gateway 直连，
+    /// 只能由 sidecar 用绑定的 Grok 账号凭据发出，因此这类路由标记为原生 provider。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,6 +734,12 @@ pub struct CodexLocalAccessUsageEvent {
     pub client_instance_id: String,
     #[serde(default)]
     pub model_id: String,
+    /// 客户端请求的模型（保留路由命名空间前缀，如 `cpa/gpt-5.5`）。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub requested_model: String,
+    /// 实际发送给上游的模型（账号映射与路由改写之后）。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub upstream_model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gateway_mode: Option<CodexLocalAccessGatewayMode>,
     #[serde(default)]
@@ -1019,4 +1031,32 @@ pub struct CodexLocalAccessChatResult {
 pub struct CodexLocalAccessPortCleanupResult {
     pub killed_count: u32,
     pub state: CodexLocalAccessState,
+}
+
+/// 实例级本地网关（provider gateway / 混合模型路由 / 绑定 OAuth 本地网关）的运行态快照。
+///
+/// 仅面向 UI 只读展示：端口与密钥来自 profile 级 `state.json`，`status` 由进程状态与
+/// sidecar 健康探测共同决定，不能仅凭文件存在推断“正在运行”。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexInstanceGatewayView {
+    pub id: String,
+    pub kind: String,
+    pub runtime_id: String,
+    pub profile_dir: String,
+    pub instance_id: String,
+    pub instance_name: String,
+    pub is_default: bool,
+    pub account_id: Option<String>,
+    pub account_label: Option<String>,
+    pub bind_host: String,
+    pub port: Option<u16>,
+    pub base_url: Option<String>,
+    pub wire_api: Option<String>,
+    pub upstream_models: Vec<String>,
+    pub status: String,
+    pub managed: bool,
+    pub log_api_key_id: String,
+    /// 最近一次启动自愈失败原因；成功恢复或探测到运行中时为空。
+    pub last_error: Option<String>,
 }

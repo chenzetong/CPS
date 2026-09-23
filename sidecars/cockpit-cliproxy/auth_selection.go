@@ -25,6 +25,7 @@ import (
 	"time"
 
 	internallogging "github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 
 	sdkauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/auth"
 
@@ -63,6 +64,21 @@ type modelExclusionSelector struct {
 	fallback coreauth.Selector
 }
 
+type authSelectionResultListener interface {
+	OnResult(coreauth.Result)
+}
+
+// Wrapper selectors must forward result notifications to the affinity selector.
+// The manager only inspects the outermost selector for OnResult support.
+func forwardAuthSelectionResult(selector coreauth.Selector, result coreauth.Result) {
+	if selector == nil {
+		return
+	}
+	if listener, ok := selector.(authSelectionResultListener); ok && listener != nil {
+		listener.OnResult(result)
+	}
+}
+
 func (s *imageRequestSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*coreauth.Auth) (*coreauth.Auth, error) {
 	requestKind, _ := ctx.Value(requestKindContextKey).(string)
 	if isImageRequestKind(requestKind) && s.imageFallback != nil {
@@ -78,6 +94,14 @@ func (s *imageRequestSelector) Stop() {
 	if stoppable, ok := s.fallback.(coreauth.StoppableSelector); ok {
 		stoppable.Stop()
 	}
+}
+
+func (s *imageRequestSelector) OnResult(result coreauth.Result) {
+	if s == nil {
+		return
+	}
+	forwardAuthSelectionResult(s.imageFallback, result)
+	forwardAuthSelectionResult(s.fallback, result)
 }
 
 func (s *imageRequestSelector) ReportAuthSelectionFailure(ctx context.Context, provider, model string, candidates []*coreauth.Auth, err error) error {
@@ -119,6 +143,13 @@ func (s *modelExclusionSelector) Stop() {
 	}
 }
 
+func (s *modelExclusionSelector) OnResult(result coreauth.Result) {
+	if s == nil {
+		return
+	}
+	forwardAuthSelectionResult(s.fallback, result)
+}
+
 func (s *modelExclusionSelector) ReportAuthSelectionFailure(ctx context.Context, provider, model string, candidates []*coreauth.Auth, err error) error {
 	if reporter, ok := s.fallback.(coreauth.AuthSelectionFailureReporter); ok {
 		return reporter.ReportAuthSelectionFailure(ctx, provider, model, candidates, err)
@@ -139,6 +170,13 @@ func (s *recordingSelector) Stop() {
 	if stoppable, ok := s.inner.(coreauth.StoppableSelector); ok {
 		stoppable.Stop()
 	}
+}
+
+func (s *recordingSelector) OnResult(result coreauth.Result) {
+	if s == nil {
+		return
+	}
+	forwardAuthSelectionResult(s.inner, result)
 }
 
 func (s *recordingSelector) ReportAuthSelectionFailure(ctx context.Context, provider, model string, candidates []*coreauth.Auth, err error) error {
@@ -321,6 +359,13 @@ func (s *quotaReserveSelector) Stop() {
 	}
 }
 
+func (s *quotaReserveSelector) OnResult(result coreauth.Result) {
+	if s == nil {
+		return
+	}
+	forwardAuthSelectionResult(s.fallback, result)
+}
+
 func (s *quotaReserveSelector) ReportAuthSelectionFailure(ctx context.Context, provider, model string, candidates []*coreauth.Auth, err error) error {
 	if reporter, ok := s.fallback.(coreauth.AuthSelectionFailureReporter); ok {
 		return reporter.ReportAuthSelectionFailure(ctx, provider, model, candidates, err)
@@ -396,6 +441,13 @@ func (s *backupAccountSelector) Stop() {
 	}
 }
 
+func (s *backupAccountSelector) OnResult(result coreauth.Result) {
+	if s == nil {
+		return
+	}
+	forwardAuthSelectionResult(s.fallback, result)
+}
+
 func (s *backupAccountSelector) ReportAuthSelectionFailure(ctx context.Context, provider, model string, candidates []*coreauth.Auth, err error) error {
 	if reporter, ok := s.fallback.(coreauth.AuthSelectionFailureReporter); ok {
 		return reporter.ReportAuthSelectionFailure(ctx, provider, model, candidates, err)
@@ -406,6 +458,24 @@ func (s *backupAccountSelector) ReportAuthSelectionFailure(ctx context.Context, 
 func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*coreauth.Auth) (*coreauth.Auth, error) {
 	_ = opts
 	selectionStats := authPoolSelectionStats{candidateAuths: len(auths)}
+	if target, ok := ctx.Value(targetAccountIDContextKey).(string); ok && strings.TrimSpace(target) != "" {
+		target = strings.TrimSpace(target)
+		filtered := make([]*coreauth.Auth, 0, 1)
+		for _, auth := range auths {
+			if auth == nil {
+				continue
+			}
+			account := s.accountForAuth(auth)
+			if authMatchesTargetAccount(auth, target, account) {
+				filtered = append(filtered, auth)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, fmt.Errorf("target account %s is not available", target)
+		}
+		auths = filtered
+		selectionStats.candidateAuths = 1
+	}
 	auths = s.filterAuthsForAPIKeyScope(ctx, auths)
 	selectionStats.scopedAuths = len(auths)
 	requestKind, _ := ctx.Value(requestKindContextKey).(string)
@@ -504,6 +574,27 @@ func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts
 	selected := ordered[0]
 	s.emitAuthSelected(ctx, selected, provider, model, len(auths), len(available))
 	return selected, nil
+}
+
+func authMatchesTargetAccount(auth *coreauth.Auth, target string, account *accountSpec) bool {
+	if auth == nil {
+		return false
+	}
+	if strings.TrimSpace(auth.ID) == target {
+		return true
+	}
+	if account != nil && strings.TrimSpace(account.ID) == target {
+		return true
+	}
+	if auth.Attributes != nil && strings.TrimSpace(auth.Attributes["account_id"]) == target {
+		return true
+	}
+	if auth.Metadata != nil {
+		if value, ok := auth.Metadata["account_id"].(string); ok && strings.TrimSpace(value) == target {
+			return true
+		}
+	}
+	return false
 }
 
 // ReportAuthSelectionFailure handles failures raised by the manager's
@@ -1122,6 +1213,11 @@ func accountForAuthInManifest(m *manifest, auth *coreauth.Auth) *accountSpec {
 	if m == nil || auth == nil {
 		return nil
 	}
+	if auth.Attributes != nil {
+		if account := m.accountByID[strings.TrimSpace(auth.Attributes["account_id"])]; account != nil {
+			return account
+		}
+	}
 	if auth.ID != "" {
 		if account := m.accountByAuthID[strings.ToLower(auth.ID)]; account != nil {
 			return account
@@ -1355,6 +1451,36 @@ func (s *cockpitSelector) rotatedIndex(account *accountSpec, start int) int {
 type usagePlugin struct {
 	manifest *manifest
 	tracker  *requestUsageTracker
+	// defaultServiceTier is the tier Cockpit injects when the client sends no
+	// service_tier (API 服务开启快速模式时由 payload.default 注入 priority)。
+	defaultServiceTier string
+}
+
+// usageServiceTier 解析一次请求实际生效的服务等级，供宿主在统计与日志中展示
+// 快速/标准模式。上游响应回传的档位最权威，其次是客户端请求的档位，最后回退到
+// Cockpit 自己注入的默认档位；"auto"/空值表示客户端没有指定，需要继续回退。
+func usageServiceTier(record coreusage.Record, fallback string) string {
+	if tier := normalizedUsageServiceTier(record.ResponseServiceTier); tier != "" {
+		return tier
+	}
+	if tier := normalizedRequestedUsageServiceTier(record.ServiceTier); tier != "" {
+		return tier
+	}
+	if tier := normalizedRequestedUsageServiceTier(record.RequestServiceTier); tier != "" {
+		return tier
+	}
+	return normalizedUsageServiceTier(fallback)
+}
+
+// normalizedRequestedUsageServiceTier 归一化客户端请求的档位。空值、"auto" 和
+// "default" 都表示客户端没有指定档位，此时实际上游使用的是注入的默认档位。
+func normalizedRequestedUsageServiceTier(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "auto", "default":
+		return ""
+	default:
+		return normalizedUsageServiceTier(value)
+	}
 }
 
 func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) {
@@ -1385,6 +1511,16 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 	if alias == "" {
 		alias = strings.TrimSpace(requestModel)
 	}
+	// 路由/别名改写后 record.Model 只保留上游模型；客户端原始请求模型单独取自
+	// 宿主请求上下文，两者都上报，供 API 服务明细展示「请求模型 → 上游模型」。
+	requestedModel := strings.TrimSpace(requestModel)
+	if requestedModel == "" {
+		requestedModel = alias
+	}
+	upstreamModel := strings.TrimSpace(record.Model)
+	if upstreamModel == "" {
+		upstreamModel = model
+	}
 	status := record.Fail.StatusCode
 	success := !record.Failed
 	payload := usagePayload{
@@ -1393,6 +1529,8 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 		Provider:         record.Provider,
 		Model:            model,
 		Alias:            alias,
+		RequestedModel:   requestedModel,
+		UpstreamModel:    upstreamModel,
 		AccountID:        stringFromAccount(account, "id"),
 		AccountEmail:     stringFromAccount(account, "email"),
 		AuthID:           record.AuthID,
@@ -1400,7 +1538,7 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 		APIKeyLabel:      stringFromAPIKey(spec, "label"),
 		ClientInstanceID: clientInstanceIDFromContext(ctx),
 		RequestKind:      requestKind,
-		ServiceTier:      normalizedUsageServiceTier(record.ServiceTier),
+		ServiceTier:      usageServiceTier(record, p.defaultServiceTier),
 		ReasoningEffort:  strings.TrimSpace(record.ReasoningEffort),
 		Success:          success,
 		Status:           status,
@@ -1416,6 +1554,12 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 			TokenBreakdown:  record.Detail.TokenBreakdown,
 		},
 		RequestedAtMS: record.RequestedAt.UnixMilli(),
+	}
+	// 上游响应头的旁路观测：只带出长度与分类，state 原文不落库。
+	if observation, ok := helps.TakeTurnStateObservation(payload.RequestID); ok {
+		length := observation.Length
+		payload.TurnStateLength = &length
+		payload.TurnStateClass = observation.Class
 	}
 	if sink, ok := ctx.Value(websocketUsageContextKey).(*websocketUsageSink); ok {
 		sink.record(record, payload)
@@ -1708,6 +1852,13 @@ func (s *cockpitSessionAffinitySelector) Pick(ctx context.Context, provider, mod
 		opts.Metadata = metadata
 	}
 	return s.inner.Pick(ctx, provider, model, opts, auths)
+}
+
+func (s *cockpitSessionAffinitySelector) OnResult(result coreauth.Result) {
+	if s == nil {
+		return
+	}
+	forwardAuthSelectionResult(s.inner, result)
 }
 
 func (s *cockpitSessionAffinitySelector) ReportAuthSelectionFailure(ctx context.Context, provider, model string, candidates []*coreauth.Auth, err error) error {

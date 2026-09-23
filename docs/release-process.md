@@ -13,10 +13,11 @@ npm run release:preflight
 当前 preflight 依次执行：
 
 1. `node scripts/check_locales.cjs`
-2. `npm run typecheck`
-3. `npm run build`
-4. `cargo check`（`src-tauri`）
-5. `cargo test --lib`（`src-tauri`，`RUST_TEST_THREADS=1`）
+2. `node scripts/check_modal_sizing.cjs --strict`
+3. `npm run typecheck`
+4. `npm run build`
+5. `cargo check`（`src-tauri`）
+6. `cargo test --lib`（`src-tauri`，`RUST_TEST_THREADS=1`）
 
 排障时可以跳过单项：
 
@@ -59,6 +60,8 @@ v<package.json.version>
 - Linux `aarch64`
 
 Linux release 同时包含 AppImage、deb 和 rpm updater targets。macOS Universal DMG 还会用于后续 Homebrew Cask 更新。
+
+三个 macOS 构建 job 在 `tauri build` 之后会执行 `scripts/release/inject-dmg-readme.cjs`，用 `hdiutil` 重建 DMG（保留 `.app` 原样）并写入 `安装与常见问题.txt`，同时固定窗口中三个图标的位置：Cockpit Tools 与 Applications 保持同一行（`180,150` / `480,150`），保证“把图标拖到右侧安装”的动线不变；说明文件单独放在下一行（`330,330`），窗口尺寸随之调整为 660×490、图标 112px、文字 14pt。Tauri bundler 没有“向 DMG 追加文件”的配置项，因此这里重建的是 bundler 产物本身，而不是在打包阶段插文件；重建后 DMG 文件名与 Tauri 约定一致（`<productName>_<version>_<arch>.dmg`），供 `stage_release_assets.cjs` 正常规范化。说明文案模板位于 `scripts/release/assets/dmg-readme.txt`，修改后需与 `README.md` / `README.en.md` 的 Gatekeeper 排查章节保持一致。
 
 Tauri release build 使用仓库配置的 updater signing secrets：
 
@@ -105,7 +108,7 @@ release workflow 会下载已发布的 Universal DMG，计算 SHA-256，然后�
 Casks/cockpit-tools.rb
 ```
 
-该更新通过自动创建的 PR 提交，而不是本地 `npm run release:github-and-cask`。当前 `package.json` 没有这个 npm script，因此不要按旧文档中的本地一键脚本操作。
+该更新由 workflow 校验 Universal DMG 的 SHA-256 后直接提交到 `main`，提交前会 rebase 最新 `origin/main`；遇到冲突则失败，不覆盖远端改动。不要使用本地 `npm run release:github-and-cask`。当前 `package.json` 没有这个 npm script，因此不要按旧文档中的本地一键脚本操作。
 
 ## 7. 推荐发版顺序
 
@@ -122,7 +125,7 @@ npm run release:preflight
 5. 从期望发布的 commit 创建 `v<version>` 标签并推送标签。
 6. 检查 GitHub Actions 的 release workflow 完整成功。
 7. 检查 GitHub Release 的平台 assets、target manifests、`latest.json` 和 `SHA256SUMS.txt`。
-8. 检查 Homebrew Cask 自动 PR 的版本和 SHA-256 是否与 Universal DMG 一致。
+8. 检查 `main` 上 Homebrew Cask 自动提交的版本和 SHA-256 是否与 Universal DMG 一致。
 
 仅有远端 branch 和 tag 并不代表发布已经成功。正式完成应以 release workflow 成功、预期 assets/manifests 可用以及 checksum 生成完成为准。
 

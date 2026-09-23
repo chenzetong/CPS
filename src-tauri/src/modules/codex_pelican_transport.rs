@@ -1,5 +1,5 @@
 // Deliberately separate from wakeup: bounded streaming, no tools, no model fallback,
-// no API-service startup and no automatic generation retries.
+// and no automatic generation retries. Transport itself is still owned by API Service.
 pub const PELICAN_DELIVERY_INSTRUCTIONS: &str = "Return a complete standalone HTML document in your response. Do not use Markdown fences or external dependencies.";
 const PELICAN_MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const PELICAN_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -12,6 +12,54 @@ pub struct PelicanChatOutput {
     pub usage: Option<Value>,
     pub response_id: Option<String>,
     pub response_model: Option<String>,
+    pub quota: Option<PelicanQuotaSnapshot>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PelicanQuotaSnapshot {
+    pub used_percent: f64,
+    pub remaining_percent: i32,
+    pub window_minutes: Option<i64>,
+    pub reset_at: Option<i64>,
+}
+
+fn pelican_header_number(headers: &reqwest::header::HeaderMap, name: &str) -> Option<f64> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<f64>().ok())
+}
+
+fn pelican_quota_snapshot_from_headers(
+    headers: &reqwest::header::HeaderMap,
+) -> Option<PelicanQuotaSnapshot> {
+    let used_percent = pelican_header_number(headers, "x-codex-primary-used-percent")?;
+    let used_percent = used_percent.clamp(0.0, 100.0);
+    let reset_at = pelican_header_number(headers, "x-codex-primary-reset-after-seconds")
+        .filter(|seconds| *seconds >= 0.0)
+        .map(|seconds| chrono::Utc::now().timestamp() + seconds.round() as i64);
+    Some(PelicanQuotaSnapshot {
+        used_percent,
+        remaining_percent: (100.0 - used_percent).round().clamp(0.0, 100.0) as i32,
+        window_minutes: pelican_header_number(headers, "x-codex-primary-window-minutes")
+            .filter(|minutes| *minutes > 0.0)
+            .map(|minutes| minutes.round() as i64),
+        reset_at,
+    })
+}
+
+pub fn pelican_quota_snapshot_from_codex_quota(quota: &CodexQuota) -> Option<PelicanQuotaSnapshot> {
+    if quota.hourly_window_present == Some(false) {
+        return None;
+    }
+    let remaining_percent = quota.hourly_percentage.clamp(0, 100);
+    Some(PelicanQuotaSnapshot {
+        used_percent: (100 - remaining_percent) as f64,
+        remaining_percent,
+        window_minutes: quota.hourly_window_minutes,
+        reset_at: quota.hourly_reset_time,
+    })
 }
 
 #[derive(Default)]
@@ -123,6 +171,7 @@ impl PelicanSseDecoder {
                 .get("model")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
+            quota: None,
         })
     }
 }
@@ -253,6 +302,7 @@ async fn pelican_chat_inner(
     prompt: &str,
     on_delta: impl Fn(String) + Send + Sync + 'static,
 ) -> Result<PelicanChatOutput, String> {
+    let _internal_permit = acquire_internal_request_permit(account_id).await?;
     let id = account_id.to_owned();
     let runtime_handle = tokio::runtime::Handle::current();
     // Blocking disk/syscall work cannot be forcibly cancelled. Keep its permit in
@@ -264,7 +314,7 @@ async fn pelican_chat_inner(
         .map_err(|_| "pelican.error.stateUnavailable".to_string())?;
     // Existing account preparation contains synchronous local credential I/O.
     // Keep it off the async executor and away from the main-window interaction path.
-    let (mut account, proxy, mut timeouts) = timeout(
+    let account = timeout(
         Duration::from_secs(90),
         tokio::task::spawn_blocking(move || {
             let _permit = preparation_permit;
@@ -272,9 +322,7 @@ async fn pelican_chat_inner(
                 // The inner deadline also stops detached async preparation after a caller
                 // cancels. Existing per-account refresh locks prevent duplicate refreshes.
                 timeout(Duration::from_secs(85), async move {
-                    let account = get_prepared_account(&id).await?;
-                    let (proxy, timeouts) = official_wakeup_network_config().await;
-                    Ok::<_, String>((account, proxy, timeouts))
+                    get_prepared_account(&id).await
                 })
                 .await
                 .map_err(|_| "PELICAN_TIMEOUT".to_string())?
@@ -300,94 +348,33 @@ async fn pelican_chat_inner(
     {
         headers.insert("x-openai-fedramp".into(), "true".into());
     }
-    // A retry after an uncertain send could generate twice. Retests are user actions.
-    timeouts.upstream_send_retry_attempts = 0;
-    let connect_timeout = duration_from_millis(
-        timeouts.legacy_upstream_connect_timeout_ms,
-        DEFAULT_UPSTREAM_CONNECT_TIMEOUT,
-    );
-    let target = resolve_upstream_target(RESPONSES_PATH)?;
-    let mut expected_task_id: Option<String> = None;
-    for attempt in 0..=1 {
-        let response = timeout(PELICAN_IDLE_TIMEOUT, async {
-            if account.is_agent_identity_auth() {
-                let (updated, auth_headers, task_id) =
-                    codex_agent_identity::build_authentication_headers_with_base_url(
-                        &account,
-                        expected_task_id.as_deref(),
-                        codex_agent_identity::AGENT_IDENTITY_AUTH_API_BASE_URL,
-                    )
-                    .await?;
-                account = updated;
-                expected_task_id = Some(task_id);
-                let authorization = auth_headers
-                    .get(AUTHORIZATION)
-                    .and_then(|value| value.to_str().ok())
-                    .ok_or("PELICAN_UNSUPPORTED_ACCOUNT")?;
-                send_upstream_request_with_authorization_url(
-                    "POST",
-                    &format!(
-                        "{}{}",
-                        UPSTREAM_CODEX_BASE_URL.trim_end_matches('/'),
-                        target
-                    ),
-                    &target,
-                    &headers,
-                    &body,
-                    &account,
-                    authorization,
-                    proxy.as_deref(),
-                    connect_timeout,
-                    &timeouts,
-                    CodexLocalAccessImageGenerationMode::Disabled,
-                    CodexLocalAccessRequestKind::Text,
-                )
-                .await
-            } else {
-                send_upstream_request(
-                    "POST",
-                    &target,
-                    &headers,
-                    &body,
-                    &account,
-                    proxy.as_deref(),
-                    connect_timeout,
-                    &timeouts,
-                    CodexLocalAccessImageGenerationMode::Disabled,
-                    CodexLocalAccessRequestKind::Text,
-                )
-                .await
-            }
-        })
-        .await
-        .map_err(|_| "PELICAN_TIMEOUT".to_string())??;
-        let status = response.status();
-        if !status.is_success() {
-            let raw = pelican_read_error_body(response).await?;
-            // Authentication recovery only on an explicit rejected task, never retry
-            // a generation which has begun producing output.
-            if attempt == 0
-                && account.is_agent_identity_auth()
-                && codex_agent_identity::is_task_invalid_response(status, &raw)
-            {
-                continue;
-            }
-            let safe = pelican_redact_error(&account, &raw);
-            let detail =
-                extract_upstream_error_message(&safe).unwrap_or_else(|| status.to_string());
-            return Err(format!(
-                "HTTP {}: {}",
-                status.as_u16(),
-                truncate_diagnostic_text(&detail, 1200)
-            ));
-        }
-        let result = pelican_consume_response(response, PELICAN_IDLE_TIMEOUT, &on_delta).await?;
-        if account.is_agent_identity_auth() {
-            cache_prepared_account(&account).await;
-        }
-        return Ok(result);
+    // 内部请求走 API 服务 sidecar 的对外路由，路径必须保留 `/v1` 前缀，
+    // 不能像直连上游那样裁剪成 `/responses`。
+    let target = RESPONSES_PATH;
+    let response = timeout(
+        PELICAN_IDLE_TIMEOUT,
+        send_internal_api_service_request(
+            account_id,
+            &target,
+            &headers,
+            &body,
+            PELICAN_TOTAL_TIMEOUT,
+        ),
+    )
+    .await
+    .map_err(|_| "PELICAN_TIMEOUT".to_string())??;
+    let status = response.status();
+    if !status.is_success() {
+        let raw = pelican_read_error_body(response).await?;
+        let safe = pelican_redact_error(&account, &raw);
+        let detail = extract_upstream_error_message(&safe).unwrap_or_else(|| status.to_string());
+        return Err(format!(
+            "HTTP {}: {}",
+            status.as_u16(),
+            truncate_diagnostic_text(&detail, 1200)
+        ));
     }
-    Err("PELICAN_STREAM_INCOMPLETE".into())
+    pelican_consume_response(response, PELICAN_IDLE_TIMEOUT, &on_delta).await
 }
 
 fn pelican_redact_error(account: &CodexAccount, raw: &str) -> String {
@@ -412,6 +399,7 @@ async fn pelican_consume_response(
     idle_timeout: Duration,
     on_delta: &impl Fn(String),
 ) -> Result<PelicanChatOutput, String> {
+    let quota = pelican_quota_snapshot_from_headers(response.headers());
     let mut decoder = PelicanSseDecoder::default();
     while let Some(chunk) = timeout(idle_timeout, response.chunk())
         .await
@@ -426,7 +414,9 @@ async fn pelican_consume_response(
             break;
         }
     }
-    decoder.finish(on_delta)
+    let mut output = decoder.finish(on_delta)?;
+    output.quota = quota;
+    Ok(output)
 }
 
 #[cfg(test)]

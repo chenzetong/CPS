@@ -731,7 +731,7 @@ fn resolve_prompt_cache_key(
         .unwrap_or_else(|| stable_prompt_cache_key(api_key))
 }
 
-fn is_valid_gpt_reasoning_signature(raw_signature: &str) -> bool {
+pub(crate) fn is_valid_gpt_reasoning_signature(raw_signature: &str) -> bool {
     if raw_signature.is_empty()
         || raw_signature.len() > MAX_GPT_REASONING_SIGNATURE_LEN
         || raw_signature != raw_signature.trim()
@@ -1207,12 +1207,6 @@ fn local_access_ineligible_reason(
     // ChatGPT Web Session 仅支持查额，禁止加入 API 服务。
     if account.is_web_session_auth() {
         return Some("web_session_quota_only");
-    }
-    if is_chat_completions_api_key_account(account) {
-        return Some("chat_completions_api_key");
-    }
-    if is_official_deepseek_account(account) {
-        return Some("deepseek_unsupported");
     }
     if restrict_free_accounts
         && !account.is_agent_identity_auth()
@@ -1974,7 +1968,7 @@ async fn ensure_runtime_loaded_for_app_startup() -> Result<(), String> {
             runtime.collection.clone()
         };
         if let Some(collection) = collection.as_ref() {
-            if local_access_profile_takeovers_need_websocket_sync(collection) {
+            if local_access_profile_takeovers_need_sync(collection) {
                 ensure_local_access_profile_takeovers_from_runtime().await?;
             }
         }

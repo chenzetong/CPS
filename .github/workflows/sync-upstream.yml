@@ -44,6 +44,13 @@ jobs:
           git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
           git fetch --no-tags upstream main
 
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Upstream main is already merged; preserving the CPS release version."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           UPSTREAM_VERSION="$(
             git show upstream/main:package.json \
               | node -e 'let value=""; process.stdin.on("data", chunk => value += chunk); process.stdin.on("end", () => console.log(JSON.parse(value).version));'
@@ -168,6 +175,7 @@ jobs:
           git diff --check origin/main...HEAD
 
       - name: Push main and dispatch release
+        if: steps.merge.outputs.up_to_date != 'true'
         shell: bash
         run: |
           set -euo pipefail

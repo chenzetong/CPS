@@ -568,6 +568,7 @@ pub async fn list_sessions_across_instances(
                             session_id: snapshot.session_id.clone(),
                             title: snapshot.title.clone(),
                             cwd: snapshot.cwd.clone(),
+                            project_name: None,
                             updated_at: snapshot.updated_at,
                             location_count: 0,
                             locations: Vec::new(),

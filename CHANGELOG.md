@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ---
 ## [Unreleased]
 
+## [1.3.60] - 2026-09-23
+
+### Fixed
+- Restore the original CPS updater public key. A one-character transcription error in v1.3.50 was inherited by v1.3.59 and caused `The signature verification failed` during updates.
+- Verify the signing key before publishing and cryptographically verify every updater artifact before upload and finalization.
+
+### Upgrade note
+- Users on v1.3.50 or v1.3.59 must download the installer from this release and install it over the existing app once. Those clients embed an incorrect updater public key, so an in-app update cannot repair them. Keep the existing application data; subsequent updates use the original CPS signing key.
+
 ## [1.3.59] - 2026-09-23
 
 ### CPS integration

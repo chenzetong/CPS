@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      finalize_only:
+        description: "Finalize already-built assets for the version on main"
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -22,10 +27,10 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: 🔍 Validate release ref
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ (inputs.finalize_only && github.ref != 'refs/heads/main') || (!inputs.finalize_only && !startsWith(github.ref, 'refs/tags/v')) }}
         shell: bash
         run: |
-          echo "Release runs must target a v* tag; received ${GITHUB_REF}."
+          echo "Build releases require a v* tag; finalize-only recovery requires main. Received ${GITHUB_REF}."
           exit 1
 
       - name: 📥 Checkout repository
@@ -53,8 +58,10 @@ jobs:
           set -euo pipefail
           VERSION="$(node -e "console.log(require(require('path').join(process.env.GITHUB_WORKSPACE, 'package.json')).version)")"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
 
       - name: 🔍 Validate tag matches version
+        if: ${{ !inputs.finalize_only }}
         shell: bash
         run: |
           set -euo pipefail
@@ -63,6 +70,12 @@ jobs:
             echo "Tag (${GITHUB_REF_NAME}) does not match package.json version (${EXPECTED_TAG})."
             exit 1
           fi
+
+      - name: Validate existing release for recovery
+        if: inputs.finalize_only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release view "$RELEASE_TAG" > /dev/null
 
       - name: 📝 Build bilingual release notes from changelog
         shell: bash
@@ -137,7 +150,7 @@ jobs:
             gh release list \
               --limit 100 \
               --json tagName,isDraft,isPrerelease \
-              --jq "[.[] | select(.isDraft == false and .isPrerelease == false and .tagName != \"${GITHUB_REF_NAME}\")][0].tagName // \"\""
+              --jq "[.[] | select(.isDraft == false and .isPrerelease == false and .tagName != \"${RELEASE_TAG}\")][0].tagName // \"\""
           )"
           if [ -z "${PREVIOUS_TAG}" ]; then
             echo "No previous published release exists; the first CPS-signed release will be staged as a prerelease."
@@ -211,6 +224,7 @@ jobs:
             legacy-latest.json
 
   build-windows:
+    if: ${{ !inputs.finalize_only }}
     name: "🏗️ Build: Windows"
     needs: prepare-release
     runs-on: windows-latest
@@ -348,6 +362,7 @@ jobs:
             --latest-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
 
   build-macos-aarch64:
+    if: ${{ !inputs.finalize_only }}
     name: "🏗️ Build: macOS Apple Silicon"
     # Parallel with Windows / macOS Intel after prepare (no hard platform deps).
     needs:
@@ -472,6 +487,7 @@ jobs:
             --latest-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
 
   build-macos-x86_64:
+    if: ${{ !inputs.finalize_only }}
     name: "🏗️ Build: macOS Intel"
     # Parallel with Windows / macOS Apple Silicon after prepare.
     needs:
@@ -596,6 +612,7 @@ jobs:
             --latest-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
 
   build-macos-universal:
+    if: ${{ !inputs.finalize_only }}
     name: "🏗️ Build: macOS Universal"
     # This is an independent source build; run it in parallel with the two
     # architecture-specific jobs instead of waiting for their release assets.
@@ -688,6 +705,7 @@ jobs:
           echo "Uploaded ${#ASSETS[@]} macOS Universal assets"
 
   build-linux:
+    if: ${{ !inputs.finalize_only }}
     name: "🏗️ Build: Linux (${{ matrix.label }})"
     # Parallel with Windows / macOS after prepare; matrix arches run in parallel.
     needs:
@@ -818,6 +836,14 @@ jobs:
             --latest-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
 
   finalize-legacy-latest:
+    if: >-
+      ${{ !cancelled() && needs.prepare-release.result == 'success' &&
+          (inputs.finalize_only ||
+           (needs.build-windows.result == 'success' &&
+            needs.build-macos-aarch64.result == 'success' &&
+            needs.build-macos-x86_64.result == 'success' &&
+            needs.build-macos-universal.result == 'success' &&
+            needs.build-linux.result == 'success')) }}
     name: 🏁 Finalize Legacy Updater Manifest
     # Wait for every platform build so latest.json is complete.
     needs:
@@ -858,7 +884,7 @@ jobs:
           TAG="v${VERSION}"
           downloaded="false"
           for i in $(seq 1 30); do
-            if gh release download "${TAG}" --dir release-assets --pattern "*" --clobber; then
+            if node scripts/release/github_release_assets.cjs download "${GITHUB_REPOSITORY}" "${TAG}" release-assets; then
               downloaded="true"
               break
             fi
@@ -906,7 +932,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release upload "v${VERSION}" latest.json --clobber
+          node scripts/release/github_release_assets.cjs upload "${GITHUB_REPOSITORY}" "v${VERSION}" latest.json
           gh release edit "v${VERSION}" --draft=false --prerelease=false --latest
 
       # End-to-end: user-facing /releases/latest/download (do not use tag URL here).
@@ -921,6 +947,7 @@ jobs:
             --legacy
 
   upload-checksums:
+    if: ${{ !cancelled() && needs.prepare-release.result == 'success' && needs.finalize-legacy-latest.result == 'success' }}
     name: 🔗 Publish SHA256SUMS
     needs:
       - prepare-release
@@ -932,6 +959,9 @@ jobs:
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.prepare-release.outputs.version }}
     steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
       - name: 📥 Download release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -939,7 +969,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          gh release download "v${VERSION}" --dir release-assets --pattern "*" --clobber
+          node scripts/release/github_release_assets.cjs download "${GITHUB_REPOSITORY}" "v${VERSION}" release-assets
 
       - name: ⚙️ Generate SHA256SUMS.txt from release assets
         shell: bash
@@ -964,9 +994,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release upload "v${VERSION}" SHA256SUMS.txt --clobber
+          node scripts/release/github_release_assets.cjs upload "${GITHUB_REPOSITORY}" "v${VERSION}" SHA256SUMS.txt
 
   update-homebrew-cask:
+    if: ${{ !cancelled() && needs.prepare-release.result == 'success' && needs.finalize-legacy-latest.result == 'success' }}
     name: 🍺 Update Homebrew Cask
     needs:
       - prepare-release

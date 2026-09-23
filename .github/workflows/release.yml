@@ -63,8 +63,8 @@ jobs:
           set -euo pipefail
           PROBE_DIR="$(mktemp -d)"
           trap 'rm -rf "$PROBE_DIR"' EXIT
-          printf 'CPS updater signing preflight' > "$PROBE_DIR/probe"
-          npx tauri signer sign "$PROBE_DIR/probe"
+          printf 'CPS updater signing preflight' > "$PROBE_DIR/probe.bin"
+          npx tauri signer sign "$PROBE_DIR/probe.bin"
           node scripts/release/verify_updater_signatures.cjs "$PROBE_DIR"
 
       - name: Read app version

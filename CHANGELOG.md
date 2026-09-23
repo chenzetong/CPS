@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ---
 ## [Unreleased]
 
-## [1.3.60] - 2026-09-23
+## [1.3.61] - 2026-09-23
 
 ### Fixed
 - Restore the original CPS updater public key. A one-character transcription error in v1.3.50 was inherited by v1.3.59 and caused `The signature verification failed` during updates.

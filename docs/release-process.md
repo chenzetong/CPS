@@ -70,7 +70,7 @@ Tauri release build 使用仓库配置的 updater signing secrets：
 
 prepare 阶段会用相同的 Tauri CLI 和 secrets 签名一个临时文件，再用应用配置的公钥验证；不匹配时禁止创建 release。各平台上传前和 finalizer 下载后都会运行 `verify_updater_signatures.cjs`，验证安装包内容及 Minisign trusted comment 的 Ed25519 签名，不能只检查 `.sig` 是否存在或 SHA-256 是否一致。
 
-v1.3.60 恢复了最初的 CPS 公钥（提交 `7422765d`）。v1.3.50 / v1.3.59 包含抄写错误的 CPS 公钥；这些已安装客户端必须覆盖安装一次 v1.3.60 或更高版本。仅修改服务器 manifest 或重新签名无法修复客户端内置的错误公钥，不应禁用签名验证。
+v1.3.61 恢复了最初的 CPS 公钥（提交 `7422765d`）。v1.3.50 / v1.3.59 包含抄写错误的 CPS 公钥；这些已安装客户端必须覆盖安装一次 v1.3.61 或更高版本。仅修改服务器 manifest 或重新签名无法修复客户端内置的错误公钥，不应禁用签名验证。
 
 这里的 signing 指 Tauri updater artifact 签名；不要把它描述成已经完成 Apple notarization 或 Windows Authenticode，除非 workflow 另外明确实现了这些步骤。
 

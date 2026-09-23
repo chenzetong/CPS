@@ -83,7 +83,7 @@ func (r *providerGatewayItemIDRewriter) RewriteSSEFrame(frame []byte) []byte {
 	if bytes.Equal(rewritten, trimmed) {
 		return frame
 	}
-	out := make([]byte, 0, len(frame)+16)
+	out := make([]byte, 0, len(frame))
 	out = append(out, frame[:prefixEnd]...)
 	out = append(out, rewritten...)
 	out = append(out, suffix...)

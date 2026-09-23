@@ -727,7 +727,7 @@ func restoreProviderGatewayMultiAgentV2SSELine(line []byte, optimized bool) []by
 	if bytes.Equal(restored, payload) {
 		return line
 	}
-	out := make([]byte, 0, len(restored)+len("data: ")+2)
+	out := make([]byte, 0, len(restored))
 	out = append(out, "data: "...)
 	out = append(out, restored...)
 	if bytes.HasSuffix(line, []byte("\r\n")) {

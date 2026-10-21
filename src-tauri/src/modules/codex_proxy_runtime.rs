@@ -967,7 +967,7 @@ mod tests {
                 refresh_token: Some("refresh".into()),
             },
         );
-        account.proxy_url = Some("not-a-proxy-url".into());
+        account.proxy_url = Some("http://".into());
         assert_eq!(
             client_builder(&account, reqwest::Client::builder()).await.err().unwrap(),
             "PROXY_INVALID_URL"

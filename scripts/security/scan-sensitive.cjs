@@ -41,6 +41,44 @@ function isAllowedFixture(relativePath, rule, text, match) {
   const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
 
   if (
+    rule === "developer-home-path" &&
+    relativePath === "docs/codex-proxy-reference-plan.md" &&
+    match[1] === "widget" && line.includes("lib/features/home/widget/home_page.dart")
+  ) {
+    return true;
+  }
+
+  if (
+    rule === "rfc1918-host" &&
+    relativePath === "sidecars/cockpit-cliproxy/image_api_download.go" &&
+    ["10.0.0.0", "172.16.0.0", "192.168.0.0"].includes(match[0]) &&
+    line.includes(`netip.MustParsePrefix("${match[0]}/`)
+  ) {
+    return true;
+  }
+
+  const auditedPrivateAddressFixtures = {
+    "sidecars/cockpit-cliproxy/image_api_download_test.go": ["10.0.0.1", "172.16.1.2", "192.168.1.1"],
+    "src-tauri/src/modules/codex_local_access_tests_request_routing.rs": ["10.0.0.5"],
+    "src-tauri/src/modules/codex_native_api/images_assets.rs": ["10.0.0.1"],
+    "src-tauri/src/modules/codex_proxy_engine.rs": ["10.0.0.2"],
+    "src-tauri/src/modules/codex_proxy_engine_errors.rs": ["10.0.0.1"],
+    "src-tauri/tests/fixtures/native-proxy-compatibility.json": ["10.0.0.2"],
+  };
+  if (rule === "rfc1918-host" && auditedPrivateAddressFixtures[relativePath]?.includes(match[0])) {
+    return true;
+  }
+
+  if (
+    rule === "codex-thread-id" &&
+    /^01[0-9a-f]{6}-0000-7000-8000-000000000[0-9]{3}$/.test(match[0]) &&
+    (relativePath.includes("/fixtures/") || /(?:_tests|\.test)\.(?:rs|ts|cjs)$/.test(relativePath) ||
+      ["src-tauri/src/modules/codex_app_injection_dialog_poll.rs", "src-tauri/src/modules/codex_app_injection_usage_poll.rs"].includes(relativePath))
+  ) {
+    return true;
+  }
+
+  if (
     canonicalRelativePath ===
       "sidecars/cockpit-cliproxy/cdk/CLIProxyAPI/sdk/cliproxy/auth/conductor_selection_cooldown_test.go" &&
     /^\s*input:/.test(line) &&

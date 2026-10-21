@@ -38,7 +38,21 @@ fn non_empty_sidecar_string(value: &str) -> Option<String> {
     Some(value.trim().to_string()).filter(|value| !value.is_empty())
 }
 
+fn sidecar_upstream_stream_error_category(event: &SidecarUsageEvent) -> Option<&str> {
+    event.error_category.as_deref().map(str::trim).filter(|category| matches!(
+        *category,
+        "upstream_stream_error" | "incomplete_upstream_stream" | "request_timeout"
+            | "upstream_timeout" | "upstream_first_byte_timeout" | "upstream_stream_timeout"
+            | "upstream_idle_timeout" | "upstream_total_timeout"
+    ))
+}
+
 fn sidecar_usage_event_is_client_canceled(event: &SidecarUsageEvent) -> bool {
+    // A typed upstream read failure may mention EOF/reset, but that does not
+    // identify the downstream client as the peer that disconnected.
+    if sidecar_upstream_stream_error_category(event).is_some() {
+        return false;
+    }
     if event.error_category.as_deref() == Some("client_canceled") {
         let message = event.error_message.as_deref().unwrap_or_default();
         let is_upstream_context_cancel = matches!(event.status, Some(408 | 500..=599))
@@ -107,8 +121,14 @@ fn sidecar_usage_event_should_auto_restart(event: &SidecarUsageEvent) -> bool {
         || message.contains("stream timeout")
         || message.contains("流式响应超时");
     let timeout_status = matches!(event.status, Some(408 | 504));
+    // 本地回环代理被拒（例如账号隧道换端口后 sidecar 仍拨旧端口）必须重建，
+    // 否则会一直 502；远端地址被拒不属于本地通道问题，不在此列。
+    let loopback_dial_refused = message.contains("connection refused")
+        && (message.contains("127.0.0.1")
+            || message.contains("localhost")
+            || message.contains("[::1]"));
 
-    timeout_category || timeout_message || timeout_status
+    timeout_category || timeout_message || timeout_status || loopback_dial_refused
 }
 
 fn sidecar_auto_restart_control() -> &'static Mutex<SidecarAutoRestartControl> {
@@ -310,6 +330,9 @@ fn schedule_sidecar_auto_restart(event: &SidecarUsageEvent) {
 }
 
 fn normalized_sidecar_error_category(event: &SidecarUsageEvent) -> Option<String> {
+    if let Some(category) = sidecar_upstream_stream_error_category(event) {
+        return Some(category.to_string());
+    }
     if sidecar_usage_event_is_client_canceled(event) {
         return Some("client_canceled".to_string());
     }
@@ -375,11 +398,11 @@ async fn update_sidecar_auth_result_health(event: &SidecarAuthResultEvent, pool_
     )
     .await;
     sync_sidecar_scheduler_state(event).await;
-    update_sidecar_account_pool_health(event, pool_diagnostic).await;
+    let pool_changed = update_sidecar_account_pool_health(event, pool_diagnostic).await;
     // Pool failures are the source of the account-pool dialog state. Failed
     // account events also update per-account health; successful request events
     // are intentionally not broadcast to avoid reloading the UI per request.
-    if pool_diagnostic || !event.success {
+    if pool_changed || pool_diagnostic || !event.success {
         emit_local_access_state_updated();
     }
 }
@@ -389,106 +412,6 @@ fn emit_local_access_state_updated() {
         return;
     };
     let _ = app.emit("codex-local-access-state-updated", ());
-}
-
-const UNSCOPED_ACCOUNT_POOL_HEALTH_KEY: &str = "__unscoped__";
-
-fn account_pool_health_key(api_key_id: &str) -> String {
-    let api_key_id = api_key_id.trim();
-    if api_key_id.is_empty() {
-        UNSCOPED_ACCOUNT_POOL_HEALTH_KEY.to_string()
-    } else {
-        api_key_id.to_string()
-    }
-}
-
-fn is_account_pool_unavailable_error(event: &SidecarAuthResultEvent) -> bool {
-    matches!(
-        event.error_code.as_deref().map(str::trim),
-        Some("auth_not_found" | "auth_unavailable")
-    ) || event
-        .error_message
-        .as_deref()
-        .is_some_and(|message| message.to_ascii_lowercase().contains("no auth available"))
-}
-
-// Pool selection can fail before Sidecar chooses an auth, so account_id is correctly empty.
-// Keep that state separately instead of discarding it or blaming an arbitrary account.
-async fn update_sidecar_account_pool_health(event: &SidecarAuthResultEvent, pool_diagnostic: bool) {
-    let mut runtime = gateway_runtime().lock().await;
-    apply_sidecar_account_pool_health(&mut runtime, event, pool_diagnostic, now_ms());
-}
-
-fn apply_sidecar_account_pool_health(
-    runtime: &mut GatewayRuntime,
-    event: &SidecarAuthResultEvent,
-    pool_diagnostic: bool,
-    now: i64,
-) {
-    let key = account_pool_health_key(&event.api_key_id);
-    if event.success {
-        runtime.account_pool_health.remove(&key);
-        return;
-    }
-    if !pool_diagnostic
-        && (!event.account_id.trim().is_empty() || !is_account_pool_unavailable_error(event))
-    {
-        return;
-    }
-
-    let health = runtime.account_pool_health.entry(key).or_default();
-    health.api_key_id = event.api_key_id.trim().to_string();
-    if !event.api_key_label.trim().is_empty() {
-        health.api_key_label = event.api_key_label.trim().to_string();
-    }
-    if !event.provider.trim().is_empty() {
-        health.provider = event.provider.trim().to_string();
-    }
-    if !event.model.trim().is_empty() {
-        health.model = event.model.trim().to_string();
-    }
-    if !event.request_kind.trim().is_empty() {
-        health.request_kind = event.request_kind.trim().to_string();
-    }
-    if let Some(error_code) = event
-        .error_code
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        health.error_code = error_code.to_string();
-    }
-    if let Some(error_message) = event
-        .error_message
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        health.error_message = error_message.to_string();
-    }
-    if pool_diagnostic {
-        health.diagnostic_available = true;
-        health.candidate_auths = event.candidate_auths;
-        health.scoped_auths = event.scoped_auths;
-        health.available_auths = event.available_auths;
-        health.unavailable_auths = event.unavailable_auths;
-        health.model_excluded_auths = event.model_excluded_auths;
-        health.quota_reserved_auths = event.quota_reserved_auths;
-        health.image_policy_blocked_auths = event.image_policy_blocked_auths;
-        health.account_statuses = event
-            .account_statuses
-            .iter()
-            .filter(|item| !item.account_id.trim().is_empty())
-            .map(|item| RuntimeAccountPoolMemberHealth {
-                account_id: item.account_id.trim().to_string(),
-                account_email: item.account_email.trim().to_string(),
-                available: item.available,
-                reason_code: item.reason_code.trim().to_string(),
-                reason_message: item.reason_message.trim().to_string(),
-            })
-            .collect();
-    }
-    health.last_failure_at = now;
 }
 
 fn apply_sidecar_scheduler_state(
@@ -660,9 +583,12 @@ async fn restore_removed_local_access_accounts(account_ids: &[String]) {
         let runtime = gateway_runtime().lock().await;
         (
             runtime.collection.clone(),
-            runtime
-                .actual_port
-                .or_else(|| runtime.collection.as_ref().map(|collection| collection.port)),
+            runtime.actual_port.or_else(|| {
+                runtime
+                    .collection
+                    .as_ref()
+                    .map(|collection| collection.port)
+            }),
             runtime.running,
         )
     };
@@ -683,33 +609,16 @@ async fn restore_removed_local_access_accounts(account_ids: &[String]) {
     clear_runtime_quota_cooldowns(&mut runtime, &account_ids);
 }
 
-pub async fn recover_local_access_accounts(
-    account_ids: Vec<String>,
-) -> Result<CodexLocalAccessState, String> {
-    ensure_runtime_loaded_without_start().await?;
-    let (collection, port, running) = {
-        let runtime = gateway_runtime().lock().await;
-        let collection = runtime
-            .collection
-            .clone()
-            .ok_or_else(|| "API 服务集合尚未创建".to_string())?;
-        (
-            collection.clone(),
-            runtime.actual_port.unwrap_or(collection.port),
-            runtime.running,
-        )
-    };
-    if !running {
-        return Err("API 服务 Sidecar 当前未运行，无法恢复账号调度状态".to_string());
-    }
-
-    let requested: HashSet<String> = account_ids
-        .into_iter()
+fn local_access_recovery_membership(
+    current_account_ids: &[String],
+    requested_account_ids: &[String],
+) -> Result<(Vec<String>, Vec<String>, Vec<String>), String> {
+    let requested: HashSet<String> = requested_account_ids
+        .iter()
         .map(|account_id| account_id.trim().to_string())
         .filter(|account_id| !account_id.is_empty())
         .collect();
-    let selected: Vec<String> = collection
-        .account_ids
+    let selected: Vec<String> = current_account_ids
         .iter()
         .filter(|account_id| requested.contains(account_id.as_str()))
         .cloned()
@@ -717,25 +626,179 @@ pub async fn recover_local_access_accounts(
     if selected.is_empty() {
         return Err("没有找到可恢复的账号".to_string());
     }
+    let remaining_account_ids = current_account_ids
+        .iter()
+        .filter(|account_id| !requested.contains(account_id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    Ok((
+        selected,
+        remaining_account_ids,
+        current_account_ids.to_vec(),
+    ))
+}
 
-    refresh_managed_accounts_before_recovery(&selected).await;
+/// 手动恢复开始后的抑制窗口：这段时间内被恢复账号不再显示账号池异常行，
+/// 避免恢复过程中（账号被短暂移出集合）产生的失败状态立刻把行重新点亮。
+const LOCAL_ACCESS_RECOVERY_SUPPRESS_WINDOW: Duration = Duration::from_secs(120);
+/// 后台恢复流程结束后的短暂抑制窗口，用于吸收仍在飞行的迟到失败事件。
+const LOCAL_ACCESS_RECOVERY_SETTLE_WINDOW: Duration = Duration::from_secs(20);
+/// 后台恢复结果事件：界面据此提示“恢复失败，可重试”，避免只报“已提交”。
+const LOCAL_ACCESS_RECOVERY_RESULT_EVENT: &str = "codex-local-access-recovery-result";
 
-    let reset_account_ids = request_sidecar_reset_scheduler(&collection, port, &selected).await?;
-    let reset_account_id_set = reset_account_ids.iter().collect::<HashSet<_>>();
-    let recovered_entire_collection = selected.len() == collection.account_ids.len()
-        && selected
-            .iter()
-            .all(|account_id| reset_account_id_set.contains(account_id));
+fn suppress_local_access_recovery_rows(
+    runtime: &mut GatewayRuntime,
+    account_ids: &[String],
+    suppressed_until_ms: i64,
+) {
+    for account_id in account_ids
+        .iter()
+        .map(|account_id| account_id.trim())
+        .filter(|account_id| !account_id.is_empty())
+    {
+        runtime
+            .recovery_suppressed_accounts
+            .insert(account_id.to_string(), suppressed_until_ms);
+    }
+}
 
-    let mut runtime = gateway_runtime().lock().await;
-    let now = now_ms();
-    clear_runtime_account_health(
-        &mut runtime,
-        &reset_account_ids,
-        recovered_entire_collection,
+fn emit_local_access_recovery_result(account_ids: &[String], error: Option<&str>) {
+    let Some(app) = crate::get_app_handle() else {
+        return;
+    };
+    let _ = app.emit(
+        LOCAL_ACCESS_RECOVERY_RESULT_EVENT,
+        serde_json::json!({
+            "accountIds": account_ids,
+            "status": if error.is_some() { "failed" } else { "completed" },
+            "error": error.unwrap_or_default(),
+        }),
     );
-    mark_quota_cooldowns_recovered(&mut runtime, &reset_account_ids, now);
-    Ok(build_fresh_state_snapshot(&mut runtime))
+}
+
+/// 手动恢复的后台部分：刷新凭据 → 移出集合 → 加回集合（两次网关重载）。
+///
+/// 这一段的耗时不可控（凭据刷新最长 15s/批，网关重载含 sidecar 重启），因此不再
+/// 阻塞界面：宿主先清掉异常状态并返回快照，这里在后台继续执行并回报结果。
+#[allow(clippy::too_many_arguments)]
+async fn run_local_access_recovery_in_background(
+    selected_account_ids: Vec<String>,
+    remaining_account_ids: Vec<String>,
+    restored_account_ids: Vec<String>,
+    restrict_free_accounts: bool,
+    backup_account_ids: Vec<String>,
+    preferred_account_ids: Vec<String>,
+    image_generation_account_policies: HashMap<String, CodexLocalAccessImageGenerationPolicy>,
+) -> Result<(), String> {
+    refresh_managed_accounts_before_recovery(&selected_account_ids).await;
+
+    // Manual recovery must match "remove then add back": persist membership
+    // through the same save path so sidecar auth, quota pool, and scheduler
+    // state are rebuilt from a fresh account instead of only resetting runtime
+    // flags on the still-loaded credential.
+    save_local_access_accounts_with_reload(
+        remaining_account_ids,
+        restrict_free_accounts,
+        Some(backup_account_ids.clone()),
+        Some(preferred_account_ids.clone()),
+        None,
+        None,
+        Some(image_generation_account_policies.clone()),
+        LocalAccessGatewayReload::Await,
+    )
+    .await?;
+    save_local_access_accounts_with_reload(
+        restored_account_ids,
+        restrict_free_accounts,
+        Some(backup_account_ids),
+        Some(preferred_account_ids),
+        None,
+        None,
+        Some(image_generation_account_policies),
+        LocalAccessGatewayReload::Await,
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn recover_local_access_accounts(
+    account_ids: Vec<String>,
+) -> Result<CodexLocalAccessState, String> {
+    ensure_runtime_loaded_without_start().await?;
+    let collection = {
+        let runtime = gateway_runtime().lock().await;
+        runtime
+            .collection
+            .clone()
+            .ok_or_else(|| "API 服务集合尚未创建".to_string())?
+    };
+    let (selected, remaining_account_ids, restored_account_ids) =
+        local_access_recovery_membership(&collection.account_ids, &account_ids)?;
+
+    // 先清宿主侧状态并立即把快照返回给界面，让“恢复”点下去就能看到异常行消失；
+    // 凭据刷新与网关重载交给后台任务，失败会通过事件回报。
+    {
+        let mut runtime = gateway_runtime().lock().await;
+        let now = now_ms();
+        clear_runtime_account_health(&mut runtime, &selected, false);
+        clear_runtime_quota_cooldowns(&mut runtime, &selected);
+        suppress_local_access_recovery_rows(
+            &mut runtime,
+            &selected,
+            now.saturating_add(duration_to_millis(LOCAL_ACCESS_RECOVERY_SUPPRESS_WINDOW) as i64),
+        );
+    }
+    emit_local_access_state_updated();
+
+    let (backup_account_ids, preferred_account_ids) = routing_priority_ids(&collection);
+    let image_generation_account_policies = collection.image_generation_account_policies.clone();
+    let restrict_free_accounts = collection.restrict_free_accounts;
+    let background_account_ids = selected.clone();
+    tauri::async_runtime::spawn(async move {
+        let _recovery_guard = local_access_recovery_lock().lock().await;
+        let error = run_local_access_recovery_in_background(
+            selected,
+            remaining_account_ids,
+            restored_account_ids,
+            restrict_free_accounts,
+            backup_account_ids,
+            preferred_account_ids,
+            image_generation_account_policies,
+        )
+        .await
+        .err();
+        {
+            let mut runtime = gateway_runtime().lock().await;
+            if error.is_none() {
+                // 成功：再用一小段抑制窗口吸收仍在飞行的旧请求结果。
+                let now = now_ms();
+                suppress_local_access_recovery_rows(
+                    &mut runtime,
+                    &background_account_ids,
+                    now.saturating_add(
+                        duration_to_millis(LOCAL_ACCESS_RECOVERY_SETTLE_WINDOW) as i64
+                    ),
+                );
+            } else {
+                // 失败：立即解除抑制，让真实的异常行可以重新出现并允许重试。
+                for account_id in &background_account_ids {
+                    runtime
+                        .recovery_suppressed_accounts
+                        .remove(account_id.trim());
+                }
+            }
+        }
+        if let Some(error) = error.as_deref() {
+            logger::log_codex_api_warn(&format!(
+                "[CodexLocalAccess] 手动恢复账号状态失败（异常行已先清空，界面会提示重试）: account_ids={:?}, error={}",
+                background_account_ids, error
+            ));
+        }
+        emit_local_access_recovery_result(&background_account_ids, error.as_deref());
+        emit_local_access_state_updated();
+    });
+
+    snapshot_state_without_gateway_reload().await
 }
 
 /// 账号凭据更新（重新授权 / 本机导入）后立即让本地网关生效。
@@ -970,14 +1033,21 @@ async fn record_sidecar_usage_event(event: SidecarUsageEvent) {
         event.latency_ms,
         sidecar_usage_capture(&event.usage),
         RequestStatsMeta {
+            authorization_route: Some("local_gateway"),
+            gateway_mode: Some(CodexLocalAccessGatewayMode::Sidecar),
+            proxy_route: event.proxy_route.as_ref(),
             request_id: request_id.as_deref(),
             client_instance_id: client_instance_id.as_deref(),
             http_status: event.status,
             error_message: event.error_message.as_deref(),
             service_tier: event.service_tier.as_deref(),
+            requested_service_tier: event.requested_service_tier.as_deref(),
+            response_service_tier: event.response_service_tier.as_deref(),
             reasoning_effort: event.reasoning_effort.as_deref(),
             requested_model: requested_model.as_deref(),
             upstream_model: upstream_model.as_deref(),
+            first_response_ms: event.first_response_ms,
+            output_generation_ms: event.output_generation_ms,
         },
     )
     .await
@@ -1053,8 +1123,8 @@ async fn handle_sidecar_stdout_line(
     if trimmed.is_empty() {
         return;
     }
-    update_sidecar_stdout_diagnostics(diagnostics, trimmed, false);
     let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        update_sidecar_stdout_diagnostics(diagnostics, trimmed, false);
         logger::log_codex_api_info(&format!("[CodexLocalAccess][sidecar] {}", trimmed));
         return;
     };
@@ -1062,7 +1132,20 @@ async fn handle_sidecar_stdout_line(
         .get("type")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    // Request bodies belong only in the opt-in diagnostics store. Never copy them
+    // into regular application logs or startup error snapshots.
+    if event_type != "request_diagnostics" {
+        update_sidecar_stdout_diagnostics(diagnostics, trimmed, false);
+    }
     match event_type {
+        "request_diagnostics" => {
+            match serde_json::from_value::<CodexLocalAccessRequestDetail>(value) {
+                Ok(detail) => queue_request_diagnostics(detail),
+                Err(error) => {
+                    logger::log_codex_api_warn(&format!("sidecar 请求诊断事件解析失败: {error}"))
+                }
+            }
+        }
         "usage" => match serde_json::from_value::<SidecarUsageEvent>(value) {
             Ok(event) => record_sidecar_usage_event(event).await,
             Err(error) => logger::log_codex_api_warn(&format!(
@@ -1120,6 +1203,9 @@ async fn drain_sidecar_stdout(
     ready_sender: oneshot::Sender<SidecarReadySignal>,
     diagnostics: SharedSidecarStartupDiagnostics,
 ) {
+    // Profile gateways can start before the global service runtime is loaded.
+    // The shared poller only observes live owned children; it never starts services.
+    ensure_request_diagnostics_poller_started();
     let mut lines = BufReader::new(stdout).lines();
     let mut ready_sender = Some(ready_sender);
     loop {
@@ -1220,12 +1306,7 @@ async fn probe_sidecar_ready_endpoint(
         CODEX_LOCAL_ACCESS_DEFAULT_CLIENT_URL_HOST, port
     );
     let client = build_localhost_http_client(request_timeout, "sidecar 健康检测")?;
-    match client
-        .get(&url)
-        .bearer_auth(api_key.trim())
-        .send()
-        .await
-    {
+    match client.get(&url).bearer_auth(api_key.trim()).send().await {
         Ok(response) if response.status().is_success() => Ok(()),
         Ok(response) => Err(format!("HTTP {}", response.status())),
         Err(error) => Err(error.to_string()),
@@ -1569,7 +1650,10 @@ fn write_local_access_profile_model_catalog(
 /// 客户端按 `priority` 升序展示模型，这里让 GPT 官方推荐集固定排在最前面，
 /// 其后是额度兜底模型，最后才是账号自带的第三方模型。
 fn apply_profile_model_ordering(client_models: &mut Value) {
-    let Some(models) = client_models.get_mut("models").and_then(Value::as_array_mut) else {
+    let Some(models) = client_models
+        .get_mut("models")
+        .and_then(Value::as_array_mut)
+    else {
         return;
     };
     let reserve_priority = LOCAL_GATEWAY_VISIBLE_GPT_MODELS.len() as i64;
@@ -1611,7 +1695,10 @@ fn apply_profile_model_definition_overrides(
     client_models: &mut Value,
     definitions: &[ProfileModelDefinition],
 ) {
-    let Some(models) = client_models.get_mut("models").and_then(Value::as_array_mut) else {
+    let Some(models) = client_models
+        .get_mut("models")
+        .and_then(Value::as_array_mut)
+    else {
         return;
     };
     for model in models.iter_mut() {
@@ -1626,9 +1713,10 @@ fn apply_profile_model_definition_overrides(
         else {
             continue;
         };
-        if let (Some(template), Some(object)) =
-            (definition.template.as_ref().and_then(Value::as_object), model.as_object_mut())
-        {
+        if let (Some(template), Some(object)) = (
+            definition.template.as_ref().and_then(Value::as_object),
+            model.as_object_mut(),
+        ) {
             for (key, value) in template {
                 // slug / 展示字段由我们自己的定义决定，comp_hash 统一由目录生成器决定，
                 // 其余按官方模板补齐。
@@ -1706,13 +1794,16 @@ pub(crate) fn api_service_preview_model_definitions(
         definitions
             .into_iter()
             .filter(|definition| !hidden.contains(&definition.model_id.to_ascii_lowercase()))
-            .map(|definition| crate::models::codex::CodexExperimentalModelDefinition {
-                model_id: definition.model_id,
-                display_name: definition.display_name,
-                reasoning_efforts: None,
-                context_window: None,
-                auto_compact_token_limit: None,
-            })
+            .map(
+                |definition| crate::models::codex::CodexExperimentalModelDefinition {
+                    model_id: definition.model_id,
+                    display_name: definition.display_name,
+                    reasoning_efforts: None,
+                    default_reasoning_effort: None,
+                    context_window: None,
+                    auto_compact_token_limit: None,
+                },
+            )
             .collect(),
     )
 }
@@ -1876,9 +1967,11 @@ fn write_local_access_profile_client_models(
     let catalog_file = CODEX_MANAGED_MODEL_CATALOG_FILE;
     let catalog_changed = write_string_atomic_if_changed(&profile_dir.join(catalog_file), &content)
         .map_err(|e| format!("写入 Codex API 服务模型目录失败: {}", e))?;
-    if let Err(err) = crate::modules::codex_managed_model_catalog_version::write_managed_catalog_meta(
-        &profile_dir.join(catalog_file),
-    ) {
+    if let Err(err) =
+        crate::modules::codex_managed_model_catalog_version::write_managed_catalog_meta(
+            &profile_dir.join(catalog_file),
+        )
+    {
         logger::log_codex_api_warn(&format!(
             "[Codex模型目录] 写入 API 服务模型目录版本戳失败: path={}, error={}",
             profile_dir.join(catalog_file).display(),
@@ -1932,20 +2025,35 @@ pub(crate) fn invalidate_codex_model_cache(profile_dir: &Path) -> Result<(), Str
     }
 }
 
-fn write_mixed_model_realtime_sideband_override(
+fn profile_api_key_uses_oauth_realtime(
+    collection: &CodexLocalAccessCollection,
+    api_key: &str,
+) -> bool {
+    collection.api_keys.iter().any(|item| {
+        item.enabled && item.key.trim() == api_key.trim() && item.provider_gateway.is_none()
+    })
+}
+
+fn write_local_access_realtime_sideband_override(
     profile_dir: &Path,
     collection: &CodexLocalAccessCollection,
     api_key: &str,
 ) -> Result<(), String> {
-    let is_mixed = collection.api_keys.iter().any(|item| {
-        item.enabled
-            && item.key.trim() == api_key.trim()
-            && item.provider_gateway.is_none()
-            && item.model_routing.as_ref().is_some_and(|routing| {
-                routing.default_route.eq_ignore_ascii_case("oauth")
-            })
-    });
-    if !is_mixed {
+    write_local_access_realtime_sideband_override_with_ownership(
+        profile_dir,
+        collection,
+        api_key,
+        None,
+    )
+}
+
+fn write_local_access_realtime_sideband_override_with_ownership(
+    profile_dir: &Path,
+    collection: &CodexLocalAccessCollection,
+    api_key: &str,
+    managed_realtime_sideband: Option<&str>,
+) -> Result<(), String> {
+    if !profile_api_key_uses_oauth_realtime(collection, api_key) {
         return Ok(());
     }
     let path = profile_config_path(profile_dir);
@@ -1955,8 +2063,17 @@ fn write_mixed_model_realtime_sideband_override(
         .map_err(|error| format!("解析 Codex 语音接管配置失败: {}", error))?;
     // WebRTC sideband ignores model provider.base_url by default but reuses its
     // bearer. Keep call creation and sideband on the same gateway/account.
-    // An explicit user override is outside Cockpit's ownership.
-    if doc.get("experimental_realtime_ws_base_url").is_some() {
+    // Explicit user overrides for call creation or sideband are outside Cockpit's ownership.
+    let sideband_is_still_owned = managed_realtime_sideband.is_some_and(|managed| {
+        doc.get("experimental_realtime_ws_base_url")
+            .and_then(|item| item.as_str())
+            .is_some_and(|current| current.trim_end_matches('/') == managed.trim_end_matches('/'))
+    });
+    if (doc.get("experimental_realtime_ws_base_url").is_some() && !sideband_is_still_owned)
+        || doc
+            .get("experimental_realtime_webrtc_call_base_url")
+            .is_some()
+    {
         return Ok(());
     }
     doc["experimental_realtime_ws_base_url"] = value(build_collection_base_url(collection));
@@ -1988,26 +2105,46 @@ async fn write_local_access_profile_takeover(
         bound_oauth_account_id,
         supports_websockets,
     );
+    // Capture ownership before the account writer replaces provider.base_url;
+    // comparing afterward mistakes our previous port for an explicit user URL.
+    let previous_config = read_optional_profile_file(&profile_config_path(profile_dir))?
+        .as_deref()
+        .map(crate::modules::codex_config_format::read_codex_config_doc_from_str)
+        .transpose()?;
+    let mut managed_realtime_sideband = None;
+    if let Some(doc) = previous_config.as_ref() {
+        if profile_has_managed_realtime_sideband(profile_dir, doc)? {
+            managed_realtime_sideband = doc
+                .get("experimental_realtime_ws_base_url")
+                .and_then(|item| item.as_str())
+                .map(str::to_owned);
+        }
+    }
     codex_account::write_account_bundle_to_dir(profile_dir, &runtime_account)?;
-    write_mixed_model_realtime_sideband_override(profile_dir, collection, &runtime_api_key)?;
+    write_local_access_realtime_sideband_override_with_ownership(
+        profile_dir,
+        collection,
+        &runtime_api_key,
+        managed_realtime_sideband.as_deref(),
+    )?;
     let definitions = local_access_profile_model_definitions(
         profile_dir,
         collection,
         &runtime_api_key,
         include_account_pool_models,
     )?;
-    write_local_access_profile_model_catalog(
-        profile_dir,
-        supports_websockets,
-        &definitions,
-    )?;
+    write_local_access_profile_model_catalog(profile_dir, supports_websockets, &definitions)?;
     if include_account_pool_models {
+        native_sync_profile_catalog_tool_capabilities(
+            profile_dir,
+            collection,
+            &runtime_api_key,
+            &[],
+        )
+        .await?;
         // API 服务接管：客户端「可用推理强度」默认不含 max，而账号模型（例如 DeepSeek）
         // 只声明 low/high/max；这里补齐最高档，保证选择器里的档位与 DeepSeek 网关模式一致。
         ensure_profile_max_reasoning_effort(profile_dir)?;
-        // 账号池里含 DeepSeek 时压缩不能走远程：DeepSeek 没有服务端压缩，请求一旦被路由过去
-        // 必然失败（详见 ensure_local_compaction_for_account_pool 的说明）。
-        ensure_local_compaction_for_account_pool(profile_dir, collection)?;
         remember_takeover_ownership(profile_dir)?;
     }
     Ok(())
@@ -2266,17 +2403,29 @@ fn local_access_profile_takeover_needs_sync(
     config_provider_name != Some(CODEX_LOCAL_ACCESS_RUNTIME_PROVIDER_NAME)
         || config_supports_websockets != Some(expected)
         || !profile_model_catalog_websocket_preference_matches(profile_dir, catalog_file, expected)
+        || (profile_api_key_uses_oauth_realtime(collection, &collection.api_key)
+            && config_doc.as_ref().is_some_and(|doc| {
+                doc.get("experimental_realtime_webrtc_call_base_url")
+                    .is_none()
+                    && (doc.get("experimental_realtime_ws_base_url").is_none()
+                        || (profile_has_managed_realtime_sideband(profile_dir, doc)
+                            .unwrap_or(false)
+                            && doc
+                                .get("experimental_realtime_ws_base_url")
+                                .and_then(|item| item.as_str())
+                                .is_some_and(|current| {
+                                    current.trim_end_matches('/')
+                                        != build_collection_base_url(collection)
+                                            .trim_end_matches('/')
+                                })))
+            }))
 }
 
-fn local_access_profile_takeovers_need_sync(
-    collection: &CodexLocalAccessCollection,
-) -> bool {
+fn local_access_profile_takeovers_need_sync(collection: &CodexLocalAccessCollection) -> bool {
     collection.enabled
         && collect_local_access_profile_takeover_dirs()
             .iter()
-            .any(|profile_dir| {
-                local_access_profile_takeover_needs_sync(profile_dir, collection)
-            })
+            .any(|profile_dir| local_access_profile_takeover_needs_sync(profile_dir, collection))
 }
 
 pub(crate) async fn ensure_local_access_profile_takeovers_from_runtime() -> Result<(), String> {

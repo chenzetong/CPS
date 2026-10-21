@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { withProxyEnginePrerequisite } from "../utils/codexProxyEnginePrerequisite";
 import { createPlatformInstanceService } from "./platform/createPlatformInstanceService";
 import type {
   CodexSessionVisibilityRepairInstanceList,
@@ -48,12 +49,12 @@ export async function startInstance(
     instanceId,
   });
   try {
-    return await invoke<InstanceProfile>("codex_start_instance", {
+    return await withProxyEnginePrerequisite(invoke<InstanceProfile>("codex_start_instance", {
       instanceId,
       transferConflictingAccount:
         options?.transferConflictingAccount === true ? true : null,
       skipFailedStep: options?.skipFailedStep ?? null,
-    });
+    }));
   } finally {
     console.info(
       "[Codex Start][Service] invoke codex_start_instance finished",
@@ -445,14 +446,20 @@ export async function importSessions(
   importFilePath: string,
   targetInstanceId: string,
   sessionIds: string[],
+  cwdMappings: Record<string, string>,
   transferId?: string | null,
 ): Promise<CodexSessionImportSummary> {
   return await invoke("codex_import_sessions", {
     importFilePath,
     targetInstanceId,
     sessionIds,
+    cwdMappings,
     transferId: transferId ?? null,
   });
+}
+
+export async function validateSessionImportPaths(cwdMappings: Record<string, string>): Promise<Record<string, string>> {
+  return await invoke('codex_validate_session_import_paths', { cwdMappings });
 }
 
 export async function openSessionLocation(

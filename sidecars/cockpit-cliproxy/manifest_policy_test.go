@@ -33,9 +33,10 @@ type responsesTerminalEventTestError struct {
 }
 
 func TestUsageServiceTierPrefersUpstreamResponseTier(t *testing.T) {
-	// 上游实际返回的档位最权威：请求要求 priority 但上游降级为 default 时，
-	// 统计与日志必须显示标准模式。
+	// API-key routes keep the server-reported processing tier for pricing.
 	if got := usageServiceTier(coreusage.Record{
+		Provider:            "codex",
+		AuthType:            "api_key",
 		ResponseServiceTier: "default",
 		ServiceTier:         "priority",
 	}, ""); got != "standard" {
@@ -49,11 +50,11 @@ func TestUsageServiceTierPrefersUpstreamResponseTier(t *testing.T) {
 }
 
 func TestUsageServiceTierFallsBackToInjectedDefault(t *testing.T) {
-	// 客户端没有指定 service_tier 时，Cockpit 注入的默认档位就是实际使用的档位。
+	// Legacy reporters can use the configured request default without treating
+	// it as server-side confirmation.
 	for _, record := range []coreusage.Record{
 		{},
 		{ServiceTier: "auto"},
-		{ServiceTier: "default"},
 		{RequestServiceTier: "auto"},
 	} {
 		if got := usageServiceTier(record, "priority"); got != "priority" {
@@ -66,6 +67,11 @@ func TestUsageServiceTierFallsBackToInjectedDefault(t *testing.T) {
 }
 
 func TestUsageServiceTierUsesClientRequestedTier(t *testing.T) {
+	for _, record := range []coreusage.Record{{ServiceTier: "default"}, {RequestServiceTier: "default"}} {
+		if got := usageServiceTier(record, "priority"); got != "standard" {
+			t.Fatalf("explicit default tier = %q, want standard", got)
+		}
+	}
 	if got := usageServiceTier(coreusage.Record{ServiceTier: "priority"}, ""); got != "priority" {
 		t.Fatalf("client priority tier = %q, want priority", got)
 	}
@@ -284,7 +290,7 @@ func TestSplitResponsesConcatenatedJSONDocumentsRejectsMalformedPayload(t *testi
 }
 
 func TestCodexClientModelsResponseShape(t *testing.T) {
-	response := buildCodexClientModelsResponse([]string{"gpt-5.4", "gpt-image-2", codexAutoReviewModel}, &apiKeySpec{}, nil, nil)
+	response := buildCodexClientModelsResponse([]string{"gpt-6.1-sol", "gpt-image-2", codexAutoReviewModel}, &apiKeySpec{}, nil, nil)
 	models, ok := response["models"].([]map[string]any)
 	if !ok {
 		t.Fatalf("models response should contain a models array: %#v", response["models"])
@@ -292,7 +298,7 @@ func TestCodexClientModelsResponseShape(t *testing.T) {
 	if len(models) != 3 {
 		t.Fatalf("expected 3 models, got %d", len(models))
 	}
-	textModel := findCodexClientModelForTest(models, "gpt-5.4")
+	textModel := findCodexClientModelForTest(models, "gpt-6.1-sol")
 	imageModel := findCodexClientModelForTest(models, "gpt-image-2")
 	reviewModel := findCodexClientModelForTest(models, codexAutoReviewModel)
 	if textModel == nil || imageModel == nil || reviewModel == nil {
@@ -304,7 +310,7 @@ func TestCodexClientModelsResponseShape(t *testing.T) {
 	if textModel["visibility"] != "list" {
 		t.Fatalf("text model should be listed in Codex client catalog: %#v", textModel)
 	}
-	if textModel["shell_type"] != "shell_command" || textModel["supported_in_api"] != true {
+	if textModel["shell_type"] != "unified_exec" || textModel["supported_in_api"] != true {
 		t.Fatalf("text model should keep required Codex catalog fields: %#v", textModel)
 	}
 	if _, ok := textModel["input_modalities"].([]any); !ok {
@@ -314,12 +320,12 @@ func TestCodexClientModelsResponseShape(t *testing.T) {
 	if tiers, ok := textModel["service_tiers"].([]any); !ok || len(tiers) == 0 {
 		t.Fatalf("text model should keep official service_tiers: %#v", textModel["service_tiers"])
 	}
-	if cw := intFromAny(textModel["max_context_window"]); cw != 1000000 {
-		// gpt-5.4 template uses max_context_window=1000000; ensure we did not wipe it.
-		t.Fatalf("text model max_context_window should keep template value 1000000, got %#v", textModel["max_context_window"])
-	}
-	if cw := intFromAny(textModel["context_window"]); cw != 272000 {
-		t.Fatalf("text model context_window should keep template value 272000, got %#v", textModel["context_window"])
+	template := readCodexClientModelTemplateForTest(t, "gpt-6.1-sol")
+	for _, field := range []string{"context_window", "max_context_window"} {
+		// Ensure the generated response keeps the original template window.
+		if got, want := intFromAny(textModel[field]), intFromAny(template[field]); got != want {
+			t.Fatalf("text model %s = %d, want template value %d", field, got, want)
+		}
 	}
 	if imageModel["visibility"] != "hide" {
 		t.Fatalf("image model should be hidden in Codex client catalog: %#v", imageModel)
@@ -387,7 +393,7 @@ func TestThirdPartyModelsDeclareMultiAgentV2InCodexCatalog(t *testing.T) {
 	enabled := &config.Config{}
 	enabled.Codex.OptimizeMultiAgentV2 = true
 
-	response := buildCodexClientModelsResponse([]string{"grok-4.6", "gpt-5.5"}, &apiKeySpec{}, nil, m)
+	response := buildCodexClientModelsResponse([]string{"grok-4.6", "gpt-5.6-sol"}, &apiKeySpec{}, nil, m)
 	applyThirdPartyMultiAgentV2Catalog(response, &apiKeySpec{}, m, enabled)
 	models, ok := response["models"].([]map[string]any)
 	if !ok {
@@ -400,18 +406,18 @@ func TestThirdPartyModelsDeclareMultiAgentV2InCodexCatalog(t *testing.T) {
 	if got := stringFromAny(grok["multi_agent_version"]); got != "v2" {
 		t.Fatalf("grok-4.6 multi_agent_version = %q, want v2", got)
 	}
-	if official := findCodexClientModelForTest(models, "gpt-5.5"); official != nil {
-		if got := stringFromAny(official["multi_agent_version"]); got != "" {
+	if official := findCodexClientModelForTest(models, "gpt-5.6-sol"); official != nil {
+		if got := stringFromAny(official["multi_agent_version"]); got != "v2" {
 			t.Fatalf("official model multi_agent_version = %q, want its own declaration", got)
 		}
 	}
 
 	// 供应商网关模式下该 Key 的模型全部走第三方上游，同样声明 v2。
 	gatewaySpec := &apiKeySpec{ProviderGateway: &providerGatewaySpec{UpstreamModel: "deepseek-v4-flash"}}
-	gatewayResponse := buildCodexClientModelsResponse([]string{"gpt-5.5"}, gatewaySpec, nil, nil)
+	gatewayResponse := buildCodexClientModelsResponse([]string{"gpt-5.6-sol"}, gatewaySpec, nil, nil)
 	applyThirdPartyMultiAgentV2Catalog(gatewayResponse, gatewaySpec, nil, enabled)
 	gatewayModels, _ := gatewayResponse["models"].([]map[string]any)
-	gatewayModel := findCodexClientModelForTest(gatewayModels, "gpt-5.5")
+	gatewayModel := findCodexClientModelForTest(gatewayModels, "gpt-5.6-sol")
 	if gatewayModel == nil || stringFromAny(gatewayModel["multi_agent_version"]) != "v2" {
 		t.Fatalf("provider-gateway model multi_agent_version = %#v, want v2", gatewayModel)
 	}
@@ -476,8 +482,11 @@ func TestCodexClientModelsResponsePreserves56Template(t *testing.T) {
 	if sol == nil {
 		t.Fatal("expected gpt-5.6-sol")
 	}
-	if intFromAny(sol["context_window"]) != 272000 || intFromAny(sol["max_context_window"]) != 921000 {
-		t.Fatalf("sol context windows = %#v / %#v", sol["context_window"], sol["max_context_window"])
+	template := readCodexClientModelTemplateForTest(t, "gpt-5.6-sol")
+	for _, field := range []string{"context_window", "max_context_window"} {
+		if got, want := intFromAny(sol[field]), intFromAny(template[field]); got != want {
+			t.Fatalf("sol %s = %d, want template value %d", field, got, want)
+		}
 	}
 	// Advertise Fast only; do not inject an unverified Ultrafast tier.
 	tiers, ok := sol["service_tiers"].([]any)
@@ -548,11 +557,12 @@ func TestCodexClientModelsResponsePreservesGpt6Templates(t *testing.T) {
 		if got := stringFromAny(model["display_name"]); got != tc.name {
 			t.Fatalf("%s display_name = %q, want %q", tc.slug, got, tc.name)
 		}
-		if got := intFromAny(model["context_window"]); got != 1050000 {
-			t.Fatalf("%s context_window = %d, want 1050000", tc.slug, got)
-		}
-		if got := intFromAny(model["max_context_window"]); got != 1050000 {
-			t.Fatalf("%s max_context_window = %d, want 1050000", tc.slug, got)
+		template := readCodexClientModelTemplateForTest(t, tc.slug)
+		// 声明的窗口和压缩阈值沿用原始模板。
+		for _, field := range []string{"context_window", "max_context_window", "auto_compact_token_limit"} {
+			if got, want := intFromAny(model[field]), intFromAny(template[field]); got != want {
+				t.Fatalf("%s %s = %d, want template value %d", tc.slug, field, got, want)
+			}
 		}
 		levels, levelsOK := model["supported_reasoning_levels"].([]any)
 		if !levelsOK {
@@ -590,8 +600,9 @@ func TestOllamaBridgeExposesGpt6Capabilities(t *testing.T) {
 		{slug: "gpt-6-sol", efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
 		{slug: "gpt-6-luna", efforts: []string{"low", "medium", "high", "xhigh", "max"}},
 	} {
-		if got := ollamaContextLength(tc.slug); got != 1050000 {
-			t.Fatalf("ollamaContextLength(%q) = %d, want 1050000", tc.slug, got)
+		template := readCodexClientModelTemplateForTest(t, tc.slug)
+		if got, want := ollamaContextLength(tc.slug), intFromAny(template["context_window"]); got != want {
+			t.Fatalf("ollamaContextLength(%q) = %d, want template value %d", tc.slug, got, want)
 		}
 		if got := ollamaModelFamily(tc.slug); got != tc.slug {
 			t.Fatalf("ollamaModelFamily(%q) = %q, want %q", tc.slug, got, tc.slug)
@@ -645,6 +656,71 @@ func TestCodexClientModelsResponseAppliesExplicitContextWindows(t *testing.T) {
 	}
 	if intFromAny(custom["context_window"]) != 1048576 || intFromAny(custom["max_context_window"]) != 1048576 {
 		t.Fatalf("explicit custom window = %#v / %#v", custom["context_window"], custom["max_context_window"])
+	}
+}
+
+func TestEnsureCodexClientCompactionLimitPairsWindowWithThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		model map[string]any
+		want  int
+	}{
+		{name: "missing limit derives 90%", model: map[string]any{"context_window": 272000}, want: 244800},
+		{name: "null limit derives 90%", model: map[string]any{"context_window": 256000, "auto_compact_token_limit": nil}, want: 230400},
+		{name: "100% limit is collapsed to 90%", model: map[string]any{"context_window": 1000000, "auto_compact_token_limit": 1000000}, want: 900000},
+		{name: "above window limit is collapsed to 90%", model: map[string]any{"context_window": 1000000, "auto_compact_token_limit": 1200000}, want: 900000},
+		{name: "declared ratio below window is preserved", model: map[string]any{"context_window": 400000, "auto_compact_token_limit": 380000}, want: 380000},
+		{name: "windowless entry stays untouched", model: map[string]any{}, want: 0},
+	} {
+		ensureCodexClientCompactionLimit(tc.model)
+		got, _ := tc.model["auto_compact_token_limit"]
+		if tc.want == 0 {
+			if _, exists := tc.model["auto_compact_token_limit"]; exists {
+				t.Fatalf("%s: windowless entry gained a compaction limit %#v", tc.name, got)
+			}
+			continue
+		}
+		if value := intFromAny(got); value != tc.want {
+			t.Fatalf("%s: auto_compact_token_limit = %#v, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+// 目录里凡是我们声明了窗口的模型，都必须同时声明 90% 压缩阈值：只写窗口会让客户端
+// 回退到自身压缩策略，写满 100% 则永远不会触发压缩。
+func TestCodexClientModelsResponseAlwaysPairsWindowWithCompactionLimit(t *testing.T) {
+	spec := &apiKeySpec{}
+	response := buildCodexClientModelsResponse(
+		[]string{"gpt-5.6-sol", "gpt-5.5", "gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", codexReserveModel, codexAutoReviewModel, "custom-flash"},
+		spec,
+		map[string]int64{"custom-flash": 516000, codexReserveModel: 516000},
+		nil,
+	)
+	models := response["models"].([]map[string]any)
+	if len(models) == 0 {
+		t.Fatal("catalog must not be empty")
+	}
+	checked := 0
+	for _, model := range models {
+		slug, _ := model["slug"].(string)
+		window := intFromAny(model["context_window"])
+		if window <= 0 {
+			continue
+		}
+		checked++
+		limit, exists := model["auto_compact_token_limit"]
+		if !exists || limit == nil {
+			t.Fatalf("%s declared context_window %d without auto_compact_token_limit", slug, window)
+		}
+		if got := intFromAny(limit); got != window*90/100 {
+			t.Fatalf("%s auto_compact_token_limit = %d, want 90%% of %d (= %d)", slug, got, window, window*90/100)
+		}
+		if got := intFromAny(limit); got >= window {
+			t.Fatalf("%s auto_compact_token_limit = %d must stay below context_window %d", slug, got, window)
+		}
+	}
+	if checked != len(models) {
+		t.Fatalf("only %d/%d catalog models declared a context window", checked, len(models))
 	}
 }
 
@@ -841,6 +917,9 @@ func TestBuildCockpitQuotaResponseGroupsPlansAndPoolHealth(t *testing.T) {
 	}}, time.Now())
 	if response.AvailableAccountCount != 1 || response.AbnormalAccountCount != 1 || response.CooldownAccountCount != 1 {
 		t.Fatalf("runtime pool health = available %d, abnormal %d, cooldown %d", response.AvailableAccountCount, response.AbnormalAccountCount, response.CooldownAccountCount)
+	}
+	if response.FiveHourCapacityPercent == nil || *response.FiveHourCapacityPercent != 100 || response.WeeklyCapacityPercent == nil || *response.WeeklyCapacityPercent != 200 {
+		t.Fatalf("runtime cooldown must not change counted window capacity: %#v", response)
 	}
 }
 
@@ -1111,23 +1190,20 @@ func stringFromAny(value any) string {
 	return ""
 }
 
-func TestCodexSparkUsesCompleteCodexClientCatalogTemplate(t *testing.T) {
-	response := buildCodexClientModelsResponse([]string{codexSparkCatalogTemplateModel, codexSparkModel}, &apiKeySpec{}, nil, nil)
+func TestRetiredCodexModelsAreNotNativeShells(t *testing.T) {
+	for _, model := range []string{"gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2", "gpt-4o", "gpt-4.1"} {
+		if isCodexShellModelID(model) {
+			t.Fatalf("retired model %s is still a built-in shell", model)
+		}
+	}
+	response := buildCodexClientModelsResponse([]string{"gpt-6.1-sol", "gpt-6-luna"}, &apiKeySpec{}, nil, nil)
 	models, ok := response["models"].([]map[string]any)
-	if !ok {
-		t.Fatalf("models response should contain a models array: %#v", response["models"])
+	if !ok || len(models) != 2 {
+		t.Fatalf("unexpected built-in catalog: %#v", response)
 	}
-	template := findCodexClientModelForTest(models, codexSparkCatalogTemplateModel)
-	spark := findCodexClientModelForTest(models, codexSparkModel)
-	if template == nil || spark == nil {
-		t.Fatalf("expected template and Spark models, got %#v", models)
-	}
-	if spark["display_name"] != "GPT-5.3 Codex Spark" || spark["visibility"] != "list" || spark["supported_in_api"] != true {
-		t.Fatalf("Spark should be listed as an API model: %#v", spark)
-	}
-	for _, field := range []string{"available_in_plans", "base_instructions", "minimal_client_version", "model_messages", "prefer_websockets"} {
-		if spark[field] == nil || !reflect.DeepEqual(spark[field], template[field]) {
-			t.Fatalf("Spark should inherit %s from the Codex client template: %#v", field, spark[field])
+	for _, model := range models {
+		if model["slug"] == "gpt-5.3-codex-spark" {
+			t.Fatal("retired Spark must not be injected")
 		}
 	}
 }
@@ -1139,6 +1215,26 @@ func findCodexClientModelForTest(models []map[string]any, slug string) map[strin
 		}
 	}
 	return nil
+}
+
+func readCodexClientModelTemplateForTest(t *testing.T, slug string) map[string]any {
+	t.Helper()
+	const path = "third_party/CLIProxyAPI/internal/registry/models/codex_client_models.json"
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read Codex client model template %s: %v", path, err)
+	}
+	var catalog struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		t.Fatalf("decode Codex client model template %s: %v", path, err)
+	}
+	model := findCodexClientModelForTest(catalog.Models, slug)
+	if model == nil {
+		t.Fatalf("Codex client model template %s is missing %s", path, slug)
+	}
+	return model
 }
 
 func TestVisibleModelsForAPIKeyUsesPrefixAndFilters(t *testing.T) {
@@ -1205,8 +1301,10 @@ func TestCodexReserveClientCatalogListsLunaReserveWithLunaCapabilities(t *testin
 			t.Fatalf("Reserve %s = %#v, want Luna value %#v", field, reserve[field], luna[field])
 		}
 	}
-	if reserve["auto_compact_token_limit"] != nil {
-		t.Fatal("Reserve must not force a compaction threshold")
+	// Reserve 继承 Luna 的上下文和原始模板声明的压缩阈值。
+	template := readCodexClientModelTemplateForTest(t, "gpt-5.6-luna")
+	if got, want := intFromAny(reserve["auto_compact_token_limit"]), intFromAny(template["auto_compact_token_limit"]); got != want {
+		t.Fatalf("Reserve auto_compact_token_limit = %d, want Luna template value %d", got, want)
 	}
 	info := manifestRegistryModelInfo(codexReserveModel, "", 0)
 	if !reflect.DeepEqual(info.Thinking, codexClientThinkingSupport("gpt-5.6-luna")) || info.Thinking == nil {
@@ -1282,8 +1380,12 @@ func TestPrefixedCodexReserveKeepsVisibleLunaCapabilitiesAndExplicitContext(t *t
 	if reserve == nil || reserve["visibility"] != "list" || reserve["display_name"] != "GPT-5.6 Reserve" {
 		t.Fatalf("prefixed Reserve = %#v", reserve)
 	}
-	if intFromAny(reserve["context_window"]) != 516000 || reserve["auto_compact_token_limit"] != nil {
-		t.Fatalf("explicit Reserve context must not set compaction: %#v", reserve)
+	if intFromAny(reserve["context_window"]) != 516000 || intFromAny(reserve["max_context_window"]) != 516000 {
+		t.Fatalf("explicit Reserve context must override the template window: %#v", reserve)
+	}
+	// 显式窗口同样必须带上 90% 压缩阈值（516000 * 90 / 100 = 464400）。
+	if got := intFromAny(reserve["auto_compact_token_limit"]); got != 464400 {
+		t.Fatalf("explicit Reserve auto_compact_token_limit = %#v, want 464400", reserve["auto_compact_token_limit"])
 	}
 }
 
@@ -1382,7 +1484,7 @@ func TestTargetAccountHeaderRequiresInternalAPIKey(t *testing.T) {
 	external := &apiKeySpec{ID: "client", Key: "client-key", Enabled: true}
 	policy := &requestPolicy{
 		manifest: &manifest{
-			ModelIDs: []string{"gpt-5.5"},
+			ModelIDs: []string{"gpt-5.6-sol"},
 			APIKeys:  []apiKeySpec{*internal, *external},
 			apiKeyByValue: map[string]*apiKeySpec{
 				internal.Key: internal,
@@ -1401,7 +1503,7 @@ func TestTargetAccountHeaderRequiresInternalAPIKey(t *testing.T) {
 	})
 
 	for _, key := range []string{internal.Key, external.Key} {
-		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5"}`))
+		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol"}`))
 		request.Header.Set("Authorization", "Bearer "+key)
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set(targetAccountIDHeaderName, "target-account")
@@ -1569,7 +1671,6 @@ func TestAuthPoolUnavailableErrorUsesCockpitLocale(t *testing.T) {
 		candidateAuths:     3,
 		unavailableAuths:   1,
 		modelExcludedAuths: 1,
-		quotaReservedAuths: 1,
 	}
 
 	zhError := authPoolUnavailableError("zh-CN", stats, "no auth available")
@@ -1864,102 +1965,6 @@ func TestLoadManifestIndexesTokenAccounts(t *testing.T) {
 	}
 }
 
-func TestLoadManifestParsesBoundOAuthQuotaReserve(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "manifest.json")
-	if err := os.WriteFile(path, []byte(`{
-		"accounts": [{
-			"id": "oauth-account",
-			"email": "oauth@example.com",
-			"authId": "oauth-account.json",
-			"quotaReserve": {
-				"hourlyThresholdPercent": 10,
-				"weeklyThresholdPercent": 20,
-				"snapshotUpdatedAtUnixSeconds": 1234567890,
-				"hourlyRemainingPercent": 55,
-				"weeklyRemainingPercent": 66,
-				"hourlyWindowPresent": true,
-				"weeklyWindowPresent": false
-			}
-		}]
-	}`), 0o644); err != nil {
-		t.Fatalf("write manifest: %v", err)
-	}
-
-	m, err := loadManifest(path)
-	if err != nil {
-		t.Fatalf("load manifest: %v", err)
-	}
-	account := m.accountByID["oauth-account"]
-	if account == nil || account.QuotaReserve == nil {
-		t.Fatalf("quota reserve should be parsed: %#v", account)
-	}
-	reserve := account.QuotaReserve
-	if reserve.HourlyThresholdPercent == nil || *reserve.HourlyThresholdPercent != 10 ||
-		reserve.WeeklyThresholdPercent == nil || *reserve.WeeklyThresholdPercent != 20 ||
-		reserve.SnapshotUpdatedAtUnixSeconds == nil || *reserve.SnapshotUpdatedAtUnixSeconds != 1234567890 ||
-		reserve.HourlyRemainingPercent == nil || *reserve.HourlyRemainingPercent != 55 ||
-		reserve.WeeklyRemainingPercent == nil || *reserve.WeeklyRemainingPercent != 66 ||
-		reserve.HourlyWindowPresent == nil || !*reserve.HourlyWindowPresent ||
-		reserve.WeeklyWindowPresent == nil || *reserve.WeeklyWindowPresent {
-		t.Fatalf("unexpected parsed quota reserve: %#v", reserve)
-	}
-}
-
-func TestCockpitSelectorPickSkipsBoundOAuthAtEitherQuotaReserve(t *testing.T) {
-	tests := []struct {
-		name            string
-		hourlyRemaining int
-		weeklyRemaining int
-	}{
-		{name: "hourly", hourlyRemaining: 10, weeklyRemaining: 90},
-		{name: "weekly", hourlyRemaining: 90, weeklyRemaining: 20},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hourlyThreshold := 10
-			weeklyThreshold := 20
-			snapshotUpdatedAt := time.Now().Unix()
-			windowPresent := true
-			protectedAccount := &accountSpec{
-				ID:     "protected",
-				Email:  "protected@example.com",
-				AuthID: "protected.json",
-				QuotaReserve: &quotaReserveSpec{
-					HourlyThresholdPercent:       &hourlyThreshold,
-					WeeklyThresholdPercent:       &weeklyThreshold,
-					SnapshotUpdatedAtUnixSeconds: &snapshotUpdatedAt,
-					HourlyRemainingPercent:       &tt.hourlyRemaining,
-					WeeklyRemainingPercent:       &tt.weeklyRemaining,
-					HourlyWindowPresent:          &windowPresent,
-					WeeklyWindowPresent:          &windowPresent,
-				},
-			}
-			normalAccount := &accountSpec{ID: "normal", AuthID: "normal.json"}
-			selector := &cockpitSelector{manifest: &manifest{
-				accountByAuthID: map[string]*accountSpec{
-					"protected.json": protectedAccount,
-					"normal.json":    normalAccount,
-				},
-			}}
-
-			selected, err := selector.Pick(
-				context.Background(),
-				"codex",
-				"gpt-5.4",
-				cliproxyexecutor.Options{},
-				[]*coreauth.Auth{{ID: "protected.json"}, {ID: "normal.json"}},
-			)
-			if err != nil {
-				t.Fatalf("Pick: %v", err)
-			}
-			if selected == nil || selected.ID != "normal.json" {
-				t.Fatalf("expected normal auth after reserve filtering, got %#v", selected)
-			}
-		})
-	}
-}
-
 func TestCockpitSelectorPrefersAccountWithFewerImageJobs(t *testing.T) {
 	busyAccount := &accountSpec{ID: "busy", AuthID: "busy.json"}
 	idleAccount := &accountSpec{ID: "idle", AuthID: "idle.json"}
@@ -2045,319 +2050,6 @@ func TestImageRequestSelectorBypassesSessionAffinityFallback(t *testing.T) {
 	}
 }
 
-func TestCockpitSelectorPickIgnoresExplicitlyMissingQuotaWindow(t *testing.T) {
-	hourlyThreshold := 10
-	weeklyThreshold := 20
-	snapshotUpdatedAt := time.Now().Unix()
-	weeklyRemaining := 80
-	hourlyWindowPresent := false
-	weeklyWindowPresent := true
-	account := &accountSpec{
-		ID:     "protected",
-		AuthID: "protected.json",
-		QuotaReserve: &quotaReserveSpec{
-			HourlyThresholdPercent:       &hourlyThreshold,
-			WeeklyThresholdPercent:       &weeklyThreshold,
-			SnapshotUpdatedAtUnixSeconds: &snapshotUpdatedAt,
-			HourlyRemainingPercent:       nil,
-			WeeklyRemainingPercent:       &weeklyRemaining,
-			HourlyWindowPresent:          &hourlyWindowPresent,
-			WeeklyWindowPresent:          &weeklyWindowPresent,
-		},
-	}
-	selector := &cockpitSelector{manifest: &manifest{
-		accountByAuthID: map[string]*accountSpec{"protected.json": account},
-	}}
-
-	selected, err := selector.Pick(
-		context.Background(),
-		"codex",
-		"gpt-5.4",
-		cliproxyexecutor.Options{},
-		[]*coreauth.Auth{{ID: "protected.json"}},
-	)
-	if err != nil {
-		t.Fatalf("Pick: %v", err)
-	}
-	if selected == nil || selected.ID != "protected.json" {
-		t.Fatalf("expected auth with explicitly absent hourly window, got %#v", selected)
-	}
-}
-
-func TestCockpitSelectorPickFailsClosedForUnknownBoundOAuthQuota(t *testing.T) {
-	hourlyThreshold := 10
-	weeklyThreshold := 20
-	snapshotUpdatedAt := time.Now().Unix()
-	weeklyWindowPresent := false
-	account := &accountSpec{
-		ID:     "protected",
-		Email:  "protected@example.com",
-		AuthID: "protected.json",
-		QuotaReserve: &quotaReserveSpec{
-			HourlyThresholdPercent:       &hourlyThreshold,
-			WeeklyThresholdPercent:       &weeklyThreshold,
-			SnapshotUpdatedAtUnixSeconds: &snapshotUpdatedAt,
-			HourlyRemainingPercent:       nil,
-			WeeklyRemainingPercent:       nil,
-			HourlyWindowPresent:          nil,
-			WeeklyWindowPresent:          &weeklyWindowPresent,
-		},
-	}
-	selector := &cockpitSelector{manifest: &manifest{
-		accountByAuthID: map[string]*accountSpec{"protected.json": account},
-	}}
-
-	selected, err := selector.Pick(
-		context.Background(),
-		"codex",
-		"gpt-5.4",
-		cliproxyexecutor.Options{},
-		[]*coreauth.Auth{{ID: "protected.json"}},
-	)
-	if selected != nil {
-		t.Fatalf("expected no selected auth, got %#v", selected)
-	}
-	if err == nil {
-		t.Fatal("expected quota reserve error")
-	}
-	message := err.Error()
-	for _, fragment := range []string{
-		"no auth available",
-		"bound OAuth quota reserve blocked 1 auth(s)",
-		"protected@example.com",
-		"5h remaining quota unknown",
-	} {
-		if !strings.Contains(message, fragment) {
-			t.Fatalf("expected %q in error %q", fragment, message)
-		}
-	}
-}
-
-func TestCockpitSelectorPickFailsClosedForInvalidQuotaSnapshotTimestamp(t *testing.T) {
-	now := time.Now().Unix()
-	tests := []struct {
-		name      string
-		timestamp *int64
-		reason    string
-	}{
-		{name: "missing", timestamp: nil, reason: "quota snapshot timestamp unknown"},
-		{name: "non-positive", timestamp: int64PointerForTest(0), reason: "quota snapshot timestamp invalid"},
-		{name: "future", timestamp: int64PointerForTest(now + 60), reason: "quota snapshot timestamp invalid"},
-		{name: "stale", timestamp: int64PointerForTest(now - int64(quotaReserveMaxSnapshotAge/time.Second) - 1), reason: "quota snapshot stale"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hourlyThreshold := 10
-			weeklyThreshold := 20
-			hourlyRemaining := 80
-			weeklyRemaining := 80
-			windowPresent := true
-			account := &accountSpec{
-				ID:     "protected",
-				Email:  "protected@example.com",
-				AuthID: "protected.json",
-				QuotaReserve: &quotaReserveSpec{
-					HourlyThresholdPercent:       &hourlyThreshold,
-					WeeklyThresholdPercent:       &weeklyThreshold,
-					SnapshotUpdatedAtUnixSeconds: tt.timestamp,
-					HourlyRemainingPercent:       &hourlyRemaining,
-					WeeklyRemainingPercent:       &weeklyRemaining,
-					HourlyWindowPresent:          &windowPresent,
-					WeeklyWindowPresent:          &windowPresent,
-				},
-			}
-			selector := &cockpitSelector{manifest: &manifest{
-				accountByAuthID: map[string]*accountSpec{"protected.json": account},
-			}}
-
-			selected, err := selector.Pick(
-				context.Background(),
-				"codex",
-				"gpt-5.4",
-				cliproxyexecutor.Options{},
-				[]*coreauth.Auth{{ID: "protected.json"}},
-			)
-			if selected != nil {
-				t.Fatalf("expected no selected auth, got %#v", selected)
-			}
-			if err == nil || !strings.Contains(err.Error(), tt.reason) {
-				t.Fatalf("expected %q in quota reserve error, got %v", tt.reason, err)
-			}
-		})
-	}
-}
-
-func TestQuotaReserveStateStoreHotReloadsSnapshot(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "quota-reserve.json")
-	hourlyThreshold := 20
-	weeklyThreshold := 10
-	account := &accountSpec{
-		ID:    "protected",
-		Email: "protected@example.com",
-		QuotaReserve: &quotaReserveSpec{
-			HourlyThresholdPercent: &hourlyThreshold,
-			WeeklyThresholdPercent: &weeklyThreshold,
-		},
-	}
-	writeState := func(hourly, weekly int) {
-		t.Helper()
-		content, err := json.Marshal(quotaReserveStateFile{Accounts: map[string]quotaReserveSnapshot{
-			"protected": {
-				SnapshotUpdatedAtUnixSeconds: int64PointerForTest(time.Now().Unix()),
-				HourlyRemainingPercent:       intPointerForTest(hourly),
-				WeeklyRemainingPercent:       intPointerForTest(weekly),
-				HourlyWindowPresent:          boolPointerForTest(true),
-				WeeklyWindowPresent:          boolPointerForTest(true),
-			},
-		}})
-		if err != nil {
-			t.Fatalf("marshal quota reserve state: %v", err)
-		}
-		if err := os.WriteFile(statePath, content, 0o600); err != nil {
-			t.Fatalf("write quota reserve state: %v", err)
-		}
-	}
-
-	writeState(80, 80)
-	store := newQuotaReserveStateStore(statePath, nil)
-	if err := store.load(); err != nil {
-		t.Fatalf("load available state: %v", err)
-	}
-	if reason := quotaReserveBlockReasonWithState(account, store, time.Now()); reason != "" {
-		t.Fatalf("expected available snapshot, got %q", reason)
-	}
-
-	writeState(20, 80)
-	if err := store.load(); err != nil {
-		t.Fatalf("load blocked state: %v", err)
-	}
-	if reason := quotaReserveBlockReasonWithState(account, store, time.Now()); !strings.Contains(reason, "5h remaining 20% <= reserve 20%") {
-		t.Fatalf("expected hot-reloaded reserve block, got %q", reason)
-	}
-}
-
-func TestQuotaReserveSelectorFiltersCachedSessionAffinityAuth(t *testing.T) {
-	tests := []struct {
-		name          string
-		includeNormal bool
-		mutateReserve func(*quotaReserveSpec)
-		wantAuthID    string
-		wantError     string
-	}{
-		{
-			name:          "blocked reselects normal",
-			includeNormal: true,
-			mutateReserve: func(reserve *quotaReserveSpec) {
-				*reserve.HourlyRemainingPercent = *reserve.HourlyThresholdPercent
-			},
-			wantAuthID: "normal.json",
-		},
-		{
-			name:          "stale reselects normal",
-			includeNormal: true,
-			mutateReserve: func(reserve *quotaReserveSpec) {
-				*reserve.SnapshotUpdatedAtUnixSeconds = time.Now().Add(-quotaReserveMaxSnapshotAge - time.Second).Unix()
-			},
-			wantAuthID: "normal.json",
-		},
-		{
-			name: "blocked without fallback returns quota error",
-			mutateReserve: func(reserve *quotaReserveSpec) {
-				*reserve.WeeklyRemainingPercent = *reserve.WeeklyThresholdPercent
-			},
-			wantError: "bound OAuth quota reserve blocked 1 auth(s)",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hourlyThreshold := 10
-			weeklyThreshold := 20
-			snapshotUpdatedAt := time.Now().Unix()
-			hourlyRemaining := 80
-			weeklyRemaining := 80
-			windowPresent := true
-			protectedPlanRank := 2
-			normalPlanRank := 1
-			reserve := &quotaReserveSpec{
-				HourlyThresholdPercent:       &hourlyThreshold,
-				WeeklyThresholdPercent:       &weeklyThreshold,
-				SnapshotUpdatedAtUnixSeconds: &snapshotUpdatedAt,
-				HourlyRemainingPercent:       &hourlyRemaining,
-				WeeklyRemainingPercent:       &weeklyRemaining,
-				HourlyWindowPresent:          &windowPresent,
-				WeeklyWindowPresent:          &windowPresent,
-			}
-			protectedAccount := &accountSpec{
-				ID:           "protected",
-				Email:        "protected@example.com",
-				AuthID:       "protected.json",
-				PlanRank:     &protectedPlanRank,
-				QuotaReserve: reserve,
-			}
-			normalAccount := &accountSpec{
-				ID:       "normal",
-				Email:    "normal@example.com",
-				AuthID:   "normal.json",
-				PlanRank: &normalPlanRank,
-			}
-			m := &manifest{
-				Accounts:          []accountSpec{*protectedAccount, *normalAccount},
-				RoutingStrategy:   "plan_high_first",
-				accountByID:       map[string]*accountSpec{"protected": protectedAccount, "normal": normalAccount},
-				accountByAuthID:   map[string]*accountSpec{"protected.json": protectedAccount, "normal.json": normalAccount},
-				originalIndexByID: map[string]int{"protected": 0, "normal": 1},
-			}
-			cfg := &config.Config{}
-			cfg.Routing.SessionAffinity = true
-			cfg.Routing.SessionAffinityTTL = time.Minute.String()
-			selector := buildCoreAuthSelector(cfg, &cockpitSelector{manifest: m}, m, nil)
-			if stoppable, ok := selector.(coreauth.StoppableSelector); ok {
-				defer stoppable.Stop()
-			}
-
-			auths := []*coreauth.Auth{{ID: "protected.json"}}
-			if tt.includeNormal {
-				auths = append(auths, &coreauth.Auth{ID: "normal.json"})
-			}
-			opts := cliproxyexecutor.Options{
-				OriginalRequest: []byte(`{"metadata":{"user_id":"user_xxx_account__session_ac980658-63bd-4fb3-97ba-8da64cb1e344"}}`),
-			}
-
-			first, err := selector.Pick(context.Background(), "codex", "gpt-5.4", opts, auths)
-			if err != nil {
-				t.Fatalf("initial Pick: %v", err)
-			}
-			if first == nil || first.ID != "protected.json" {
-				t.Fatalf("expected protected auth to establish affinity, got %#v", first)
-			}
-			cached, err := selector.Pick(context.Background(), "codex", "gpt-5.4", opts, auths)
-			if err != nil || cached == nil || cached.ID != "protected.json" {
-				t.Fatalf("expected protected affinity cache hit, got auth=%#v err=%v", cached, err)
-			}
-
-			tt.mutateReserve(reserve)
-			selected, err := selector.Pick(context.Background(), "codex", "gpt-5.4", opts, auths)
-			if tt.wantError != "" {
-				if selected != nil {
-					t.Fatalf("expected no auth after reserve block, got %#v", selected)
-				}
-				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
-					t.Fatalf("expected quota error containing %q, got %v", tt.wantError, err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Pick after reserve change: %v", err)
-			}
-			if selected == nil || selected.ID != tt.wantAuthID {
-				t.Fatalf("expected %s after cached auth was filtered, got %#v", tt.wantAuthID, selected)
-			}
-		})
-	}
-}
-
 func TestBackupAccountSelectorOverridesCachedAffinityWhenRegularRecovers(t *testing.T) {
 	regularAccount := &accountSpec{ID: "regular", AuthID: "regular.json"}
 	backupAccount := &accountSpec{ID: "backup", AuthID: "backup.json"}
@@ -2381,7 +2073,7 @@ func TestBackupAccountSelectorOverridesCachedAffinityWhenRegularRecovers(t *test
 	cfg := &config.Config{}
 	cfg.Routing.SessionAffinity = true
 	cfg.Routing.SessionAffinityTTL = time.Minute.String()
-	selector := buildCoreAuthSelector(cfg, &cockpitSelector{manifest: m}, m, nil)
+	selector := buildCoreAuthSelector(cfg, &cockpitSelector{manifest: m}, m)
 	if stoppable, ok := selector.(coreauth.StoppableSelector); ok {
 		defer stoppable.Stop()
 	}
@@ -2437,7 +2129,7 @@ func TestUsagePrioritySelectorPrefersHighestAcrossRoutingStrategies(t *testing.T
 	cfg := &config.Config{}
 	cfg.Routing.SessionAffinity = true
 	cfg.Routing.SessionAffinityTTL = time.Minute.String()
-	selector := buildCoreAuthSelector(cfg, &cockpitSelector{manifest: m}, m, nil)
+	selector := buildCoreAuthSelector(cfg, &cockpitSelector{manifest: m}, m)
 	if stoppable, ok := selector.(coreauth.StoppableSelector); ok {
 		defer stoppable.Stop()
 	}
@@ -2511,7 +2203,7 @@ func TestSidecarRuntimeRegistersConfigCodexAPIKeyAuths(t *testing.T) {
 		accountByAPIKey: map[string]*accountSpec{"sk-upstream": account},
 		ModelIDs:        []string{"gpt-5.4"},
 	}
-	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, nil, newRequestUsageTracker())
+	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, newRequestUsageTracker())
 
 	runtime, err := newSidecarRuntime(context.Background(), configPath, cfg, m, manager)
 	if err != nil {
@@ -2579,7 +2271,7 @@ func TestSidecarRuntimeRegistersManifestCodexAccessTokenAuths(t *testing.T) {
 		accountByEmail:   map[string]*accountSpec{"token@example.com": account},
 		ModelIDs:         []string{"gpt-5.4"},
 	}
-	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, nil, newRequestUsageTracker())
+	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, newRequestUsageTracker())
 
 	runtime, err := newSidecarRuntime(context.Background(), configPath, cfg, m, manager)
 	if err != nil {
@@ -2616,18 +2308,18 @@ func TestSidecarRuntimeRegistersManifestCodexAccessTokenAuths(t *testing.T) {
 
 func TestManifestRegistryModelsPreservesStaticThinkingSupport(t *testing.T) {
 	models := manifestRegistryModels(&manifest{
-		ModelIDs: []string{"gpt-5.2"},
+		ModelIDs: []string{"gpt-6.1-sol"},
 	})
 
-	info := findModelInfoForTest(models, "gpt-5.2")
+	info := findModelInfoForTest(models, "gpt-6.1-sol")
 	if info == nil {
-		t.Fatalf("expected gpt-5.2 in manifest registry models: %#v", models)
+		t.Fatalf("expected gpt-6.1-sol in manifest registry models: %#v", models)
 	}
 	if info.Thinking == nil {
-		t.Fatalf("expected gpt-5.2 to preserve static thinking support: %#v", info)
+		t.Fatalf("expected gpt-6.1-sol to preserve static thinking support: %#v", info)
 	}
 	if !stringSliceContains(info.Thinking.Levels, "high") {
-		t.Fatalf("expected gpt-5.2 thinking levels to include high: %#v", info.Thinking.Levels)
+		t.Fatalf("expected gpt-6.1-sol thinking levels to include high: %#v", info.Thinking.Levels)
 	}
 	if info.UserDefined {
 		t.Fatalf("static model should not be marked user-defined: %#v", info)
@@ -2670,13 +2362,13 @@ func TestManifestRegistryModelsPreservesGpt6ThinkingSupport(t *testing.T) {
 func TestManifestRegistryModelsCopiesSourceThinkingToAliases(t *testing.T) {
 	models := manifestRegistryModels(&manifest{
 		ModelAliases: []modelAliasSpec{{
-			SourceModel: "gpt-5.2",
-			Alias:       "gpt-5.2-codex",
+			SourceModel: "gpt-6.1-sol",
+			Alias:       "custom-sol-alias",
 			Fork:        true,
 		}},
 	})
 
-	alias := findModelInfoForTest(models, "gpt-5.2-codex")
+	alias := findModelInfoForTest(models, "custom-sol-alias")
 	if alias == nil {
 		t.Fatalf("expected alias in manifest registry models: %#v", models)
 	}
@@ -2714,7 +2406,7 @@ func TestManifestRegisteredModelsPreserveReasoningEffortThroughThinkingPipeline(
 		Provider: "codex",
 		Status:   coreauth.StatusActive,
 	}
-	manager := buildCoreAuthManager(&config.Config{}, &cockpitSelector{}, nil, nil, nil, nil)
+	manager := buildCoreAuthManager(&config.Config{}, &cockpitSelector{}, nil, nil, nil)
 	registered, err := manager.Register(context.Background(), auth)
 	if err != nil {
 		t.Fatalf("register auth: %v", err)
@@ -3014,7 +2706,7 @@ func TestRequestUsageTrackerFinalizesWithSelectedAccount(t *testing.T) {
 	}
 }
 
-func TestRequestUsageTrackerSelectedAccountOverridesUsageAccount(t *testing.T) {
+func TestRequestUsageTrackerUsageAccountOverridesLaterSelection(t *testing.T) {
 	tracker := newRequestUsageTracker()
 	tracker.recordSelectedAccount("req-usage", &accountSpec{
 		ID:    "account-selected",
@@ -3038,8 +2730,8 @@ func TestRequestUsageTrackerSelectedAccountOverridesUsageAccount(t *testing.T) {
 	if !ok {
 		t.Fatal("expected finalized usage payload")
 	}
-	if payload.AccountID != "account-selected" || payload.AccountEmail != "selected@example.com" || payload.AuthID != "auth-selected" {
-		t.Fatalf("selected account metadata should win, got %#v", payload)
+	if payload.AccountID != "account-usage" || payload.AccountEmail != "usage@example.com" || payload.AuthID != "auth-usage" {
+		t.Fatalf("usage account metadata must stay with its tokens, got %#v", payload)
 	}
 }
 
@@ -3454,7 +3146,7 @@ func TestMixedRoutingCatalogPreservesGPTCapabilities(t *testing.T) {
 }
 
 func TestVisibleModelsForMixedRoutingIncludesNamespacedProviderModels(t *testing.T) {
-	m := &manifest{ModelIDs: []string{"gpt-5.5"}}
+	m := &manifest{ModelIDs: []string{"gpt-5.6-sol"}}
 	spec := &apiKeySpec{ModelRouting: &modelRoutingSpec{
 		DefaultRoute:  "oauth",
 		FailurePolicy: "strict",
@@ -3468,7 +3160,7 @@ func TestVisibleModelsForMixedRoutingIncludesNamespacedProviderModels(t *testing
 	}}
 
 	got := visibleModelsForAPIKey(m, spec)
-	want := []string{"gpt-5.5", "gpt-reserve", "cpa/gpt-5.5", "cpa/grok-4.6"}
+	want := []string{"gpt-5.6-sol", "gpt-reserve", "cpa/gpt-5.5", "cpa/grok-4.6"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("visible models = %#v, want %#v", got, want)
 	}
@@ -3510,5 +3202,27 @@ func TestCockpitSelectorSkipsExhaustedQuotaForRegularModels(t *testing.T) {
 	selected, err = selector.Pick(context.Background(), "codex", codexReserveModel, cliproxyexecutor.Options{}, []*coreauth.Auth{auth})
 	if err != nil || selected != auth {
 		t.Fatalf("reserve model should keep its independent quota path: selected=%v err=%v", selected, err)
+	}
+}
+
+func TestGPT61SolNativeCatalogAndOllamaCapabilities(t *testing.T) {
+	if !isCodexShellModelID("gpt-6.1-sol") {
+		t.Fatal("GPT-6.1 Sol must retain native identity")
+	}
+	template := readCodexClientModelTemplateForTest(t, "gpt-6.1-sol")
+	if got, want := ollamaContextLength("gpt-6.1-sol"), intFromAny(template["context_window"]); got != want {
+		t.Fatalf("context: %d, want template value %d", got, want)
+	}
+	if got := ollamaModelFamily("gpt-6.1-sol"); got != "gpt-6.1-sol" {
+		t.Fatalf("family: %s", got)
+	}
+	if got := ollamaDefaultReasoningEffort("gpt-6.1-sol"); got != "low" {
+		t.Fatalf("default effort: %s", got)
+	}
+	if !reflect.DeepEqual(ollamaReasoningEfforts("gpt-6.1-sol"), []string{"low", "medium", "high", "xhigh", "max", "ultra"}) {
+		t.Fatal("missing official reasoning levels")
+	}
+	if officialAutomaticModelDisplayName("gpt-6.1-sol") != "GPT-6.1 Sol" || displayNameForModel("gpt-6.1-sol") != "GPT-6.1 Sol" {
+		t.Fatal("incorrect display name")
 	}
 }

@@ -1,31 +1,34 @@
-import { Fragment, useEffect } from "react";
+import { requestCodexOfficialAuthorizationManagement } from "../utils/codexAccountServiceNavigation";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useModalScrollLock } from "../hooks/useModalScrollLock";
 import "./CodexAccountDialogs.css";
-import { Plus, RefreshCw, Download, Upload, Trash2, X, Globe, KeyRound, Power, Copy, Check, Play, Pause, RotateCw, CircleAlert, Info, Rows3, LayoutGrid, List, Search, ArrowDownWideNarrow, ArrowUp, ArrowDown, GripVertical, Clock, Tag, Star, Eye, EyeOff, BookOpen, FileText, ExternalLink, FolderOpen, FolderPlus, ChevronRight, LogOut, Terminal, ChevronDown } from "lucide-react";
+import { Plus, RefreshCw, Upload, Trash2, X, Globe, KeyRound, Power, Copy, Check, Play, Pause, RotateCw, CircleAlert, Info, Rows3, LayoutGrid, List, Search, ArrowDownWideNarrow, ArrowUp, ArrowDown, GripVertical, Clock, Tag, Star, Eye, EyeOff, BookOpen, FileText, ExternalLink, FolderOpen, FolderPlus, LogOut, Terminal, ChevronDown } from "lucide-react";
 import * as codexLocalAccessService from "../services/codexLocalAccessService";
 import { TagEditModal } from "../components/TagEditModal";
 import { ExportJsonModal } from "../components/ExportJsonModal";
 import { ModalErrorMessage } from "../components/ModalErrorMessage";
 import { PaginationControls } from "../components/PaginationControls";
-import { CodexAccountGroupModal, CodexAddToGroupModal } from "../components/CodexAccountGroupModal";
+import { PlatformGroupTabs } from "../components/PlatformGroupTabs";
+import { AccountGroupModal, AddToGroupModal } from "../components/AccountGroupModal";
 import { CodexGroupAccountPickerModal } from "../components/CodexGroupAccountPickerModal";
 import { CodexLocalAccessModal } from "../components/CodexLocalAccessModal";
 import { CodexInstanceGatewaysModal } from "../components/CodexInstanceGatewaysModal";
 import { CodexAccountPoolHealthModal } from "../components/CodexAccountPoolHealthModal";
-import { isCodexApiKeyAccount, isCodexChatCompletionsApiKeyAccount, isCodexNewApiAccount } from "../types/codex";
+import { isCodexApiKeyAccount, isCodexChatgptPlanAccount, isCodexChatCompletionsApiKeyAccount, isCodexNewApiAccount } from "../types/codex";
 import { QuickSettingsPopover } from "../components/QuickSettingsPopover";
 import { MultiSelectFilterDropdown } from "../components/MultiSelectFilterDropdown";
 import { SingleSelectFilterDropdown } from "../components/SingleSelectFilterDropdown";
 import { SingleSelectDropdown } from "../components/SingleSelectDropdown";
 import { CODEX_API_PROVIDER_CUSTOM_ID, CODEX_API_PROVIDER_PRESETS, COCKPIT_API_PROVIDER_ID } from "../utils/codexProviderPresets";
-import { formatCodexQuotaPoolPercent, formatCodexQuotaPoolWindowLabel } from "../utils/codexQuotaPool";
-import { getCodexLocalAccessRiskNoticeConfirmLabel } from "../utils/codexLocalAccessRiskNotice";
+import { formatCodexQuotaPoolPlanLabel, formatCodexQuotaPoolPercent, formatCodexQuotaPoolWindowLabel } from "../utils/codexQuotaPool";
 import { getMfaOtpToken } from "../utils/mfaVault";
 import type { CodexExportFormat } from "../utils/codexExportFormats";
 import type { CodexAccountsViewProps } from "./CodexAccountsView";
 import { CodexAddAccountDialog } from "./CodexAddAccountDialog";
 import { useCodexPelicanStore } from "../stores/useCodexPelicanStore";
+import { CodexRecycleBinModal } from "../components/CodexRecycleBinModal";
+import { emitAccountsChanged } from "../utils/accountSyncEvents";
 import { PELICAN_GROUPS_CHANGED } from "../components/codex/pelican/PelicanResults";
 
 
@@ -52,7 +55,6 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     activeAccountUsesPersonalAccessToken,
     activeGroup,
     activeGroupId,
-    authFailedExportAccountIds,
     availableTags,
     batchDeleteBusy,
     batchDeleteJob,
@@ -71,7 +73,6 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     clearTagFilter,
     closeAccountNoteModal,
     closeApiKeyCredentialsModal,
-    closeLocalAccessRiskNotice,
     closeQuickSwitchModal,
     closeResetCreditConfirmModal,
     codexAccountSortOptions,
@@ -97,6 +98,12 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     editingApiKeyCredentialsValue,
     editingApiKeyCredentialsVisible,
     editingApiModelCatalogDraft,
+    editingApiWireApi,
+    editingApiSupportsWebsockets,
+    editingApiCredentialsError,
+    setEditingApiWireApi,
+    setEditingApiSupportsWebsockets,
+    setEditingApiCredentialsError,
     editingApiModelCatalogError,
     editingApiModelCatalogFetching,
     editingApiModelCatalogInput,
@@ -154,9 +161,9 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     handleEditingApiBaseUrlCredentialsChange,
     handleEditingApiKeyCredentialsChange,
     handleExport,
-    handleExportAuthFailedAccounts,
     handleFetchEditingApiModelCatalog,
     handleKillLocalAccessPort,
+    handleEnterGroup,
     handleLeaveGroup,
     handleLocalAccessAddressKindChange,
     handleOpenAccountNoteMailUrl,
@@ -220,8 +227,6 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     localAccessPortKilling,
     localAccessQuotaPoolLabels,
     localAccessQuotaPoolSummary,
-    localAccessRiskNoticeAction,
-    localAccessRiskNoticeRemember,
     localAccessSaving,
     localAccessSidecarRestarting,
     localAccessStarting,
@@ -238,11 +243,9 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     openFormattedExportSavedDirectory,
     openFullQuotaWakeupTestModal,
     overviewAccounts,
+    planOverview,
     overviewCurrentAccountId,
-    overviewFilterChips,
     overviewLayoutMode,
-    overviewTotalCount,
-    overviewVisibleCount,
     page,
     paginatedAccounts,
     paginatedGroupedAccounts,
@@ -306,7 +309,6 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     setGroupDeleteError,
     setGroupQuickAddGroupId,
     setIncludeExportSensitiveNotes,
-    setLocalAccessRiskNoticeRemember,
     setLocalAccessState,
     setMessage,
     setPendingWebSessionImport,
@@ -330,7 +332,6 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     showLocalAccessHideConfirm,
     showLocalAccessModal,
     showLocalAccessQuotaStatsModal,
-    showOverviewFilterBanner,
     showOverviewSelectionBar,
     showTagFilter,
     showTagModal,
@@ -353,6 +354,21 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     updateActiveAccountNoteForm,
     viewMode,
   } = props;
+  const noteMfaInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!activeAccountNoteMode || !accountNoteFieldErrors.twoFactorSecret) return;
+    const frame = window.requestAnimationFrame(() => {
+      noteMfaInputRef.current?.scrollIntoView({ block: "nearest" });
+      noteMfaInputRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeAccountNoteMode, accountNoteFieldErrors.twoFactorSecret]);
+  const [recycleBinOpen, setRecycleBinOpen] = useState(false);
+  const recycleBinButton = (
+    <button type="button" className="btn btn-secondary" onClick={() => setRecycleBinOpen(true)}>
+      <Trash2 size={14} /><span>{t("common.recycleBin.title")}</span>
+    </button>
+  );
   useEffect(() => {
     const reload = () => { void reloadCodexGroups(); };
     window.addEventListener(PELICAN_GROUPS_CHANGED, reload);
@@ -361,6 +377,14 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
   useModalScrollLock(Boolean(quickSwitchAccountId || editingApiKeyCredentialsId));
   return (
         <>
+          {recycleBinOpen && <CodexRecycleBinModal
+            onClose={() => setRecycleBinOpen(false)}
+            maskAccountText={maskAccountText}
+            onRestored={async () => {
+              await store.fetchAccounts();
+              await emitAccountsChanged({ platformId: "codex", reason: "restore" });
+            }}
+          />}
           {message && (
             <div
               className={`message-bar ${message.tone === "error" ? "error" : "success"}`}
@@ -369,40 +393,6 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
               <button onClick={() => setMessage(null)}>
                 <X size={14} />
               </button>
-            </div>
-          )}
-
-          {activeGroup && (
-            <div className="folder-breadcrumb">
-              <button className="breadcrumb-back" onClick={handleLeaveGroup}>
-                <FolderOpen size={14} />
-                {t("accounts.groups.allGroups")}
-              </button>
-              <ChevronRight size={14} className="breadcrumb-sep" />
-              <span className="breadcrumb-current">
-                {activeGroup.name}
-                <span className="breadcrumb-count">
-                  ({filteredAccounts.length})
-                </span>
-              </span>
-              <button
-                className="btn btn-secondary breadcrumb-remove-btn"
-                onClick={() => setGroupQuickAddGroupId(activeGroup.id)}
-                title={t("accounts.groups.addAccounts")}
-              >
-                <FolderPlus size={14} />
-                {t("accounts.groups.addAccounts")}
-              </button>
-              {selected.size > 0 && (
-                <button
-                  className="btn btn-secondary breadcrumb-remove-btn"
-                  onClick={() => void handleRemoveFromGroup()}
-                  title={t("accounts.groups.removeFromGroup")}
-                >
-                  <LogOut size={14} />
-                  {t("accounts.groups.removeFromGroup")} ({selected.size})
-                </button>
-              )}
             </div>
           )}
 
@@ -577,8 +567,8 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
               </button>
               <button
                 className="btn btn-secondary icon-only"
-                onClick={handleRefreshAll}
-                disabled={refreshingAll || accounts.length === 0}
+                onClick={() => { void planOverview.reload(); handleRefreshAll(); }}
+                disabled={refreshingAll || planOverview.loading || overviewAccounts.length === 0}
                 title={t("common.shared.refreshAll", "刷新全部")}
               >
                 <RefreshCw
@@ -626,53 +616,154 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
             </div>
           </div>
 
-          {(showOverviewFilterBanner || hasActiveOverviewFilters) && (
-            <div
-              className={`codex-overview-filter-banner${
-                showOverviewFilterBanner ? " is-active" : ""
-              }`}
-              role="status"
-            >
-              <div className="codex-overview-filter-banner-main">
-                <span className="codex-overview-filter-banner-count">
-                  {t("codex.filters.visibleOfTotal", {
-                    visible: overviewVisibleCount,
-                    total: overviewTotalCount,
-                    defaultValue: "显示 {{visible}} / 共 {{total}}",
-                  })}
-                </span>
-                {showOverviewFilterBanner && (
-                  <span className="codex-overview-filter-banner-text">
-                    {t("codex.filters.activeBanner", {
-                      visible: overviewVisibleCount,
-                      total: overviewTotalCount,
-                      defaultValue:
-                        "当前筛选仅显示 {{visible}}/{{total}} 个账号",
-                    })}
-                  </span>
+          {(overviewAccounts.length > 0 || codexGroups.length > 0) && (
+            <div className="codex-overview-selection-bar account-selection-toolbar has-middle">
+              <div className="codex-overview-selection-left">
+                <label className="codex-overview-select-all">
+                  <input
+                    type="checkbox"
+                    checked={isAllPaginatedSelected}
+                            disabled={!paginatedAccounts.some((account) => !isCodexChatgptPlanAccount(account))}
+                    onChange={handleToggleSelectAllPaginated}
+                  />
+                  <span>{t("common.selectAll", "全选")}</span>
+                </label>
+                {selected.size > 0 && !isAllFilteredSelectionActive && (
+                  <>
+                    <span className="codex-overview-selected-count">
+                      {t(
+                        "codex.apiService.customRoutingSelected",
+                        "已选 {{count}}",
+                      ).replace("{{count}}", String(selected.size))}
+                    </span>
+                    <button
+                      type="button"
+                      className="codex-overview-clear-selection-btn"
+                      onClick={handleClearOverviewSelection}
+                    >
+                      {t("messages.clearSelection", "取消选择")}
+                    </button>
+                  </>
                 )}
-                {overviewFilterChips.length > 0 && (
-                  <span className="codex-overview-filter-banner-chips">
-                    {overviewFilterChips.join(" · ")}
-                  </span>
+                {canSelectAllFilteredAccounts && (
+                  <button
+                    type="button"
+                    className="codex-overview-select-filtered-btn"
+                    onClick={handleSelectAllFilteredAccounts}
+                  >
+                    {t("messages.selectAllFilteredAccounts", {
+                      count: filteredIds.length,
+                      defaultValue: "选择全部符合条件 {{count}} 条",
+                    })}
+                  </button>
+                )}
+                {isAllFilteredSelectionActive && (
+                  <>
+                    <span className="codex-overview-selected-count">
+                      {t("messages.selectedAllFilteredAccounts", {
+                        count: filteredIds.length,
+                        defaultValue: "已选择全部符合条件 {{count}} 条",
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      className="codex-overview-clear-selection-btn"
+                      onClick={handleClearOverviewSelection}
+                    >
+                      {t("messages.clearSelection", "取消选择")}
+                    </button>
+                  </>
                 )}
               </div>
-              <button
-                type="button"
-                className="btn btn-secondary codex-overview-filter-clear-btn"
-                onClick={clearAllOverviewFilters}
-              >
-                {t("codex.filters.clearAll", "清除筛选")}
-              </button>
+
+              <div className="account-selection-toolbar-middle">
+                <PlatformGroupTabs
+                  groups={codexGroups}
+                  activeGroupId={activeGroupId}
+                  accounts={accounts}
+                  onSelectGroup={(groupId) => {
+                    if (groupId === null) {
+                      handleLeaveGroup();
+                    } else {
+                      handleEnterGroup(groupId);
+                    }
+                  }}
+                  onOpenManage={() => setShowCodexGroupModal(true)}
+                />
+              </div>
+
+              <div className="codex-overview-selection-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => useCodexPelicanStore.getState().open([...selected])}>
+                  <Play size={14} /><span>{t('pelican.title')}</span>
+                </button>
+                {recycleBinButton}
+                {hasDetectableFullQuotaWakeupAccounts && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary codex-overview-full-quota-wakeup-btn"
+                    onClick={openFullQuotaWakeupTestModal}
+                    title={t(
+                      "codex.wakeup.fullQuotaActionTitle",
+                      "打开账号唤醒测试，账号默认按 5h 额度从高到低排序。",
+                    )}
+                  >
+                    <Power size={14} />
+                    <span>
+                      {t("codex.wakeup.fullQuotaAction", "唤醒账号")}
+                    </span>
+                  </button>
+                )}
+                {errorAccountIds.length > 0 && (
+                  <button
+                    className="btn btn-danger icon-only codex-overview-clear-error-btn"
+                    onClick={handleClearErrorAccounts}
+                    title={`${t("messages.cleanErrorAccountsAction", "清理 ERROR 账号")} (${errorAccountIds.length})`}
+                  >
+                    <CircleAlert size={14} />
+                  </button>
+                )}
+                {selected.size > 0 && (
+                  <>
+                    <button
+                      className="btn btn-secondary icon-only"
+                      onClick={() => setShowAddToCodexGroupModal(true)}
+                      title={
+                        activeGroupId
+                          ? `${t("accounts.groups.moveToGroup")} (${selected.size})`
+                          : `${t("codex.groups.addToGroup", "添加至分组")} (${selected.size})`
+                      }
+                    >
+                      <FolderPlus size={14} />
+                    </button>
+                    {activeGroup && (
+                      <button
+                        className="btn btn-secondary icon-only"
+                        onClick={() => void handleRemoveFromGroup()}
+                        title={t("accounts.groups.removeFromGroup")}
+                        aria-label={t("accounts.groups.removeFromGroup")}
+                      >
+                        <LogOut size={14} />
+                      </button>
+                    )}
+                    <button
+                      className="btn btn-danger icon-only"
+                      onClick={handleCodexBatchDelete}
+                      title={`${t("common.delete", "删除")} (${selected.size})`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
-          {loading && accounts.length === 0 ? (
+          {loading && overviewAccounts.length === 0 ? (
             <div className="loading-container">
               <RefreshCw size={24} className="loading-spinner" />
               <p>{t("common.loading", "加载中...")}</p>
             </div>
-          ) : accounts.length === 0 && !hasGroupEntryCards ? (
+          ) : overviewAccounts.length === 0 && !hasGroupEntryCards ? (
             <div className="empty-state">
               <Globe size={48} />
               <h3>{t("common.shared.empty.title", "暂无账号")}</h3>
@@ -697,6 +788,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                   <Plus size={16} />
                   {t("common.shared.addAccount", "添加账号")}
                 </button>
+                {recycleBinButton}
                 <button
                   className="btn btn-secondary"
                   onClick={() =>
@@ -715,6 +807,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
           ) : filteredAccounts.length === 0 && !hasGroupEntryCards ? (
             <div className="empty-state">
               <h3>{t("common.shared.noMatch.title", "没有匹配的账号")}</h3>
+              {recycleBinButton}
               <p>
                 {t("common.shared.noMatch.desc", "请尝试调整搜索或筛选条件")}
               </p>
@@ -730,136 +823,11 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
             </div>
           ) : (
             <>
-              {showOverviewSelectionBar && (
-                <div className="codex-overview-selection-bar">
-                  <div className="codex-overview-selection-left">
-                    <label className="codex-overview-select-all">
-                      <input
-                        type="checkbox"
-                        checked={isAllPaginatedSelected}
-                        onChange={handleToggleSelectAllPaginated}
-                      />
-                      <span>{t("common.selectAll", "全选")}</span>
-                    </label>
-                    {selected.size > 0 && !isAllFilteredSelectionActive && (
-                      <span className="codex-overview-selected-count">
-                        {t(
-                          "codex.apiService.customRoutingSelected",
-                          "已选 {{count}}",
-                        ).replace("{{count}}", String(selected.size))}
-                      </span>
-                    )}
-                    {canSelectAllFilteredAccounts && (
-                      <button
-                        type="button"
-                        className="codex-overview-select-filtered-btn"
-                        onClick={handleSelectAllFilteredAccounts}
-                      >
-                        {t("messages.selectAllFilteredAccounts", {
-                          count: filteredIds.length,
-                          defaultValue: "选择全部符合条件 {{count}} 条",
-                        })}
-                      </button>
-                    )}
-                    {isAllFilteredSelectionActive && (
-                      <>
-                        <span className="codex-overview-selected-count">
-                          {t("messages.selectedAllFilteredAccounts", {
-                            count: filteredIds.length,
-                            defaultValue: "已选择全部符合条件 {{count}} 条",
-                          })}
-                        </span>
-                        <button
-                          type="button"
-                          className="codex-overview-clear-selection-btn"
-                          onClick={handleClearOverviewSelection}
-                        >
-                          {t("messages.clearSelection", "取消选择")}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {(selected.size > 0 ||
-                    errorAccountIds.length > 0 ||
-                    authFailedExportAccountIds.length > 0 ||
-                    hasDetectableFullQuotaWakeupAccounts) && (
-                    <div className="codex-overview-selection-actions">
-                      <button type="button" className="btn btn-secondary" onClick={() => useCodexPelicanStore.getState().open([...selected])}>
-                        <Play size={14} /><span>{t('pelican.title')}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary codex-overview-full-quota-wakeup-btn"
-                        onClick={openFullQuotaWakeupTestModal}
-                        disabled={!hasDetectableFullQuotaWakeupAccounts}
-                        title={t(
-                          "codex.wakeup.fullQuotaActionTitle",
-                          "打开账号唤醒测试，账号默认按 5h 额度从高到低排序。",
-                        )}
-                      >
-                        <Power size={14} />
-                        <span>
-                          {t("codex.wakeup.fullQuotaAction", "唤醒账号")}
-                        </span>
-                      </button>
-                      {authFailedExportAccountIds.length > 0 && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={handleExportAuthFailedAccounts}
-                          disabled={exporting}
-                          title={t(
-                            "codex.exportAuthFailedTitle",
-                            "导出全部授权失败账号",
-                          )}
-                        >
-                          <Download size={14} />
-                          <span>
-                            {t("codex.exportAuthFailed", "导出失败账号")}
-                            {` (${authFailedExportAccountIds.length})`}
-                          </span>
-                        </button>
-                      )}
-                      {errorAccountIds.length > 0 && (
-                        <button
-                          className="btn btn-danger icon-only codex-overview-clear-error-btn"
-                          onClick={handleClearErrorAccounts}
-                          title={`${t("messages.cleanErrorAccountsAction", "清理 ERROR 账号")} (${errorAccountIds.length})`}
-                        >
-                          <CircleAlert size={14} />
-                        </button>
-                      )}
-                      {selected.size > 0 && (
-                        <>
-                          <button
-                            className="btn btn-secondary icon-only"
-                            onClick={() => setShowAddToCodexGroupModal(true)}
-                            title={
-                              activeGroupId
-                                ? `${t("accounts.groups.moveToGroup")} (${selected.size})`
-                                : `${t("codex.groups.addToGroup", "添加至分组")} (${selected.size})`
-                            }
-                          >
-                            <FolderPlus size={14} />
-                          </button>
-                          <button
-                            className="btn btn-danger icon-only"
-                            onClick={handleCodexBatchDelete}
-                            title={`${t("common.delete", "删除")} (${selected.size})`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
               {batchDeleteJob && (
                 <div className="codex-batch-delete-job">
                   <div className="codex-batch-delete-job__head">
                     <div>
-                      <strong>{t("codex.batchDelete.title")}</strong>
+                      <strong>{t("common.recycleBin.move")}</strong>
                       <span>
                         {t("codex.batchDelete.summary", {
                           completed: batchDeleteJob.completed,
@@ -1069,6 +1037,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                           <input
                             type="checkbox"
                             checked={isAllPaginatedSelected}
+                            disabled={!paginatedAccounts.some((account) => !isCodexChatgptPlanAccount(account))}
                             onChange={handleToggleSelectAllPaginated}
                           />
                           {t("common.selectAll", "全选")}
@@ -1125,6 +1094,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                               <input
                                 type="checkbox"
                                 checked={isAllPaginatedSelected}
+                            disabled={!paginatedAccounts.some((account) => !isCodexChatgptPlanAccount(account))}
                                 onChange={handleToggleSelectAllPaginated}
                               />
                             )}
@@ -1184,6 +1154,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                               <input
                                 type="checkbox"
                                 checked={isAllPaginatedSelected}
+                            disabled={!paginatedAccounts.some((account) => !isCodexChatgptPlanAccount(account))}
                                 onChange={handleToggleSelectAllPaginated}
                               />
                             )}
@@ -1230,6 +1201,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
           />
 
           {<CodexAddAccountDialog {...props} />}
+
 
           {quickSwitchAccountId && createPortal(
             <div className="modal-overlay codex-account-dialog-overlay">
@@ -1702,15 +1674,19 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                     <div className="oauth-link">
                       <label>{t("codex.modelProviders.fields.wireApi", "协议")}</label>
                       <div className="api-provider-chip-list">
-                        <span className={`api-provider-chip ${selectedEditingManagedProvider?.wireApi !== "chat_completions" ? "active" : ""}`}>
+                        <button type="button" className={`api-provider-chip ${editingApiWireApi === "responses" ? "active" : ""}`}
+                          disabled={savingApiKeyCredentials} aria-pressed={editingApiWireApi === "responses"}
+                          onClick={() => { setEditingApiWireApi("responses"); setEditingApiCredentialsError(null); }}>
                           {t("codex.modelProviders.wireApi.responses", "Responses 原生")}
-                        </span>
-                        <span className={`api-provider-chip ${selectedEditingManagedProvider?.wireApi === "chat_completions" ? "active" : ""}`}>
+                        </button>
+                        <button type="button" className={`api-provider-chip ${editingApiWireApi === "chat_completions" ? "active" : ""}`}
+                          disabled={savingApiKeyCredentials} aria-pressed={editingApiWireApi === "chat_completions"}
+                          onClick={() => { setEditingApiWireApi("chat_completions"); setEditingApiSupportsWebsockets(false); setEditingApiCredentialsError(null); }}>
                           {t("codex.modelProviders.wireApi.chatCompletions", "Chat Completions 协议")}
-                        </span>
+                        </button>
                       </div>
                     </div>
-                    {selectedEditingManagedProvider?.wireApi !== "chat_completions" && (
+                    {editingApiWireApi === "responses" && (
                       <div className="oauth-link">
                         <label>{t("codex.modelProviders.fields.supportsWebsockets", "WebSocket 传输")}</label>
                         <label className="provider-vision-toggle">
@@ -1723,7 +1699,8 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                             </span>
                           </span>
                           <span className="provider-vision-switch">
-                            <input type="checkbox" checked={selectedEditingManagedProvider?.supportsWebsockets === true} readOnly />
+                            <input type="checkbox" checked={editingApiSupportsWebsockets} disabled={savingApiKeyCredentials}
+                              onChange={(event) => { setEditingApiSupportsWebsockets(event.target.checked); setEditingApiCredentialsError(null); }} />
                             <span className="provider-vision-switch-track" />
                           </span>
                         </label>
@@ -1870,6 +1847,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                     )}
                   </div>
                 </div>
+                    <ModalErrorMessage message={editingApiCredentialsError} position="bottom" />
                     <div className="modal-footer api-key-edit-actions">
                       <button
                         className="btn btn-secondary"
@@ -2224,7 +2202,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                         >
                           <div className="codex-local-access-stats-plan">
                             <strong>
-                              {item.key} ({item.count})
+                              {formatCodexQuotaPoolPlanLabel(item, t('chatgptPlan.officialFlow.badge'), { pending: t('chatgptPlan.officialFlow.bindingChecking'), invalid: t('chatgptPlan.officialFlow.bindingInvalid') })} ({item.count})
                             </strong>
                           </div>
                           <div className="codex-local-access-stats-values">
@@ -2434,72 +2412,6 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
             </div>
           )}
 
-          {localAccessRiskNoticeAction && (
-            <div className="modal-overlay codex-local-access-hide-confirm-overlay codex-local-access-risk-notice-overlay">
-              <div
-                className="modal codex-local-access-hide-confirm-modal codex-local-access-risk-notice-modal"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="modal-header">
-                  <h2>
-                    {t("codex.localAccess.riskNotice.title", "使用风险提示")}
-                  </h2>
-                  <button
-                    className="modal-close"
-                    onClick={() => closeLocalAccessRiskNotice(false)}
-                    aria-label={t("common.close", "关闭")}
-                  >
-                    <X />
-                  </button>
-                </div>
-                <div className="modal-body">
-                  <p className="codex-local-access-hide-confirm-desc">
-                    {t(
-                      "codex.localAccess.riskNotice.message",
-                      "当前 Codex API 服务相关功能，本质上属于代理转发使用方式。就目前情况看，官方暂未对此类行为进行明确管控，但后续政策、规则或可用性是否发生变化，仍存在不确定性。继续使用该功能，即表示您已知悉相关情况，并愿意自行承担可能产生的风险。",
-                    )}
-                  </p>
-                  <div className="codex-local-access-hide-confirm-points codex-local-access-risk-notice-points">
-                    <label className="codex-local-access-risk-notice-remember">
-                      <input
-                        type="checkbox"
-                        checked={localAccessRiskNoticeRemember}
-                        onChange={(event) => {
-                          setLocalAccessRiskNoticeRemember(
-                            event.target.checked,
-                          );
-                        }}
-                      />
-                      <span>
-                        {t(
-                          "codex.localAccess.riskNotice.remember",
-                          "我已知晓，不再提示",
-                        )}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => closeLocalAccessRiskNotice(false)}
-                  >
-                    {t("common.cancel", "取消")}
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => closeLocalAccessRiskNotice(true)}
-                  >
-                    {getCodexLocalAccessRiskNoticeConfirmLabel(
-                      localAccessRiskNoticeAction,
-                      t,
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {resetCreditConfirmAccount && (
             <div className="modal-overlay codex-reset-credit-confirm-overlay">
               <div
@@ -2639,7 +2551,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
             <div className="modal-overlay">
               <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
-                  <h2>{t("common.confirm")}</h2>
+                  <h2>{t("common.recycleBin.move")}</h2>
                   <button
                     className="modal-close"
                     onClick={() => !batchDeleteBusy && setDeleteConfirm(null)}
@@ -2653,7 +2565,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                     message={batchDeleteModalError || deleteConfirmError}
                     scrollKey={deleteConfirmErrorScrollKey}
                   />
-                  <p>{deleteConfirm.message}</p>
+                  <p>{t("common.recycleBin.confirmMove", { count: deleteConfirm.ids.length })}</p>
                 </div>
                 <div className="modal-footer">
                   <button
@@ -2670,7 +2582,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                   >
                     {batchDeleteBusy
                       ? t("common.processing", "处理中...")
-                      : t("common.confirm")}
+                      : t("common.recycleBin.move")}
                   </button>
                 </div>
               </div>
@@ -3101,6 +3013,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                       </span>
                       <div className="codex-account-note-input-row">
                         <input
+                          ref={noteMfaInputRef}
                           className={`codex-account-note-input ${
                             accountNoteFieldErrors.twoFactorSecret
                               ? "has-error"
@@ -3566,9 +3479,14 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
           <CodexAccountPoolHealthModal
             isOpen={showLocalAccessHealthModal}
             accountIds={localAccessCollection?.accountIds ?? []}
+            pausedAccountIds={localAccessCollection?.pausedAccountIds}
+            officialAccountBindings={localAccessCollection?.officialAccountBindings}
             accounts={accounts}
             accountHealth={localAccessState?.accountHealth ?? []}
             accountPoolHealth={localAccessState?.accountPoolHealth ?? []}
+            recoverySuppressedAccountIds={
+              localAccessState?.recoverySuppressedAccountIds ?? []
+            }
             actionBusy={localAccessHealthActionBusy}
             maskAccountText={maskAccountText}
             onClose={() => setShowLocalAccessHealthModal(false)}
@@ -3580,7 +3498,8 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
               const account = accounts.find((item) => item.id === accountId);
               if (!account) return;
               setShowLocalAccessHealthModal(false);
-              openCodexAddModal("tempLogin", account);
+              if (isCodexChatgptPlanAccount(account) || localAccessCollection?.officialAccountBindings?.[accountId]) requestCodexOfficialAuthorizationManagement();
+              else openCodexAddModal("tempLogin", account);
             }}
           />
 
@@ -3588,6 +3507,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
             isOpen={showLocalAccessModal}
             mode={localAccessModalMode}
             state={localAccessState}
+            onStateChange={setLocalAccessState}
             addressKind={selectedLocalAccessAddressKind}
             addressOptions={localAccessAddressOptions}
             onAddressKindChange={handleLocalAccessAddressKindChange}
@@ -3599,6 +3519,8 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
               localAccessModalMode === "members"
                 ? {
                     accounts: filteredAccounts,
+                    activeGroupId,
+                    compareAccounts: props.compareAccountsBySort,
                     searchQuery,
                     filterTypes,
                     tagFilter,
@@ -3631,6 +3553,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
               sessionAffinity,
               sessionAffinityTtlMs,
               imageGenerationAccountPolicies,
+              officialAccountBindings,
             }) =>
               handleSaveLocalAccessAccounts(accountIds, {
                 restrictFreeAccounts,
@@ -3639,6 +3562,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                 sessionAffinity,
                 sessionAffinityTtlMs,
                 imageGenerationAccountPolicies,
+                officialAccountBindings,
               })
             }
             onClearStats={handleClearLocalAccessStats}
@@ -3657,9 +3581,12 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                 .updateCodexLocalAccessImageGenerationModel(model)
                 .then(setLocalAccessState)
             }
-            onUpdateImageGenerationAccounts={(accountIds) =>
+            onUpdateImageGenerationMainModel={(model) =>
+              codexLocalAccessService.updateCodexLocalAccessImageGenerationMainModel(model).then(setLocalAccessState)
+            }
+            onUpdateImageGenerationAccounts={(accountIds, models) =>
               codexLocalAccessService
-                .updateCodexLocalAccessImageGenerationAccounts(accountIds)
+                .updateCodexLocalAccessImageGenerationAccounts(accountIds, models)
                 .then(setLocalAccessState)
             }
             onUpdateUpstreamProxyConfig={
@@ -3698,19 +3625,22 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
           />
 
           {/* Codex 分组管理弹窗 */}
-          <CodexAccountGroupModal
+          <AccountGroupModal
             isOpen={showCodexGroupModal}
             onClose={() => setShowCodexGroupModal(false)}
             onGroupsChanged={reloadCodexGroups}
-            groupFilter={groupFilter}
-            onToggleGroupFilter={toggleGroupFilterValue}
-            onClearGroupFilter={clearGroupFilter}
+            platform="codex"
+            onAddAccounts={(group) => {
+              setShowCodexGroupModal(false);
+              setGroupQuickAddGroupId(group.id);
+            }}
           />
 
           {/* Codex 添加到分组弹窗 */}
-          <CodexAddToGroupModal
+          <AddToGroupModal
             isOpen={showAddToCodexGroupModal}
             onClose={() => setShowAddToCodexGroupModal(false)}
+            platform="codex"
             accountIds={Array.from(selected)}
             sourceGroupId={activeGroupId ?? undefined}
             onAdded={reloadCodexGroups}

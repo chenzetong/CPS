@@ -15,21 +15,22 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestNormalizeCodexInstructionsUsesModelBaseInstructions(t *testing.T) {
-	for _, body := range [][]byte{
-		[]byte(`{"model":"gpt-5.6-sol"}`),
-		[]byte(`{"instructions":null}`),
-		[]byte(`{"instructions":"  \n\t"}`),
-	} {
-		got := normalizeCodexInstructions(body, "gpt-5.6-sol")
-		if instructions := gjson.GetBytes(got, "instructions").String(); len(instructions) < 100 {
-			t.Fatalf("expected non-empty model base instructions, got %q from %s", instructions, body)
+func TestNormalizeCodexInstructionsMatchesCPAExplicitAndNativePolicy(t *testing.T) {
+	for _, body := range [][]byte{[]byte(`{"model":"gpt-5.6-sol"}`), []byte(`{"instructions":null}`)} {
+		got := normalizeCodexInstructions(body)
+		if value := gjson.GetBytes(got, "instructions"); value.Type != gjson.String || value.String() != "" {
+			t.Fatalf("missing instructions must become an empty string: %s", got)
+		}
+		if got := normalizeCodexInstructions(body, true); string(got) != string(body) {
+			t.Fatalf("native instructions changed: %s", got)
 		}
 	}
-
-	body := []byte(`{"instructions":"keep me"}`)
-	if got := gjson.GetBytes(normalizeCodexInstructions(body, "gpt-5.6-sol"), "instructions").String(); got != "keep me" {
-		t.Fatalf("explicit instructions = %q, want keep me", got)
+	for _, body := range [][]byte{[]byte(`{"instructions":"  \n\t"}`), []byte(`{"instructions":"keep me"}`), []byte(`{"instructions":""}`)} {
+		for _, native := range []bool{false, true} {
+			if got := normalizeCodexInstructions(body, native); string(got) != string(body) {
+				t.Fatalf("explicit instructions changed: %s", got)
+			}
+		}
 	}
 }
 
@@ -296,11 +297,17 @@ func TestCodexWebsocketPreservesReplayNamespacesForAllAuthKinds(t *testing.T) {
 }
 
 func namespaceReplayContractPayload() []byte {
-	return []byte(`{"model":"gpt-5.6-terra","input":[{"type":"function_call","call_id":"c1","name":"lookup","namespace":"functions","arguments":"{}"},{"type":"function_call_output","call_id":"c1","output":"ok"},{"type":"message","role":"user","namespace":"client-extension","content":"hello"}]}`)
+	return []byte(`{"model":"gpt-5.6-terra","instructions":"  Keep native instructions exactly.\n","input":[{"type":"function_call","call_id":"c1","name":"lookup","namespace":"functions","arguments":"{}"},{"type":"function_call_output","call_id":"c1","output":"ok"},{"type":"message","role":"user","namespace":"client-extension","content":"hello"}]}`)
 }
 
 func assertNamespaceReplayContract(t *testing.T, body []byte) {
 	t.Helper()
+	if got := gjson.GetBytes(body, "instructions").String(); got != "  Keep native instructions exactly.\n" {
+		t.Fatalf("native instructions changed before upstream: %s", body)
+	}
+	if gjson.GetBytes(body, "input.0.call_id").String() != "c1" {
+		t.Fatalf("existing call ID changed before upstream: %s", body)
+	}
 	if gjson.GetBytes(body, "input.0.namespace").String() != "functions" ||
 		gjson.GetBytes(body, "input.2.namespace").String() != "client-extension" ||
 		gjson.GetBytes(body, "input.1.call_id").String() != "c1" {

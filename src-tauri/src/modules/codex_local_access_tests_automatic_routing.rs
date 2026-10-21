@@ -50,6 +50,45 @@ fn automatic_routing_keeps_overlapping_candidates_and_scopes_native_models() {
 }
 
 #[test]
+fn automatic_routing_keeps_responses_native_when_only_vision_capabilities_exist() {
+    let collection = automatic_routing_collection();
+    let mut account = automatic_routing_account("responses", "responses", &["gpt-6-luna"]);
+    account.api_model_vision_support = HashMap::from([("gpt-6-luna".to_string(), true)]);
+    let accounts = HashMap::from([(account.id.clone(), account)]);
+
+    let routing = super::automatic_api_service_model_routing_value(
+        &collection,
+        &["responses".into()],
+        &accounts,
+    );
+
+    assert_eq!(routing["routes"], json!([]));
+    assert_eq!(routing["nativeModels"], json!(["gpt-6-luna"]));
+}
+
+#[test]
+fn automatic_routing_uses_responses_gateway_for_explicit_vision_target() {
+    let collection = automatic_routing_collection();
+    let mut account =
+        automatic_routing_account("responses", "responses", &["text-model", "vision-model"]);
+    account.api_vision_routing_model = Some("vision-model".to_string());
+    let accounts = HashMap::from([(account.id.clone(), account)]);
+
+    let routing = super::automatic_api_service_model_routing_value(
+        &collection,
+        &["responses".into()],
+        &accounts,
+    );
+
+    assert_eq!(routing["nativeModels"], json!([]));
+    assert_eq!(routing["routes"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        routing["routes"][0]["providerGateway"]["visionRoutingModel"],
+        json!("vision-model")
+    );
+}
+
+#[test]
 fn automatic_routing_preserves_mapping_fork_and_model_exclusions() {
     let mut collection = automatic_routing_collection();
     // 账号模型列表是唯一可见来源，映射只决定该模型发给上游的名字。
@@ -123,9 +162,9 @@ fn automatic_routing_is_runtime_only_and_preserves_explicit_instance_routes() {
 
 /// 选择器只展示官方推荐集里的 GPT 模型，历史模型仍然可路由。
 #[test]
-fn automatic_routing_trims_visible_gpt_models_and_keeps_history_routable() {
+fn automatic_routing_excludes_retired_builtin_models() {
     // 只断言纯函数：清单不依赖全局实验目录（其它用例可能开启「模型管理」）。
-    let trimmed = super::automatic_api_service_visible_model_ids(vec![
+    let trimmed = super::automatic_api_service_visible_model_ids_with_explicit_catalog(vec![
         "gpt-6-astra".into(),
         "gpt-6-sol".into(),
         "gpt-6-luna".into(),
@@ -139,7 +178,7 @@ fn automatic_routing_trims_visible_gpt_models_and_keeps_history_routable() {
         "gpt-reserve".into(),
         "deepseek-flash".into(),
         "deepseek-v4-pro".into(),
-    ]);
+    ], &[]);
     assert_eq!(
         trimmed,
         vec![
@@ -158,8 +197,8 @@ fn automatic_routing_trims_visible_gpt_models_and_keeps_history_routable() {
     let routable = super::api_service_routable_codex_model_ids();
     for history_model in ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.3-codex-spark"] {
         assert!(
-            routable.iter().any(|model| model.eq_ignore_ascii_case(history_model)),
-            "历史模型 {history_model} 必须保留可路由能力: {routable:?}"
+            !routable.iter().any(|model| model.eq_ignore_ascii_case(history_model)),
+            "历史模型 {history_model} 不得由内置路由自动加入: {routable:?}"
         );
         assert!(
             !trimmed

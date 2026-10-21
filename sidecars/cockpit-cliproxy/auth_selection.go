@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 
 	"encoding/json"
 	"errors"
@@ -12,8 +11,6 @@ import (
 	"math/rand"
 
 	"net/http"
-
-	"os"
 
 	"path/filepath"
 
@@ -36,14 +33,15 @@ import (
 )
 
 type cockpitSelector struct {
-	manifest   *manifest
-	emitter    *eventEmitter
-	locale     string
-	quota      *quotaReserveStateStore
-	priorities *apiKeyPriorityStateStore
-	tracker    *requestUsageTracker
-	mu         sync.Mutex
-	cursor     int
+	manifest            *manifest
+	emitter             *eventEmitter
+	locale              string
+	priorities          *apiKeyPriorityStateStore
+	tracker             *requestUsageTracker
+	mu                  sync.Mutex
+	cursor              int
+	rotationCursors     map[[32]byte]string
+	rotationCursorOrder [][32]byte
 }
 
 type recordingSelector struct {
@@ -129,7 +127,7 @@ func (s *modelExclusionSelector) Pick(ctx context.Context, provider, model strin
 		filtered = append(filtered, auth)
 	}
 	if len(filtered) == 0 {
-		return nil, noAuthAvailableError(nil)
+		return nil, noAuthAvailableError()
 	}
 	return s.fallback.Pick(ctx, provider, model, opts, filtered)
 }
@@ -186,191 +184,9 @@ func (s *recordingSelector) ReportAuthSelectionFailure(ctx context.Context, prov
 	return err
 }
 
-type quotaReserveSelector struct {
-	manifest *manifest
-	fallback coreauth.Selector
-	quota    *quotaReserveStateStore
-}
-
 type backupAccountSelector struct {
 	manifest *manifest
 	fallback coreauth.Selector
-}
-
-func quotaReserveSnapshotsFromManifest(m *manifest) map[string]quotaReserveSnapshot {
-	snapshots := make(map[string]quotaReserveSnapshot)
-	if m == nil {
-		return snapshots
-	}
-	for index := range m.Accounts {
-		account := &m.Accounts[index]
-		if account.QuotaReserve == nil || strings.TrimSpace(account.ID) == "" {
-			continue
-		}
-		reserve := account.QuotaReserve
-		snapshots[account.ID] = quotaReserveSnapshot{
-			SnapshotUpdatedAtUnixSeconds: reserve.SnapshotUpdatedAtUnixSeconds,
-			HourlyRemainingPercent:       reserve.HourlyRemainingPercent,
-			WeeklyRemainingPercent:       reserve.WeeklyRemainingPercent,
-			HourlyWindowPresent:          reserve.HourlyWindowPresent,
-			WeeklyWindowPresent:          reserve.WeeklyWindowPresent,
-		}
-	}
-	return snapshots
-}
-
-func newQuotaReserveStateStore(path string, m *manifest) *quotaReserveStateStore {
-	store := &quotaReserveStateStore{path: strings.TrimSpace(path)}
-	store.snapshot.Store(quotaReserveSnapshotsFromManifest(m))
-	return store
-}
-
-func (s *quotaReserveStateStore) load() error {
-	if s == nil || s.path == "" {
-		return nil
-	}
-	content, err := os.ReadFile(s.path)
-	if err != nil {
-		return err
-	}
-	hash := sha256.Sum256(content)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.hasHash && hash == s.lastHash {
-		return nil
-	}
-	var state quotaReserveStateFile
-	if err := json.Unmarshal(content, &state); err != nil {
-		return err
-	}
-	if state.Accounts == nil {
-		state.Accounts = make(map[string]quotaReserveSnapshot)
-	}
-	normalized := make(map[string]quotaReserveSnapshot, len(state.Accounts))
-	for accountID, snapshot := range state.Accounts {
-		accountID = strings.TrimSpace(accountID)
-		if accountID != "" {
-			normalized[accountID] = snapshot
-		}
-	}
-	s.snapshot.Store(normalized)
-	s.lastHash = hash
-	s.hasHash = true
-	return nil
-}
-
-func (s *quotaReserveStateStore) start(ctx context.Context, emitter *eventEmitter) {
-	if s == nil || s.path == "" {
-		return
-	}
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		lastError := ""
-		for {
-			if err := s.load(); err != nil {
-				message := err.Error()
-				if message != lastError && emitter != nil {
-					emitter.emit(map[string]any{
-						"type":    "quota_reserve_state_error",
-						"message": message,
-					})
-				}
-				lastError = message
-			} else {
-				lastError = ""
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
-}
-
-func (s *quotaReserveStateStore) forAccount(accountID string) *quotaReserveSnapshot {
-	if s == nil {
-		return nil
-	}
-	loaded := s.snapshot.Load()
-	snapshots, ok := loaded.(map[string]quotaReserveSnapshot)
-	if !ok {
-		return nil
-	}
-	snapshot, ok := snapshots[strings.TrimSpace(accountID)]
-	if !ok {
-		return nil
-	}
-	return &snapshot
-}
-
-func (s *quotaReserveSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*coreauth.Auth) (*coreauth.Auth, error) {
-	if s == nil || s.fallback == nil {
-		return nil, fmt.Errorf("quota reserve selector is not initialized")
-	}
-	if s.manifest == nil {
-		return s.fallback.Pick(ctx, provider, model, opts, auths)
-	}
-
-	now := time.Now()
-	var filtered []*coreauth.Auth
-	quotaReserveReasons := make([]string, 0)
-	availableAfterReserve := 0
-	for index, auth := range auths {
-		if !authAvailable(auth, model, now) {
-			if filtered != nil {
-				filtered = append(filtered, auth)
-			}
-			continue
-		}
-		reason := quotaReserveBlockReasonWithState(
-			accountForAuthInManifest(s.manifest, auth),
-			s.quota,
-			now,
-		)
-		if reason == "" {
-			availableAfterReserve++
-			if filtered != nil {
-				filtered = append(filtered, auth)
-			}
-			continue
-		}
-		if filtered == nil {
-			filtered = append(make([]*coreauth.Auth, 0, len(auths)-1), auths[:index]...)
-		}
-		quotaReserveReasons = append(quotaReserveReasons, reason)
-	}
-	if filtered == nil {
-		return s.fallback.Pick(ctx, provider, model, opts, auths)
-	}
-	if availableAfterReserve == 0 {
-		return nil, noAuthAvailableError(quotaReserveReasons)
-	}
-	return s.fallback.Pick(ctx, provider, model, opts, filtered)
-}
-
-func (s *quotaReserveSelector) Stop() {
-	if s == nil || s.fallback == nil {
-		return
-	}
-	if stoppable, ok := s.fallback.(coreauth.StoppableSelector); ok {
-		stoppable.Stop()
-	}
-}
-
-func (s *quotaReserveSelector) OnResult(result coreauth.Result) {
-	if s == nil {
-		return
-	}
-	forwardAuthSelectionResult(s.fallback, result)
-}
-
-func (s *quotaReserveSelector) ReportAuthSelectionFailure(ctx context.Context, provider, model string, candidates []*coreauth.Auth, err error) error {
-	if reporter, ok := s.fallback.(coreauth.AuthSelectionFailureReporter); ok {
-		return reporter.ReportAuthSelectionFailure(ctx, provider, model, candidates, err)
-	}
-	return err
 }
 
 func (s *backupAccountSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*coreauth.Auth) (*coreauth.Auth, error) {
@@ -476,8 +292,12 @@ func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts
 		auths = filtered
 		selectionStats.candidateAuths = 1
 	}
+	scopeCandidates := auths
 	auths = s.filterAuthsForAPIKeyScope(ctx, auths)
 	selectionStats.scopedAuths = len(auths)
+	if len(auths) == 0 {
+		selectionStats.scopeDiagnostics = s.diagnoseAPIKeyScope(ctx, scopeCandidates)
+	}
 	requestKind, _ := ctx.Value(requestKindContextKey).(string)
 	if isImageRequestKind(requestKind) {
 		beforeImagePolicy := len(auths)
@@ -494,15 +314,19 @@ func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts
 			}
 		}
 		if len(auths) == 0 {
-			err := authPoolUnavailableError(s.locale, selectionStats, "image generation is disabled for all selected accounts")
+			err := s.poolUnavailableError(model, selectionStats, "image generation is disabled for all selected accounts")
 			s.emitAuthPoolUnavailable(ctx, provider, model, selectionStats, err)
 			return nil, err
 		}
 	}
 	now := time.Now()
 	available := make([]*coreauth.Auth, 0, len(auths))
-	quotaReserveReasons := make([]string, 0)
 	for _, auth := range auths {
+		if serviceAuthPaused(ctx, s.manifest, auth) {
+			selectionStats.unavailableAuths++
+			selectionStats.members = append(selectionStats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), false, "paused", "account is paused in this service"))
+			continue
+		}
 		if accountQuotaExhausted(s.manifest, s.accountForAuth(auth), now) && !isCodexReserveModel(model) {
 			selectionStats.unavailableAuths++
 			selectionStats.members = append(selectionStats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), false, "quota_cooldown", "account quota is exhausted; wait for quota reset"))
@@ -519,12 +343,6 @@ func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts
 			selectionStats.members = append(selectionStats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), false, "model_excluded", "model is excluded for this account"))
 			continue
 		}
-		if reason := quotaReserveBlockReasonWithState(s.accountForAuth(auth), s.quota, now); reason != "" {
-			selectionStats.quotaReservedAuths++
-			quotaReserveReasons = append(quotaReserveReasons, reason)
-			selectionStats.members = append(selectionStats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), false, "quota_reserved", reason))
-			continue
-		}
 		available = append(available, auth)
 		selectionStats.members = append(selectionStats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), true, "available", "account is eligible for routing"))
 	}
@@ -533,7 +351,7 @@ func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts
 		if nextCtx, recovered := maybeAutoRecoverAuthPool(ctx, s.manifest, model, auths); recovered {
 			return s.Pick(nextCtx, provider, model, opts, auths)
 		}
-		err := authPoolUnavailableError(s.locale, selectionStats, noAuthAvailableError(quotaReserveReasons).Error())
+		err := s.poolUnavailableError(model, selectionStats, noAuthAvailableError().Error())
 		s.emitAuthPoolUnavailable(ctx, provider, model, selectionStats, err)
 		return nil, err
 	}
@@ -543,14 +361,14 @@ func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts
 	s.cursor++
 	s.mu.Unlock()
 
-	ordered := s.orderAuths(available, start)
+	var ordered []*coreauth.Auth
 	if isImageRequestKind(requestKind) {
 		ordered = s.orderImageAuths(available, start)
 	} else {
-		ordered = s.prioritizeAuthsForAPIKey(ctx, ordered)
+		ordered = s.orderAuthsForRequest(ctx, provider, model, available, start)
 	}
 	if len(ordered) == 0 {
-		err := authPoolUnavailableError(s.locale, selectionStats, noAuthAvailableError(quotaReserveReasons).Error())
+		err := s.poolUnavailableError(model, selectionStats, noAuthAvailableError().Error())
 		s.emitAuthPoolUnavailable(ctx, provider, model, selectionStats, err)
 		return nil, err
 	}
@@ -611,6 +429,9 @@ func (s *cockpitSelector) ReportAuthSelectionFailure(ctx context.Context, provid
 	stats := authPoolSelectionStats{candidateAuths: len(candidates)}
 	auths := s.filterAuthsForAPIKeyScope(ctx, candidates)
 	stats.scopedAuths = len(auths)
+	if len(auths) == 0 {
+		stats.scopeDiagnostics = s.diagnoseAPIKeyScope(ctx, candidates)
+	}
 	requestKind, _ := ctx.Value(requestKindContextKey).(string)
 	if isImageRequestKind(requestKind) {
 		before := len(auths)
@@ -629,6 +450,11 @@ func (s *cockpitSelector) ReportAuthSelectionFailure(ctx context.Context, provid
 	}
 	now := time.Now()
 	for _, auth := range auths {
+		if serviceAuthPaused(ctx, s.manifest, auth) {
+			stats.unavailableAuths++
+			stats.members = append(stats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), false, "paused", "account is paused in this service"))
+			continue
+		}
 		if accountQuotaExhausted(s.manifest, s.accountForAuth(auth), now) && !isCodexReserveModel(model) {
 			stats.unavailableAuths++
 			stats.members = append(stats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), false, "quota_cooldown", "account quota is exhausted; wait for quota reset"))
@@ -643,11 +469,6 @@ func (s *cockpitSelector) ReportAuthSelectionFailure(ctx context.Context, provid
 		if authModelExcluded(s.manifest, auth, model) {
 			stats.modelExcludedAuths++
 			stats.members = append(stats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), false, "model_excluded", "model is excluded for this account"))
-			continue
-		}
-		if reason := quotaReserveBlockReasonWithState(s.accountForAuth(auth), s.quota, now); reason != "" {
-			stats.quotaReservedAuths++
-			stats.members = append(stats.members, poolMemberDiagnostic(auth, s.accountForAuth(auth), false, "quota_reserved", reason))
 			continue
 		}
 		stats.availableAuths++
@@ -676,7 +497,7 @@ func (s *cockpitSelector) ReportAuthSelectionFailure(ctx context.Context, provid
 	if err != nil && strings.TrimSpace(err.Error()) != "" {
 		detail = strings.TrimSpace(err.Error())
 	}
-	diagnosticErr := authPoolUnavailableError(s.locale, stats, detail)
+	diagnosticErr := s.poolUnavailableError(model, stats, detail)
 	var authErr *coreauth.Error
 	if errors.As(err, &authErr) && authErr != nil && strings.TrimSpace(authErr.Code) != "" {
 		diagnosticErr.Code = authErr.Code
@@ -765,18 +586,7 @@ func (s *cockpitSelector) filterAuthsForAPIKeyScope(ctx context.Context, auths [
 	if s == nil || s.manifest == nil || ctx == nil {
 		return auths
 	}
-	spec, _ := ctx.Value(clientAPIKeyContextKey).(*apiKeySpec)
-	if spec == nil {
-		return auths
-	}
-
-	scopeAccountIDs := spec.AccountIDs
-	// 生图转发：请求走实例网关的生图账号池，而不是对话账号。
-	if requestKind, _ := ctx.Value(requestKindContextKey).(string); isImageRequestKind(requestKind) {
-		if imageAccountIDs := imageGenerationAccountIDsForSpec(spec); len(imageAccountIDs) > 0 {
-			scopeAccountIDs = imageAccountIDs
-		}
-	}
+	scopeAccountIDs := apiKeyScopeAccountIDs(ctx)
 	if len(scopeAccountIDs) == 0 {
 		return auths
 	}
@@ -834,134 +644,6 @@ func (s *cockpitSelector) orderImageAuths(auths []*coreauth.Auth, start int) []*
 		return s.rotatedIndex(s.accountForAuth(out[i]), start) < s.rotatedIndex(s.accountForAuth(out[j]), start)
 	})
 	return out
-}
-
-func quotaReserveBlockReason(account *accountSpec, now time.Time) string {
-	return quotaReserveBlockReasonWithSnapshot(account, quotaReserveSnapshotFromSpec(account), now)
-}
-
-func quotaReserveBlockReasonWithState(account *accountSpec, state *quotaReserveStateStore, now time.Time) string {
-	var snapshot *quotaReserveSnapshot
-	if account != nil && state != nil {
-		snapshot = state.forAccount(account.ID)
-	}
-	if snapshot == nil {
-		snapshot = quotaReserveSnapshotFromSpec(account)
-	}
-	return quotaReserveBlockReasonWithSnapshot(account, snapshot, now)
-}
-
-func quotaReserveSnapshotFromSpec(account *accountSpec) *quotaReserveSnapshot {
-	if account == nil || account.QuotaReserve == nil {
-		return nil
-	}
-	reserve := account.QuotaReserve
-	return &quotaReserveSnapshot{
-		SnapshotUpdatedAtUnixSeconds: reserve.SnapshotUpdatedAtUnixSeconds,
-		HourlyRemainingPercent:       reserve.HourlyRemainingPercent,
-		WeeklyRemainingPercent:       reserve.WeeklyRemainingPercent,
-		HourlyWindowPresent:          reserve.HourlyWindowPresent,
-		WeeklyWindowPresent:          reserve.WeeklyWindowPresent,
-	}
-}
-
-func quotaReserveBlockReasonWithSnapshot(account *accountSpec, snapshot *quotaReserveSnapshot, now time.Time) string {
-	if account == nil || account.QuotaReserve == nil {
-		return ""
-	}
-
-	reserve := account.QuotaReserve
-	if snapshot == nil {
-		return quotaReserveAccountReason(account, []string{"quota snapshot unknown"})
-	}
-	if reason := quotaReserveSnapshotBlockReason(snapshot.SnapshotUpdatedAtUnixSeconds, now); reason != "" {
-		return quotaReserveAccountReason(account, []string{reason})
-	}
-
-	reasons := make([]string, 0, 2)
-	if reason := quotaReserveWindowBlockReason(
-		"5h",
-		reserve.HourlyThresholdPercent,
-		snapshot.HourlyRemainingPercent,
-		snapshot.HourlyWindowPresent,
-	); reason != "" {
-		reasons = append(reasons, reason)
-	}
-	if reason := quotaReserveWindowBlockReason(
-		"weekly",
-		reserve.WeeklyThresholdPercent,
-		snapshot.WeeklyRemainingPercent,
-		snapshot.WeeklyWindowPresent,
-	); reason != "" {
-		reasons = append(reasons, reason)
-	}
-	if len(reasons) == 0 {
-		return ""
-	}
-	return quotaReserveAccountReason(account, reasons)
-}
-
-func quotaReserveSnapshotBlockReason(updatedAt *int64, now time.Time) string {
-	if updatedAt == nil {
-		return "quota snapshot timestamp unknown"
-	}
-
-	nowUnix := now.Unix()
-	if *updatedAt <= 0 || *updatedAt > nowUnix {
-		return "quota snapshot timestamp invalid"
-	}
-	if nowUnix-*updatedAt > int64(quotaReserveMaxSnapshotAge/time.Second) {
-		return "quota snapshot stale"
-	}
-	return ""
-}
-
-func quotaReserveAccountReason(account *accountSpec, reasons []string) string {
-	accountLabel := strings.TrimSpace(account.Email)
-	if accountLabel == "" {
-		accountLabel = strings.TrimSpace(account.ID)
-	}
-	if accountLabel == "" {
-		accountLabel = "unknown account"
-	}
-	return fmt.Sprintf("%s (%s)", accountLabel, strings.Join(reasons, ", "))
-}
-
-func quotaReserveWindowBlockReason(window string, threshold, remaining *int, present *bool) string {
-	if present != nil && !*present {
-		return ""
-	}
-	if threshold == nil || *threshold < 1 || *threshold > 100 {
-		return fmt.Sprintf("%s reserve threshold unknown", window)
-	}
-	if remaining == nil || *remaining < 0 || *remaining > 100 {
-		return fmt.Sprintf("%s remaining quota unknown; reserve %d%%", window, *threshold)
-	}
-	if *remaining <= *threshold {
-		return fmt.Sprintf("%s remaining %d%% <= reserve %d%%", window, *remaining, *threshold)
-	}
-	return ""
-}
-
-func noAuthAvailableError(quotaReserveReasons []string) error {
-	if len(quotaReserveReasons) == 0 {
-		return fmt.Errorf("no auth available")
-	}
-
-	const maxReasons = 3
-	reasons := quotaReserveReasons
-	if len(reasons) > maxReasons {
-		reasons = reasons[:maxReasons]
-	}
-	detail := strings.Join(reasons, "; ")
-	if omitted := len(quotaReserveReasons) - len(reasons); omitted > 0 {
-		detail = fmt.Sprintf("%s; and %d more", detail, omitted)
-	}
-	return fmt.Errorf(
-		"no auth available: bound OAuth quota reserve blocked %d auth(s): %s",
-		len(quotaReserveReasons),
-		detail,
-	)
 }
 
 func authAvailable(auth *coreauth.Auth, model string, now time.Time) bool {
@@ -1258,6 +940,7 @@ func (s *cockpitSelector) emitAuthSelected(ctx context.Context, auth *coreauth.A
 	}
 	s.emitter.emit(requestDiagnosticPayload{
 		Type:            "auth_selected",
+		StartedAtMS:     requestStartedAtMS(ctx),
 		RequestID:       internallogging.GetRequestID(ctx),
 		RequestKind:     requestKind,
 		Model:           model,
@@ -1281,9 +964,9 @@ type authPoolSelectionStats struct {
 	availableAuths          int
 	unavailableAuths        int
 	modelExcludedAuths      int
-	quotaReservedAuths      int
 	imagePolicyBlockedAuths int
 	members                 []authPoolMemberDiagnostic
+	scopeDiagnostics        []authPoolScopeDiagnostic
 }
 
 // authPoolMemberDiagnostic contains the selector's actual per-account decision.
@@ -1315,11 +998,11 @@ func authPoolUnavailableError(locale string, stats authPoolSelectionStats, detai
 	chinese := strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "zh")
 	var message string
 	if chinese {
-		message = fmt.Sprintf("账号池没有可用账号：候选 %d 个，不可用 %d 个，模型排除 %d 个，额度保留拦截 %d 个，生图策略拦截 %d 个。请前往 Cockpit Tools 查看账号池诊断详情。",
-			stats.candidateAuths, stats.unavailableAuths, stats.modelExcludedAuths, stats.quotaReservedAuths, stats.imagePolicyBlockedAuths)
+		message = fmt.Sprintf("账号池没有可用账号：候选 %d 个，不可用 %d 个，模型排除 %d 个，生图策略拦截 %d 个。请前往 Cockpit Tools 查看账号池诊断详情。",
+			stats.candidateAuths, stats.unavailableAuths, stats.modelExcludedAuths, stats.imagePolicyBlockedAuths)
 	} else {
-		message = fmt.Sprintf("No available account: candidates=%d, unavailable=%d, model_excluded=%d, quota_reserved=%d, image_policy_blocked=%d. Check account pool diagnostics in Cockpit Tools.",
-			stats.candidateAuths, stats.unavailableAuths, stats.modelExcludedAuths, stats.quotaReservedAuths, stats.imagePolicyBlockedAuths)
+		message = fmt.Sprintf("No available account: candidates=%d, unavailable=%d, model_excluded=%d, image_policy_blocked=%d. Check account pool diagnostics in Cockpit Tools.",
+			stats.candidateAuths, stats.unavailableAuths, stats.modelExcludedAuths, stats.imagePolicyBlockedAuths)
 	}
 	if detail != "no auth available" && !chinese {
 		message += " " + detail
@@ -1362,6 +1045,7 @@ func (s *cockpitSelector) emitAuthPoolUnavailable(
 	}
 	s.emitter.emit(requestDiagnosticPayload{
 		Type:                    "auth_pool_result",
+		StartedAtMS:             requestStartedAtMS(ctx),
 		RequestID:               internallogging.GetRequestID(ctx),
 		RequestKind:             requestKind,
 		Model:                   model,
@@ -1375,9 +1059,9 @@ func (s *cockpitSelector) emitAuthPoolUnavailable(
 		AvailableAuths:          stats.availableAuths,
 		UnavailableAuths:        stats.unavailableAuths,
 		ModelExcludedAuths:      stats.modelExcludedAuths,
-		QuotaReservedAuths:      stats.quotaReservedAuths,
 		ImagePolicyBlockedAuths: stats.imagePolicyBlockedAuths,
 		AccountStatuses:         stats.members,
+		ScopeDiagnostics:        stats.scopeDiagnostics,
 	})
 }
 
@@ -1456,27 +1140,43 @@ type usagePlugin struct {
 	defaultServiceTier string
 }
 
-// usageServiceTier 解析一次请求实际生效的服务等级，供宿主在统计与日志中展示
-// 快速/标准模式。上游响应回传的档位最权威，其次是客户端请求的档位，最后回退到
-// Cockpit 自己注入的默认档位；"auto"/空值表示客户端没有指定，需要继续回退。
+// Codex OAuth response tiers are not authoritative Fast-mode confirmations.
+// Keep the request selection for that route; API-key routes still use the
+// upstream-reported processing tier for pricing and display.
 func usageServiceTier(record coreusage.Record, fallback string) string {
+	requested := requestedUsageServiceTier(record, fallback)
+	if strings.EqualFold(strings.TrimSpace(record.Provider), "codex") &&
+		strings.EqualFold(strings.TrimSpace(record.AuthType), "oauth") {
+		return normalizedUsageServiceTier(requested)
+	}
 	if tier := normalizedUsageServiceTier(record.ResponseServiceTier); tier != "" {
 		return tier
 	}
-	if tier := normalizedRequestedUsageServiceTier(record.ServiceTier); tier != "" {
-		return tier
-	}
-	if tier := normalizedRequestedUsageServiceTier(record.RequestServiceTier); tier != "" {
-		return tier
-	}
-	return normalizedUsageServiceTier(fallback)
+	return normalizedUsageServiceTier(requested)
 }
 
-// normalizedRequestedUsageServiceTier 归一化客户端请求的档位。空值、"auto" 和
-// "default" 都表示客户端没有指定档位，此时实际上游使用的是注入的默认档位。
+// Prefer the final serialized upstream payload. "auto" denotes an observed
+// absence of an explicit tier, not a confirmed server-side processing mode.
+func requestedUsageServiceTier(record coreusage.Record, fallback string) string {
+	if record.UpstreamServiceTierObserved {
+		if tier := strings.TrimSpace(record.UpstreamServiceTier); tier != "" {
+			return tier
+		}
+		return "auto"
+	}
+	for _, value := range []string{record.ServiceTier, record.RequestServiceTier} {
+		if normalizedRequestedUsageServiceTier(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
+// normalizedRequestedUsageServiceTier 归一化客户端请求的档位。空值和 "auto"
+// 表示未提供确定档位，此时回退注入的默认档位；显式 "default" 属于标准档。
 func normalizedRequestedUsageServiceTier(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "auto", "default":
+	case "", "auto":
 		return ""
 	default:
 		return normalizedUsageServiceTier(value)
@@ -1495,6 +1195,14 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 		spec = p.manifest.apiKeyByValue[strings.TrimSpace(record.APIKey)]
 	}
 	account := p.accountForRecord(record)
+	if account != nil {
+		if strings.TrimSpace(record.AuthType) == "" {
+			record.AuthType = account.AuthKind
+		}
+		if strings.TrimSpace(record.Provider) == "" {
+			record.Provider = normalizedSidecarProvider(account.Provider)
+		}
+	}
 	requestKind, _ := ctx.Value(requestKindContextKey).(string)
 	if strings.TrimSpace(requestKind) == "" {
 		requestKind = requestKindFromPath(internallogging.GetEndpoint(ctx))
@@ -1523,28 +1231,35 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 	}
 	status := record.Fail.StatusCode
 	success := !record.Failed
+	requestedTierEvidence := ""
+	if record.UpstreamServiceTierObserved {
+		requestedTierEvidence = requestedUsageServiceTier(record, "")
+	}
 	payload := usagePayload{
-		Type:             "usage",
-		RequestID:        internallogging.GetRequestID(ctx),
-		Provider:         record.Provider,
-		Model:            model,
-		Alias:            alias,
-		RequestedModel:   requestedModel,
-		UpstreamModel:    upstreamModel,
-		AccountID:        stringFromAccount(account, "id"),
-		AccountEmail:     stringFromAccount(account, "email"),
-		AuthID:           record.AuthID,
-		APIKeyID:         stringFromAPIKey(spec, "id"),
-		APIKeyLabel:      stringFromAPIKey(spec, "label"),
-		ClientInstanceID: clientInstanceIDFromContext(ctx),
-		RequestKind:      requestKind,
-		ServiceTier:      usageServiceTier(record, p.defaultServiceTier),
-		ReasoningEffort:  strings.TrimSpace(record.ReasoningEffort),
-		Success:          success,
-		Status:           status,
-		ErrorCategory:    errorCategory(status, record.Fail.Body, success),
-		ErrorMessage:     strings.TrimSpace(record.Fail.Body),
-		LatencyMS:        record.Latency.Milliseconds(),
+		ProxyRoute:           record.ProxyRoute,
+		Type:                 "usage",
+		RequestID:            internallogging.GetRequestID(ctx),
+		Provider:             record.Provider,
+		Model:                model,
+		Alias:                alias,
+		RequestedModel:       requestedModel,
+		UpstreamModel:        upstreamModel,
+		AccountID:            stringFromAccount(account, "id"),
+		AccountEmail:         stringFromAccount(account, "email"),
+		AuthID:               record.AuthID,
+		APIKeyID:             stringFromAPIKey(spec, "id"),
+		APIKeyLabel:          stringFromAPIKey(spec, "label"),
+		ClientInstanceID:     clientInstanceIDFromContext(ctx),
+		RequestKind:          requestKind,
+		ServiceTier:          usageServiceTier(record, p.defaultServiceTier),
+		RequestedServiceTier: requestedTierEvidence,
+		ResponseServiceTier:  strings.TrimSpace(record.ResponseServiceTier),
+		ReasoningEffort:      strings.TrimSpace(record.ReasoningEffort),
+		Success:              success,
+		Status:               status,
+		ErrorCategory:        errorCategory(status, record.Fail.Body, success),
+		ErrorMessage:         strings.TrimSpace(record.Fail.Body),
+		LatencyMS:            record.Latency.Milliseconds(),
 		Usage: usageDetails{
 			InputTokens:     record.Detail.InputTokens,
 			OutputTokens:    record.Detail.OutputTokens,
@@ -1555,6 +1270,10 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 		},
 		RequestedAtMS: record.RequestedAt.UnixMilli(),
 	}
+	if observer := requestDiagnosticsFromContext(ctx); observer != nil {
+		payload.OutputGenerationMS = observer.outputGenerationMS(ctx, record)
+		payload.outputComplete = observer.completedOutput(ctx)
+	}
 	// 上游响应头的旁路观测：只带出长度与分类，state 原文不落库。
 	if observation, ok := helps.TakeTurnStateObservation(payload.RequestID); ok {
 		length := observation.Length
@@ -1563,6 +1282,9 @@ func (p *usagePlugin) HandleUsage(ctx context.Context, record coreusage.Record) 
 	}
 	if sink, ok := ctx.Value(websocketUsageContextKey).(*websocketUsageSink); ok {
 		sink.record(record, payload)
+		if observer := requestDiagnosticsFromContext(ctx); observer != nil {
+			observer.recordWebsocketUsage(ctx, record, payload)
+		}
 		return
 	}
 	p.tracker.record(payload)
@@ -1610,6 +1332,32 @@ func stringFromAPIKey(spec *apiKeySpec, field string) string {
 func errorCategory(status int, body string, success bool) string {
 	if success {
 		return ""
+	}
+	// Explicit upstream codes take precedence over transport text such as
+	// unexpected EOF, which can also describe a disconnected downstream client.
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+		Response struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		} `json:"response"`
+	}
+	if json.Unmarshal([]byte(body), &envelope) == nil {
+		code := strings.TrimSpace(envelope.Error.Code)
+		if code == "" {
+			code = strings.TrimSpace(envelope.Response.Error.Code)
+		}
+		switch strings.ToLower(code) {
+		case "upstream_stream_error":
+			return "upstream_stream_error"
+		case "incomplete_upstream_stream":
+			return "incomplete_upstream_stream"
+		case "request_timeout":
+			return "upstream_stream_timeout"
+		}
 	}
 	lower := strings.ToLower(body)
 	switch {
@@ -1660,6 +1408,7 @@ func errorCategory(status int, body string, success bool) string {
 type authHook struct {
 	manifest *manifest
 	emitter  *eventEmitter
+	tracker  *requestUsageTracker
 }
 
 func (h *authHook) OnAuthRegistered(_ context.Context, auth *coreauth.Auth) {
@@ -1671,6 +1420,14 @@ func (h *authHook) OnAuthUpdated(_ context.Context, auth *coreauth.Auth) {
 }
 
 func (h *authHook) OnResult(ctx context.Context, result coreauth.Result) {
+	if h != nil && h.tracker != nil {
+	}
+	if observer := requestDiagnosticsFromContext(ctx); observer != nil {
+		observer.recordResult(ctx, result)
+	}
+	if result.StaleCredential {
+		return
+	}
 	if h == nil || h.emitter == nil {
 		return
 	}
@@ -1715,6 +1472,7 @@ func (h *authHook) OnResult(ctx context.Context, result coreauth.Result) {
 	}
 	h.emitter.emit(requestDiagnosticPayload{
 		Type:            "auth_result",
+		StartedAtMS:     requestStartedAtMS(ctx),
 		RequestID:       internallogging.GetRequestID(ctx),
 		Provider:        result.Provider,
 		Model:           model,
@@ -1765,8 +1523,8 @@ func (h *authHook) emit(eventType string, auth *coreauth.Auth) {
 	})
 }
 
-func buildCoreAuthSelector(cfg *config.Config, selector coreauth.Selector, m *manifest, quota *quotaReserveStateStore) coreauth.Selector {
-	return buildCoreAuthSelectorWithConcurrency(cfg, selector, m, quota, nil)
+func buildCoreAuthSelector(cfg *config.Config, selector coreauth.Selector, m *manifest) coreauth.Selector {
+	return buildCoreAuthSelectorWithConcurrency(cfg, selector, m, nil)
 }
 
 // buildCoreAuthSelectorWithConcurrency 组装选择器链。
@@ -1776,7 +1534,7 @@ func buildCoreAuthSelector(cfg *config.Config, selector coreauth.Selector, m *ma
 //   - accountConcurrencySelector 位于整条链最外层，覆盖会话亲和命中缓存的请求。
 //
 // tracker 为 nil 或未配置账号并发时，两层都不插入，选择器行为与改动前完全一致。
-func buildCoreAuthSelectorWithConcurrency(cfg *config.Config, selector coreauth.Selector, m *manifest, quota *quotaReserveStateStore, tracker *requestUsageTracker) coreauth.Selector {
+func buildCoreAuthSelectorWithConcurrency(cfg *config.Config, selector coreauth.Selector, m *manifest, tracker *requestUsageTracker) coreauth.Selector {
 	if selector == nil {
 		selector = &coreauth.RoundRobinSelector{}
 	}
@@ -1804,7 +1562,6 @@ func buildCoreAuthSelectorWithConcurrency(cfg *config.Config, selector coreauth.
 	}
 	if m != nil {
 		selector = &backupAccountSelector{manifest: m, fallback: selector}
-		selector = &quotaReserveSelector{manifest: m, fallback: selector, quota: quota}
 		selector = &modelExclusionSelector{manifest: m, fallback: selector}
 		selector = &quotaCooldownSelector{manifest: m, fallback: selector}
 	}
@@ -1816,6 +1573,9 @@ func buildCoreAuthSelectorWithConcurrency(cfg *config.Config, selector coreauth.
 			fallback: selector,
 		}
 	}
+	if m != nil {
+		selector = &apiKeyScopeSelector{manifest: m, fallback: selector}
+	}
 	return selector
 }
 
@@ -1823,12 +1583,15 @@ func accountConcurrencyEnabled(m *manifest, tracker *requestUsageTracker) bool {
 	return m != nil && tracker != nil && m.MaxAccountConcurrency > 0
 }
 
-func buildCoreAuthManager(cfg *config.Config, selector coreauth.Selector, hook coreauth.Hook, m *manifest, quota *quotaReserveStateStore, tracker *requestUsageTracker) *coreauth.Manager {
+func buildCoreAuthManager(cfg *config.Config, selector coreauth.Selector, hook coreauth.Hook, m *manifest, tracker *requestUsageTracker) *coreauth.Manager {
 	tokenStore := sdkauth.GetTokenStore()
 	if dirSetter, ok := tokenStore.(interface{ SetBaseDir(string) }); ok && cfg != nil {
 		dirSetter.SetBaseDir(cfg.AuthDir)
 	}
-	selector = buildCoreAuthSelectorWithConcurrency(cfg, selector, m, quota, tracker)
+	selector = buildCoreAuthSelectorWithConcurrency(cfg, selector, m, tracker)
+	if authHook, ok := hook.(*authHook); ok && authHook != nil {
+		authHook.tracker = tracker
+	}
 	if tracker != nil {
 		selector = &recordingSelector{inner: selector, manifest: m, tracker: tracker}
 	}
@@ -1867,3 +1630,5 @@ func (s *cockpitSessionAffinitySelector) ReportAuthSelectionFailure(ctx context.
 	}
 	return err
 }
+
+func noAuthAvailableError() error { return fmt.Errorf("no auth available") }

@@ -1,3 +1,5 @@
+import { getCodexServiceAccountDisplay, getCodexServiceSourceId } from "../utils/chatgptPlanOverview";
+import { resolveCodexAccountDisplayName } from "../utils/codexAccountDisplayName";
 import type { Account } from "../types/account";
 import type {
   CodebuddyAccount,
@@ -22,6 +24,7 @@ import {
   formatResetTimeDisplay,
   getAntigravityTierBadge,
   getQuotaClass as getAntigravityQuotaClass,
+  getSubscriptionTier,
   matchModelName,
 } from "../utils/account";
 import {
@@ -42,6 +45,7 @@ import {
   getCodexQuotaClass,
   getCodexQuotaWindows,
   isCodexApiKeyAccount,
+  isCodexChatgptPlanAccount,
   isCodexChatCompletionsApiKeyAccount,
   isCodexNewApiAccount,
   isCodexPendingOAuthAccount,
@@ -161,15 +165,7 @@ export interface UnifiedQuotaMetric {
   left?: number;
   hintText?: string;
   windowStatsText?: string;
-  windowStats?: {
-    requestCount: number;
-    inputTokens: number;
-    cachedInputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    estimatedCostUsd: number;
-    userCostUsd?: number | null;
-  };
+  windowStats?: import('../utils/codexWindowStats').CodexWindowStats;
 }
 
 export interface UnifiedAccountPresentation {
@@ -500,35 +496,161 @@ export function getAntigravityGroupResetTimestamp(
   }
   return earliest;
 }
+export function isAccountNeedsReauth(
+  account: Account,
+  verificationStatusMap?: Record<string, string>,
+): boolean {
+  const reason = account.disabled_reason || (verificationStatusMap ? verificationStatusMap[account.id] : undefined);
+  if (reason === 'verification_required' || reason?.startsWith('invalid_grant')) {
+    return true;
+  }
+  const qErr = account.quota_error;
+  if (qErr?.reason === 'VALIDATION_REQUIRED') {
+    return true;
+  }
+  if (Boolean(qErr?.validation_url)) {
+    return true;
+  }
+  if (
+    qErr?.message &&
+    (qErr.message.includes('Verify your account') ||
+      qErr.message.includes('VALIDATION_REQUIRED') ||
+      qErr.message.includes('invalid_grant'))
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export function getAntigravityQuotaDisplayItems(
   account: Account,
   _displayGroups: DisplayGroup[],
 ): AgQuotaDisplayItem[] {
   const models = account.quota?.models || [];
-  const buckets = [
-    { key: 'claude:5h', label: 'Claude (5h)', names: ['3p-5h', 'claude:5h'] },
-    { key: 'claude:weekly', label: 'Claude (Weekly)', names: ['3p-weekly', 'claude:weekly'] },
-    { key: 'gemini:5h', label: 'Gemini (5h)', names: ['gemini-5h', 'gemini:5h'] },
-    { key: 'gemini:weekly', label: 'Gemini (Weekly)', names: ['gemini-weekly', 'gemini:weekly'] },
-  ];
+  const tier = getSubscriptionTier(account.quota);
+  const isFree = tier === 'FREE';
+  const stale = !isFree && (account.quota?.quota_summary_stale || undefined);
   const result: AgQuotaDisplayItem[] = [];
-  for (const bucket of buckets) {
-    const model = models.find((entry) => bucket.names.includes(entry.name));
-    if (model) {
-      result.push({
-        key: bucket.key,
-        label: bucket.label,
-        percentage: model.percentage,
-        resetTime: model.reset_time,
-        stale: account.quota?.quota_summary_stale || undefined,
+
+  let claude5h: (typeof models)[0] | undefined;
+  let claudeWeekly: (typeof models)[0] | undefined;
+  let gemini5h: (typeof models)[0] | undefined;
+  let geminiWeekly: (typeof models)[0] | undefined;
+
+  if (isFree) {
+    // 免费账号仅有 Weekly 额度，不显示 5h 额度
+    claudeWeekly =
+      models.find((m) => m.name === '3p-weekly' || m.name === 'claude:weekly') ||
+      models.find((m) => m.name.toLowerCase().includes('claude'));
+
+    geminiWeekly =
+      models.find((m) => m.name === 'gemini-weekly' || m.name === 'gemini:weekly') ||
+      models.find((m) => m.name.toLowerCase().includes('gemini'));
+  } else {
+    // Claude 5h
+    claude5h = models.find((m) => m.name === '3p-5h' || m.name === 'claude:5h');
+    if (!claude5h) {
+      claude5h = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return name.includes('claude') && (name.includes('high') || !name.includes('low'));
+      });
+    }
+    if (!claude5h) {
+      claude5h = models.find((m) => m.name.toLowerCase().includes('claude'));
+    }
+
+    // Claude Weekly
+    claudeWeekly = models.find((m) => m.name === '3p-weekly' || m.name === 'claude:weekly');
+    if (!claudeWeekly) {
+      claudeWeekly = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return name.includes('claude') && name.includes('low');
+      });
+    }
+
+    // Gemini 5h
+    gemini5h = models.find((m) => m.name === 'gemini-5h' || m.name === 'gemini:5h');
+    if (!gemini5h) {
+      gemini5h = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return name.includes('gemini') && name.includes('pro') && name.includes('high');
+      });
+    }
+    if (!gemini5h) {
+      gemini5h = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return name.includes('gemini') && name.includes('high');
+      });
+    }
+    if (!gemini5h) {
+      gemini5h = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return name.includes('gemini') && name.includes('flash');
+      });
+    }
+    if (!gemini5h) {
+      gemini5h = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return name.includes('gemini') && !name.includes('low');
+      });
+    }
+    if (!gemini5h) {
+      gemini5h = models.find((m) => m.name.toLowerCase().includes('gemini'));
+    }
+
+    // Gemini Weekly
+    geminiWeekly = models.find((m) => m.name === 'gemini-weekly' || m.name === 'gemini:weekly');
+    if (!geminiWeekly) {
+      geminiWeekly = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return name.includes('gemini') && name.includes('pro') && name.includes('low');
+      });
+    }
+    if (!geminiWeekly) {
+      geminiWeekly = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return name.includes('gemini') && name.includes('low');
       });
     }
   }
 
-  // 卡片只展示 Claude / Gemini 的 5h 与周窗口这 4 个服务器窗口。
-  // 其余模型条目（high/low 变体、具体模型名）不是时间窗口，逐条列出会把卡片撑成
-  // 一长串模型行，因此不再进入卡片；窗口缺失时由展示层渲染为“无数据”。
+  if (claude5h) {
+    result.push({
+      key: 'claude:5h',
+      label: 'Claude (5h)',
+      percentage: claude5h.percentage,
+      resetTime: claude5h.reset_time,
+      stale,
+    });
+  }
+  if (claudeWeekly) {
+    result.push({
+      key: 'claude:weekly',
+      label: 'Claude (Weekly)',
+      percentage: claudeWeekly.percentage,
+      resetTime: claudeWeekly.reset_time,
+      stale,
+    });
+  }
+  if (gemini5h) {
+    result.push({
+      key: 'gemini:5h',
+      label: 'Gemini (5h)',
+      percentage: gemini5h.percentage,
+      resetTime: gemini5h.reset_time,
+      stale,
+    });
+  }
+  if (geminiWeekly) {
+    result.push({
+      key: 'gemini:weekly',
+      label: 'Gemini (Weekly)',
+      percentage: geminiWeekly.percentage,
+      resetTime: geminiWeekly.reset_time,
+      stale,
+    });
+  }
+
   return result;
 }
 
@@ -665,13 +787,24 @@ export function buildCodexAccountPresentation(
   account: CodexAccount,
   t: Translate,
 ): UnifiedAccountPresentation {
-  const apiKeyDisplayName = account.account_name?.trim();
-  const displayName =
-    isCodexApiKeyAccount(account) && apiKeyDisplayName
-      ? apiKeyDisplayName
-      : isCodexNewApiAccount(account)
-        ? "Codex API"
-      : account.email;
+  if (isCodexChatgptPlanAccount(account) && getCodexServiceSourceId(account) === account.id) {
+    const source = t('chatgptPlan.title');
+    const planBadge = getCodexPlanBadgePresentation(account);
+    return {
+      id: account.id,
+      displayName: account.account_name?.trim() || account.email || source,
+      planLabel: account.plan_type?.trim() || account.service_source_plan_badge ? planBadge.label : source,
+      planClass: withCodexPlanBadgeStyle(planBadge.className),
+      // This authorization has no official remaining-quota endpoint.
+      quotaItems: [],
+    };
+  }
+  // Verified bindings borrow original account display data only. Endpoint
+  // credentials, eligibility and runtime health never consume this copy.
+  account = getCodexServiceAccountDisplay(account);
+  const displayName = isCodexApiKeyAccount(account)
+    ? resolveCodexAccountDisplayName(account, t("common.apiKeyAccount"))
+    : account.email;
   const effectiveQuota = getCodexEffectiveQuotaPercentages(account.quota);
   const weeklyBlocksHourlyHint = effectiveQuota.weeklyBlocksHourly
     ? t("codex.quota.weeklyBlocksHourly", "周额度为 0，5小时额度已不可用")
@@ -1719,7 +1852,7 @@ export function buildCursorAccountPresentation(
     id: account.id,
     displayName: getCursorAccountDisplayEmail(account),
     planLabel,
-    planClass: getCursorPlanBadgeClass(account.membership_type, account),
+    planClass: getCursorPlanBadgeClass(account.membership_type?.trim() || account.plan_type, account),
     isBanned: isCursorAccountBanned(account),
     quotaItems,
   };
@@ -1733,7 +1866,7 @@ export function buildGrokAccountPresentation(
   const quotaItems: UnifiedQuotaMetric[] = getGrokQuotaSummaryItems(account, t).map(
     (item) => {
       const usedPercent = clampPercent(item.percentage);
-      const remaining = clampPercent(100 - usedPercent);
+      const remaining = clampPercent(100 - Math.floor(usedPercent));
       const amountText = formatGrokQuotaUsedTotal(item.used, item.total);
       const left =
         item.used != null && item.total != null

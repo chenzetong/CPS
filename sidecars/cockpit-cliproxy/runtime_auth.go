@@ -23,6 +23,7 @@ import (
 	"time"
 
 	internalregistry "github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/watcher/synthesizer"
 
@@ -257,7 +258,8 @@ func newSidecarRuntime(ctx context.Context, configPath string, cfg *config.Confi
 		sdkauth.NewKimiAuthenticator(),
 		sdkauth.NewXAIAuthenticator(),
 	)
-	readyCh := make(chan struct{})
+	runtimeCtx, cancel := context.WithCancel(ctx)
+	readyCh := make(chan error, 1)
 	var readyOnce sync.Once
 	service, err := cliproxy.NewBuilder().
 		WithConfig(cfg).
@@ -265,18 +267,21 @@ func newSidecarRuntime(ctx context.Context, configPath string, cfg *config.Confi
 		WithAuthManager(authManager).
 		WithCoreAuthManager(manager).
 		WithHooks(cliproxy.Hooks{
-			OnAfterStart: func(*cliproxy.Service) {
-				readyOnce.Do(func() { close(readyCh) })
+			OnAuthPrepared: func(auth *coreauth.Auth) error {
+				return bindGatewayIdentityForManifestAuth(m, auth)
+			},
+			OnAfterStart: func(service *cliproxy.Service) {
+				readyOnce.Do(func() { readyCh <- initializeSidecarRuntimeAuths(runtimeCtx, service, cfg, m, manager) })
 			},
 		}).
 		Build()
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
 	manager.SetRoundTripperProvider(newSidecarRoundTripperProvider())
 
-	runtimeCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
 		runErr := service.StartRuntime(runtimeCtx)
@@ -288,34 +293,24 @@ func newSidecarRuntime(ctx context.Context, configPath string, cfg *config.Confi
 	}()
 
 	select {
-	case <-readyCh:
+	case initErr := <-readyCh:
+		if initErr != nil {
+			cancel()
+			return nil, initErr
+		}
 	case runErr := <-done:
 		cancel()
 		if runErr == nil {
 			return nil, fmt.Errorf("runtime stopped before becoming ready")
 		}
 		return nil, runErr
+	case <-ctx.Done():
+		cancel()
+		return nil, ctx.Err()
 	case <-time.After(10 * time.Second):
 		cancel()
 		return nil, fmt.Errorf("runtime startup timeout")
 	}
-
-	if err := registerConfigCodexAPIKeyAuths(runtimeCtx, service, cfg, m); err != nil {
-		cancel()
-		return nil, err
-	}
-	if err := registerManifestCodexTokenAuths(runtimeCtx, service, cfg, m, manager); err != nil {
-		cancel()
-		return nil, err
-	}
-	for _, auth := range manager.List() {
-		if auth == nil || !sidecarOAuthProviderSupported(auth.Provider) {
-			continue
-		}
-		linkManifestAccountForAuth(m, auth)
-		registerManifestModelsForAuth(manager, m, auth)
-	}
-	service.RebindRuntimeExecutors()
 
 	return &sidecarRuntime{manager: manager, service: service, cancel: cancel, done: done}, nil
 }
@@ -339,6 +334,9 @@ func registerConfigCodexAPIKeyAuths(ctx context.Context, service *cliproxy.Servi
 		}
 		if auth.Attributes == nil || strings.TrimSpace(auth.Attributes["api_key"]) == "" {
 			continue
+		}
+		if err := bindGatewayIdentityForManifestAuth(m, auth); err != nil {
+			return err
 		}
 		registered, err := service.UpsertRuntimeAuth(coreauth.WithSkipPersist(ctx), auth)
 		if err != nil {
@@ -384,7 +382,12 @@ func registerManifestCodexTokenAuths(
 }
 
 func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*coreauth.Auth, error) {
-	data, err := os.ReadFile(path)
+	// The parent app rewrites auth files whenever an account is prepared/refreshed. Those
+	// writes are atomic renames, but a read can still land between create+rename on some
+	// filesystems, yielding a truncated body ("unexpected end of JSON input"). A retry
+	// keeps a transient mid-write read from failing the whole startup (which would force
+	// another sidecar restart). Bounded and short so a genuinely broken file still errors.
+	data, err := readAuthFileWithRetry(path)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest token auth file %s: %w", path, err)
 	}
@@ -495,6 +498,9 @@ func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*co
 		auth.Attributes["excluded_models"] = strings.Join(excluded, ",")
 	}
 	coreauth.ApplyCustomHeadersFromMetadata(auth)
+	if err := bindGatewayIdentityAuth(auth, account); err != nil {
+		return nil, err
+	}
 	return auth, nil
 }
 
@@ -581,10 +587,15 @@ func (r *sidecarRuntime) ExecuteStream(ctx context.Context, providers []string, 
 }
 
 func (r *sidecarRuntime) Stop() {
-	if r == nil || r.cancel == nil {
+	if r == nil {
 		return
 	}
-	r.cancel()
+	if r.cancel != nil {
+		r.cancel()
+	}
+	if r.service != nil {
+		_ = r.service.Shutdown(context.Background())
+	}
 	if r.done == nil {
 		return
 	}
@@ -622,7 +633,7 @@ func linkManifestAccountForAuth(m *manifest, auth *coreauth.Auth) {
 		m.accountByAuthID = make(map[string]*accountSpec)
 	}
 	authID := strings.ToLower(strings.TrimSpace(auth.ID))
-	if _, exists := m.accountByAuthID[authID]; exists {
+	if _, exists := m.accountByAuthID[authID]; exists && !manifestUsesGatewayIdentity(m) {
 		return
 	}
 	if account := findManifestAccountForAuth(m, auth); account != nil {
@@ -637,6 +648,13 @@ func linkManifestAccountForAuth(m *manifest, auth *coreauth.Auth) {
 func findManifestAccountForAuth(m *manifest, auth *coreauth.Auth) *accountSpec {
 	if m == nil || auth == nil {
 		return nil
+	}
+	if manifestUsesGatewayIdentity(m) {
+		account, err := gatewayManifestAccountForAuth(m, auth)
+		if err != nil {
+			return nil
+		}
+		return account
 	}
 	for _, candidate := range []string{
 		strings.TrimSpace(auth.ID),
@@ -732,10 +750,26 @@ func manifestModelsForAuth(m *manifest, auth *coreauth.Auth) []*cliproxy.ModelIn
 	provider := strings.ToLower(strings.TrimSpace(auth.Provider))
 	if provider == "" || provider == "codex" {
 		models := manifestRegistryModels(m)
+		// OAuth image requests also need the default main model when the public
+		// catalog only contains third-party models. This only expands the internal
+		// scheduler catalog; client visibility and key permissions stay unchanged.
+		if strings.TrimSpace(m.ImageGenerationMainModel) != "" || auth.AuthKind() == coreauth.AuthKindOAuth {
+			mainModel := configuredImagesMainModel(m)
+			found := false
+			for _, model := range models {
+				if model != nil && strings.EqualFold(model.ID, mainModel) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				models = append(models, manifestRegistryModelInfo(mainModel, "", time.Now().Unix()))
+			}
+		}
 		// 仅由第三方 provider（例如 xai/Grok）承接的模型不能注册到 Codex 账号上，
 		// 否则调度会把 grok 模型发给 ChatGPT 上游。
 		thirdPartyModels := xaiOnlyModelIDs(m)
-		if len(thirdPartyModels) == 0 {
+		if len(thirdPartyModels) == 0 && auth.AuthKind() != coreauth.AuthKindOAuth {
 			return models
 		}
 		filtered := make([]*cliproxy.ModelInfo, 0, len(models))
@@ -744,6 +778,9 @@ func manifestModelsForAuth(m *manifest, auth *coreauth.Auth) []*cliproxy.ModelIn
 				continue
 			}
 			if _, thirdParty := thirdPartyModels[strings.ToLower(strings.TrimSpace(model.ID))]; thirdParty {
+				continue
+			}
+			if auth.AuthKind() == coreauth.AuthKindOAuth && isRetiredChatGPTModel(m, model.ID) {
 				continue
 			}
 			filtered = append(filtered, model)
@@ -1002,6 +1039,9 @@ func (p *sidecarRoundTripperProvider) RoundTripperFor(auth *coreauth.Auth) http.
 	if p == nil || auth == nil {
 		return nil
 	}
+	if rt, managed := managedGatewayRoundTripper(auth); managed {
+		return rt
+	}
 	proxyURL := strings.TrimSpace(auth.ProxyURL)
 	if proxyURL == "" {
 		return nil
@@ -1031,4 +1071,65 @@ type executorRuntime interface {
 // same OAuth account pool as /v1/responses.
 type codexAlphaSearcher interface {
 	CodexAlphaSearch(ctx context.Context, model string, body []byte, headers http.Header) (status int, respHeaders http.Header, payload []byte, err error)
+}
+
+func initializeSidecarRuntimeAuths(ctx context.Context, service *cliproxy.Service, cfg *config.Config, m *manifest, manager *coreauth.Manager) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := registerConfigCodexAPIKeyAuths(ctx, service, cfg, m); err != nil {
+		return err
+	}
+	if err := registerManifestCodexTokenAuths(ctx, service, cfg, m, manager); err != nil {
+		return err
+	}
+	for _, auth := range manager.List() {
+		if auth == nil || !sidecarOAuthProviderSupported(auth.Provider) {
+			continue
+		}
+		if err := bindGatewayIdentityForManifestAuth(m, auth); err != nil {
+			return err
+		}
+		if auth.Attributes[helps.IdentityScopeAttribute] != "" {
+			if _, err := manager.Update(coreauth.WithSkipPersist(ctx), auth); err != nil {
+				return err
+			}
+		}
+		linkManifestAccountForAuth(m, auth)
+		registerManifestModelsForAuth(manager, m, auth)
+	}
+	service.RebindRuntimeExecutors()
+	return ctx.Err()
+}
+
+// StartRuntime deliberately does not run the SDK's full HTTP service/watcher.
+// Observe only the manifest's existing credential projections here, so Cockpit
+// token-authority refreshes and reauthorization become visible without a restart.
+// This does not hot-reload the manifest or enroll arbitrary new auth files.
+
+func readAuthFileWithRetry(path string) ([]byte, error) {
+	const attempts = 5
+	const interval = 40 * time.Millisecond
+	var last []byte
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			lastErr = err
+		} else {
+			last = data
+			lastErr = nil
+			var probe map[string]any
+			if json.Unmarshal(data, &probe) == nil {
+				return data, nil
+			}
+		}
+		if attempt < attempts-1 {
+			time.Sleep(interval)
+		}
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return last, nil
 }

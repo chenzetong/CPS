@@ -261,7 +261,7 @@ func TestAccountConcurrencyDisabledKeepsSelectorChainUnchanged(t *testing.T) {
 	if accountConcurrencyEnabled(m, tracker) {
 		t.Fatal("expected concurrency gate to stay disabled for limit 0")
 	}
-	if chain := buildCoreAuthSelectorWithConcurrency(nil, base, nil, nil, tracker); chain != coreauth.Selector(base) {
+	if chain := buildCoreAuthSelectorWithConcurrency(nil, base, nil, tracker); chain != coreauth.Selector(base) {
 		t.Fatalf("expected unchanged selector when disabled, got %#v", chain)
 	}
 	if accountConcurrencyEnabled(m, nil) {
@@ -275,11 +275,16 @@ func TestAccountConcurrencyWrapsSelectorChainWhenEnabled(t *testing.T) {
 	if !accountConcurrencyEnabled(m, tracker) {
 		t.Fatal("expected concurrency gate to be enabled")
 	}
-	chain := buildCoreAuthSelectorWithConcurrency(nil, &orderedAuthSelector{order: []string{"auth-a"}}, m, nil, tracker)
-	if _, ok := chain.(*accountConcurrencySelector); !ok {
-		t.Fatalf("expected accountConcurrencySelector at the outermost layer, got %#v", chain)
+	chain := buildCoreAuthSelectorWithConcurrency(nil, &orderedAuthSelector{order: []string{"auth-a"}}, m, tracker)
+	scope, ok := chain.(*apiKeyScopeSelector)
+	if !ok {
+		t.Fatalf("expected authorization scope at the outermost layer, got %#v", chain)
 	}
-	if _, ok := chain.(*accountConcurrencySelector).fallback.(*quotaCooldownSelector); !ok {
+	concurrency, ok := scope.fallback.(*accountConcurrencySelector)
+	if !ok {
+		t.Fatalf("expected concurrency gate immediately inside authorization scope, got %#v", scope.fallback)
+	}
+	if _, ok := concurrency.fallback.(*quotaCooldownSelector); !ok {
 		t.Fatalf("expected quota cooldown selector below the concurrency gate, got %#v", chain)
 	}
 }
@@ -369,7 +374,7 @@ func TestAccountConcurrencyGateThroughAuthManager(t *testing.T) {
 	}
 	cfg := &config.Config{AuthDir: authDir}
 	tracker := newRequestUsageTracker()
-	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, nil, tracker)
+	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, tracker)
 	m.authManager = manager
 
 	runtime, err := newSidecarRuntime(context.Background(), configPath, cfg, m, manager)
@@ -483,7 +488,7 @@ func TestAccountConcurrencyGateCoversSessionAffinityHit(t *testing.T) {
 	cfg.Routing.SessionAffinityTTL = time.Minute.String()
 
 	tracker := newRequestUsageTracker()
-	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, nil, tracker)
+	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, tracker)
 	m.authManager = manager
 
 	runtime, err := newSidecarRuntime(context.Background(), configPath, cfg, m, manager)

@@ -147,12 +147,11 @@ async fn request_remote_account_check(
         });
     }
 
-    let client = account_http_client_builder(account)
-        .map_err(|error| CodexAccountCheckError {
+    let client = crate::modules::codex_proxy_runtime::client_builder(account, reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))).await.map_err(|_| CodexAccountCheckError {
             kind: CodexAccountCheckErrorKind::Network,
-            message: format!("创建官方账号检查客户端失败: {}", error),
+            message: "PROXY_CLIENT_FAILED".into(),
         })?
-        .timeout(Duration::from_secs(10))
         .build()
         .map_err(|error| CodexAccountCheckError {
             kind: CodexAccountCheckErrorKind::Network,

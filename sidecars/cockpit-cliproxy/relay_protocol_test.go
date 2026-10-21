@@ -36,7 +36,7 @@ func TestRelayServerExecutesNonStreamingRequestThroughRuntime(t *testing.T) {
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5","input":"hello","stream":false}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":false}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -51,7 +51,7 @@ func TestRelayServerExecutesNonStreamingRequestThroughRuntime(t *testing.T) {
 	if runtime.executeCalls != 1 || runtime.streamCalls != 0 {
 		t.Fatalf("unexpected runtime calls: execute=%d stream=%d", runtime.executeCalls, runtime.streamCalls)
 	}
-	if runtime.lastReq.Model != "gpt-5.5" || runtime.lastOpts.SourceFormat != sdktranslator.FormatOpenAIResponse {
+	if runtime.lastReq.Model != "gpt-5.6-sol" || runtime.lastOpts.SourceFormat != sdktranslator.FormatOpenAIResponse {
 		t.Fatalf("unexpected executor request: %#v %#v", runtime.lastReq, runtime.lastOpts)
 	}
 	if runtime.lastOpts.Headers.Get("Authorization") != "Bearer client-key" {
@@ -416,6 +416,7 @@ func TestRelayServerProviderGatewayChatStreamTerminatesResponsesSSEFrames(t *tes
 	if !strings.Contains(body, "event: response.completed\n") || !strings.Contains(body, "\n\n") {
 		t.Fatalf("stream should emit complete SSE frames separated by a blank line: %q", body)
 	}
+	assertProviderGatewayMessageIdentity(t, body, "ok")
 }
 
 func TestRelayServerProviderGatewayModelResolution(t *testing.T) {
@@ -609,7 +610,7 @@ func mixedRoutingAPIKey(gateway *providerGatewaySpec) *apiKeySpec {
 func mixedRoutingManifest(spec *apiKeySpec) *manifest {
 	return &manifest{
 		APIKeys:  []apiKeySpec{*spec},
-		ModelIDs: []string{"gpt-5.5"},
+		ModelIDs: []string{"gpt-5.6-sol"},
 		apiKeyByValue: map[string]*apiKeySpec{
 			"client-key": spec,
 		},
@@ -635,7 +636,7 @@ func TestRelayServerMixedRoutingBareModelUsesOAuthRuntime(t *testing.T) {
 	spec := mixedRoutingAPIKey(&providerGatewaySpec{
 		BaseURL:        upstream.URL,
 		APIKey:         "cpa-secret",
-		UpstreamModels: []string{"gpt-5.5", "gpt-6-astra", "grok-4.6"},
+		UpstreamModels: []string{"gpt-5.6-sol", "gpt-6-astra", "grok-4.6"},
 		WireAPI:        "responses",
 	})
 	m := mixedRoutingManifest(spec)
@@ -646,7 +647,7 @@ func TestRelayServerMixedRoutingBareModelUsesOAuthRuntime(t *testing.T) {
 		policy:   &requestPolicy{manifest: m},
 	}).router()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5","input":"hello","stream":false}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":false}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -658,8 +659,8 @@ func TestRelayServerMixedRoutingBareModelUsesOAuthRuntime(t *testing.T) {
 	if runtime.executeCalls != 1 || runtime.streamCalls != 0 {
 		t.Fatalf("bare model should use OAuth runtime: execute=%d stream=%d", runtime.executeCalls, runtime.streamCalls)
 	}
-	if runtime.lastReq.Model != "gpt-5.5" {
-		t.Fatalf("OAuth runtime model = %q, want gpt-5.5", runtime.lastReq.Model)
+	if runtime.lastReq.Model != "gpt-5.6-sol" {
+		t.Fatalf("OAuth runtime model = %q, want gpt-5.6-sol", runtime.lastReq.Model)
 	}
 	if upstreamHits != 0 {
 		t.Fatalf("bare official model must not hit the API provider: hits=%d", upstreamHits)
@@ -1338,7 +1339,7 @@ func TestRelayServerFramesStreamingChatCompletionThroughRuntime(t *testing.T) {
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.5","messages":[],"stream":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.6-sol","messages":[],"stream":true}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1384,7 +1385,7 @@ func TestRelayServerTimesOutWhenStreamDoesNotOpen(t *testing.T) {
 	}()
 	router := testRelayRouter(&fakeRuntime{streamWaitForContext: true})
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5","input":"hello","stream":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":true}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1429,7 +1430,7 @@ data: {"type":"response.completed"}
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5","input":"draw","stream":true,"tools":[{"type":"image_generation","model":"gpt-image-2"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"draw","stream":true,"tools":[{"type":"image_generation","model":"gpt-image-2"}]}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1460,7 +1461,7 @@ data: {"type":"response.completed","response":{"created_at":1710000000,"output":
 			Chunks:  stream,
 		},
 	}
-	router := testRelayRouterWithImageModel(runtime, "custom-image-model")
+	router := testRelayRouterWithImageModel(runtime, legacyImagesToolModel)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"gpt-image-2","prompt":"draw","response_format":"b64_json"}`))
 	req.Header.Set("Authorization", "Bearer client-key")
@@ -1483,7 +1484,7 @@ data: {"type":"response.completed","response":{"created_at":1710000000,"output":
 	}
 	tools, _ := forwarded["tools"].([]any)
 	tool, _ := tools[0].(map[string]any)
-	if tool["model"] != "custom-image-model" {
+	if tool["model"] != legacyImagesToolModel {
 		t.Fatalf("configured image model was not forwarded: %#v", tool)
 	}
 	var body map[string]any
@@ -1560,7 +1561,7 @@ func TestRelayServerRetriesWhenStreamDoesNotOpen(t *testing.T) {
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5","input":"hello","stream":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":true}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1594,7 +1595,7 @@ func TestRelayServerKeepsStreamContextOpenAfterOpen(t *testing.T) {
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5","input":"hello","stream":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":true}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1733,7 +1734,7 @@ func TestRelayServerTimesOutIdleOpenedStream(t *testing.T) {
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5","input":"hello","stream":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":true}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1757,7 +1758,7 @@ func TestRelayServerAnthropicMessagesUsesClaudeFormat(t *testing.T) {
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}],"stream":false}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hello"}],"stream":false}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1775,7 +1776,7 @@ func TestRelayServerAnthropicCountTokensUsesClaudeShape(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := testRelayRouter(&fakeRuntime{})
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello world"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hello world"}]}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1799,7 +1800,7 @@ func TestRelayServerGeminiGenerateInjectsPathModel(t *testing.T) {
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gpt-5.5:generateContent", strings.NewReader(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gpt-5.6-sol:generateContent", strings.NewReader(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1808,10 +1809,10 @@ func TestRelayServerGeminiGenerateInjectsPathModel(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d body=%s", w.Code, w.Body.String())
 	}
-	if runtime.executeCalls != 1 || runtime.lastOpts.SourceFormat != sdktranslator.FormatGemini || runtime.lastReq.Model != "gpt-5.5" {
+	if runtime.executeCalls != 1 || runtime.lastOpts.SourceFormat != sdktranslator.FormatGemini || runtime.lastReq.Model != "gpt-5.6-sol" {
 		t.Fatalf("expected Gemini executor request, got calls=%d req=%#v opts=%#v", runtime.executeCalls, runtime.lastReq, runtime.lastOpts)
 	}
-	if !strings.Contains(string(runtime.lastReq.Payload), `"model":"gpt-5.5"`) {
+	if !strings.Contains(string(runtime.lastReq.Payload), `"model":"gpt-5.6-sol"`) {
 		t.Fatalf("Gemini path model should be injected into executor payload: %s", runtime.lastReq.Payload)
 	}
 }
@@ -1828,7 +1829,7 @@ func TestRelayServerGeminiModelsResponseShape(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d body=%s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"name":"models/gpt-5.5"`) ||
+	if !strings.Contains(w.Body.String(), `"name":"models/gpt-5.6-sol"`) ||
 		!strings.Contains(w.Body.String(), `"streamGenerateContent"`) ||
 		!strings.Contains(w.Body.String(), `"countTokens"`) {
 		t.Fatalf("Gemini models response has unexpected shape: %s", w.Body.String())
@@ -1840,12 +1841,12 @@ func TestRelayServerOllamaChatConvertsNonStreamingResponse(t *testing.T) {
 	runtime := &fakeRuntime{
 		response: cliproxyexecutor.Response{
 			Headers: http.Header{"Content-Type": []string{"application/json"}},
-			Payload: []byte(`{"id":"chatcmpl_1","object":"chat.completion","created":1,"model":"gpt-5.5","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`),
+			Payload: []byte(`{"id":"chatcmpl_1","object":"chat.completion","created":1,"model":"gpt-5.6-sol","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`),
 		},
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}],"stream":false}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hello"}],"stream":false}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1854,7 +1855,7 @@ func TestRelayServerOllamaChatConvertsNonStreamingResponse(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d body=%s", w.Code, w.Body.String())
 	}
-	if runtime.executeCalls != 1 || runtime.lastOpts.SourceFormat != sdktranslator.FormatOpenAI || runtime.lastReq.Model != "gpt-5.5" {
+	if runtime.executeCalls != 1 || runtime.lastOpts.SourceFormat != sdktranslator.FormatOpenAI || runtime.lastReq.Model != "gpt-5.6-sol" {
 		t.Fatalf("expected OpenAI chat executor request, got calls=%d req=%#v opts=%#v", runtime.executeCalls, runtime.lastReq, runtime.lastOpts)
 	}
 	if !strings.Contains(w.Body.String(), `"done":true`) || !strings.Contains(w.Body.String(), `"content":"ok"`) || !strings.Contains(w.Body.String(), `"eval_count":3`) {
@@ -1865,8 +1866,8 @@ func TestRelayServerOllamaChatConvertsNonStreamingResponse(t *testing.T) {
 func TestRelayServerOllamaChatConvertsStreamingChunks(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	chunks := make(chan cliproxyexecutor.StreamChunk, 2)
-	chunks <- cliproxyexecutor.StreamChunk{Payload: []byte(`{"id":"chatcmpl_1","object":"chat.completion.chunk","created":1,"model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}`)}
-	chunks <- cliproxyexecutor.StreamChunk{Payload: []byte(`{"id":"chatcmpl_1","object":"chat.completion.chunk","created":1,"model":"gpt-5.5","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`)}
+	chunks <- cliproxyexecutor.StreamChunk{Payload: []byte(`{"id":"chatcmpl_1","object":"chat.completion.chunk","created":1,"model":"gpt-5.6-sol","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}`)}
+	chunks <- cliproxyexecutor.StreamChunk{Payload: []byte(`{"id":"chatcmpl_1","object":"chat.completion.chunk","created":1,"model":"gpt-5.6-sol","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`)}
 	close(chunks)
 	runtime := &fakeRuntime{
 		streamResult: &cliproxyexecutor.StreamResult{
@@ -1876,7 +1877,7 @@ func TestRelayServerOllamaChatConvertsStreamingChunks(t *testing.T) {
 	}
 	router := testRelayRouter(runtime)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hello"}]}`))
 	req.Header.Set("Authorization", "Bearer client-key")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1922,7 +1923,7 @@ func testRelayRouter(runtime executorRuntime) *gin.Engine {
 func testRelayRouterWithImageModel(runtime executorRuntime, imageModel string) *gin.Engine {
 	m := &manifest{
 		APIKeys:              []apiKeySpec{{ID: "key_1", Label: "Test key", Key: "client-key", Enabled: true}},
-		ModelIDs:             []string{"gpt-5.5", "gpt-image-2"},
+		ModelIDs:             []string{"gpt-5.6-sol", "gpt-image-2"},
 		ImageGenerationModel: imageModel,
 		apiKeyByValue: map[string]*apiKeySpec{
 			"client-key": {ID: "key_1", Label: "Test key", Key: "client-key", Enabled: true},
@@ -2411,8 +2412,8 @@ func TestResponsesWebsocketRouteDisabledByDefault(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer client-key")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 body=%s", w.Code, w.Body.String())
+	if w.Code != http.StatusUpgradeRequired {
+		t.Fatalf("status = %d, want 426 body=%s", w.Code, w.Body.String())
 	}
 	if called {
 		t.Fatal("websocket handler should not run when disabled")
@@ -2517,7 +2518,7 @@ func TestExcludedModelsForAuthMergesManifestAndMetadata(t *testing.T) {
 
 func TestRegisterManifestModelsForAuthRespectsPerAccountExclusions(t *testing.T) {
 	m := &manifest{
-		ModelIDs: []string{"gpt-5.3-codex", codexSparkModel, "gpt-5.4"},
+		ModelIDs: []string{"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.4"},
 		Accounts: []accountSpec{{
 			ID:     "plus-account",
 			AuthID: "plus-auth",
@@ -2528,7 +2529,7 @@ func TestRegisterManifestModelsForAuthRespectsPerAccountExclusions(t *testing.T)
 	auth := &coreauth.Auth{
 		ID: "plus-auth",
 		Metadata: map[string]any{
-			"excluded_models": []string{codexSparkModel},
+			"excluded_models": []string{"gpt-5.3-codex-spark"},
 		},
 		Attributes: map[string]string{
 			"account_id": "plus-account",
@@ -2541,7 +2542,7 @@ func TestRegisterManifestModelsForAuthRespectsPerAccountExclusions(t *testing.T)
 	registerManifestModelsForAuth(manager, m, auth)
 	models := registry.GetGlobalRegistry().GetModelsForClient(auth.ID)
 	for _, model := range models {
-		if strings.EqualFold(model.ID, codexSparkModel) {
+		if strings.EqualFold(model.ID, "gpt-5.3-codex-spark") {
 			t.Fatalf("spark should not be registered for excluded auth: %#v", models)
 		}
 	}
@@ -2551,7 +2552,7 @@ func TestCoreAuthSelectorFiltersNewModelExclusionsBeforeSessionAffinity(t *testi
 	cfg := &config.Config{}
 	cfg.Routing.SessionAffinity = true
 	cfg.Routing.SessionAffinityTTL = "1h"
-	selector := buildCoreAuthSelector(cfg, &coreauth.RoundRobinSelector{}, &manifest{}, nil)
+	selector := buildCoreAuthSelector(cfg, &coreauth.RoundRobinSelector{}, &manifest{})
 	if stoppable, ok := selector.(coreauth.StoppableSelector); ok {
 		t.Cleanup(stoppable.Stop)
 	}
@@ -2572,7 +2573,7 @@ func TestCoreAuthSelectorFiltersNewModelExclusionsBeforeSessionAffinity(t *testi
 		Headers: http.Header{"Session_id": []string{"spark-session"}},
 	}
 
-	first, err := selector.Pick(context.Background(), "codex", codexSparkModel, opts, auths)
+	first, err := selector.Pick(context.Background(), "codex", "gpt-5.3-codex-spark", opts, auths)
 	if err != nil {
 		t.Fatalf("initial Pick: %v", err)
 	}
@@ -2580,8 +2581,8 @@ func TestCoreAuthSelectorFiltersNewModelExclusionsBeforeSessionAffinity(t *testi
 		t.Fatalf("initial Pick = %#v, want %q", first, plus.ID)
 	}
 
-	plus.Metadata["excluded_models"] = []any{codexSparkModel}
-	second, err := selector.Pick(context.Background(), "codex", codexSparkModel, opts, auths)
+	plus.Metadata["excluded_models"] = []any{"gpt-5.3-codex-spark"}
+	second, err := selector.Pick(context.Background(), "codex", "gpt-5.3-codex-spark", opts, auths)
 	if err != nil {
 		t.Fatalf("Pick after exclusion: %v", err)
 	}
@@ -2641,7 +2642,7 @@ func TestSidecarRuntimeDoesNotSelectAccountWithExcludedModel(t *testing.T) {
 	}
 
 	cfg := &config.Config{AuthDir: authDir}
-	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, nil, newRequestUsageTracker())
+	manager := buildCoreAuthManager(cfg, &cockpitSelector{manifest: m}, &authHook{manifest: m}, m, newRequestUsageTracker())
 	runtime, err := newSidecarRuntime(context.Background(), configPath, cfg, m, manager)
 	if err != nil {
 		t.Fatalf("newSidecarRuntime: %v", err)

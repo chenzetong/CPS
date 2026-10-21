@@ -18,6 +18,12 @@ const DefaultServiceTier = "default"
 // historical direct-SDK default.
 const AutoServiceTier = "auto"
 
+// ProxyRoute is the safe route snapshot for a single upstream connection.
+type ProxyRoute struct {
+	Kind string `json:"kind"`
+	Name string `json:"name,omitempty"`
+}
+
 // Record contains the usage statistics captured for a single provider request.
 type Record struct {
 	Provider string
@@ -39,6 +45,11 @@ type Record struct {
 	// RequestServiceTier is a deprecated input-only alias retained for existing
 	// plugin callers. It is normalized into ServiceTier and never emitted.
 	RequestServiceTier string
+	// UpstreamServiceTier stores the tier on the final outbound request body.
+	UpstreamServiceTier string
+	// UpstreamServiceTierObserved distinguishes an omitted outbound tier from
+	// executors that do not capture their final request body.
+	UpstreamServiceTierObserved bool
 	// ResponseServiceTier stores the final tier reported by the upstream response.
 	ResponseServiceTier string
 	// Generate reports whether the client requested actual generation.
@@ -55,6 +66,7 @@ type Record struct {
 	Detail      Detail
 	// ResponseHeaders stores a snapshot of upstream response headers for usage sinks.
 	ResponseHeaders http.Header
+	ProxyRoute      *ProxyRoute `json:"proxyRoute,omitempty"`
 }
 
 // Failure holds HTTP failure metadata for an upstream request attempt.

@@ -49,6 +49,9 @@ func (m *Manager) RegisterExecutor(executor ProviderExecutor) {
 	if replaced == nil || replaced == executor {
 		return
 	}
+	if shared, ok := replaced.(interface{ SharesExecutionSessionsWith(ProviderExecutor) bool }); ok && shared.SharesExecutionSessionsWith(executor) {
+		return
+	}
 	if closer, ok := replaced.(ExecutionSessionCloser); ok && closer != nil {
 		closer.CloseExecutionSession(CloseAllExecutionSessionsID)
 	}
@@ -102,6 +105,11 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	}
 	m.authEpochs[auth.ID]++
 	auth.RegistrationEpoch = m.authEpochs[auth.ID]
+	if existing := m.auths[auth.ID]; existing != nil {
+		auth.CredentialVersion = max(auth.CredentialVersion, existing.CredentialVersion) + 1
+	} else if auth.CredentialVersion == 0 {
+		auth.CredentialVersion = 1
+	}
 	auth.Generation = 1
 	authClone := auth.Clone()
 	m.auths[auth.ID] = authClone
@@ -155,6 +163,10 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		return nil, fmt.Errorf("update auth: %w", errWeight)
 	}
 	m.mu.Lock()
+	if mode == updateModeRefresh && ctx != nil && ctx.Err() != nil {
+		m.mu.Unlock()
+		return nil, ctx.Err()
+	}
 	existing, ok := m.auths[auth.ID]
 	if !ok || existing == nil {
 		m.mu.Unlock()
@@ -169,6 +181,11 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	if (mode == updateModeRefresh || mode == updateModePrepare) && base != nil && existing.RegistrationEpoch != base.RegistrationEpoch {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("update auth %s: stale registration epoch %d != %d", auth.ID, base.RegistrationEpoch, existing.RegistrationEpoch)
+	}
+	if mode == updateModeRefresh && base != nil && (existing.CredentialVersion != base.CredentialVersion || CredentialsChanged(base, existing)) {
+		current := existing.Clone()
+		m.mu.Unlock()
+		return current, nil
 	}
 	if mode == updateModeRefresh {
 		merged := MergeRefreshedAuth(base, existing, auth)
@@ -204,9 +221,30 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	} else {
 		auth.Generation++
 	}
+	credentialsChanged := CredentialsChanged(existing, auth)
+	auth.CredentialVersion = max(existing.CredentialVersion, 1)
+	if credentialsChanged {
+		auth.CredentialVersion++
+	}
+	if credentialsChanged || mode == updateModeRefresh {
+		auth.RejectedAccessToken = ""
+	} else {
+		auth.RejectedAccessToken = existing.RejectedAccessToken
+	}
+	unauthorizedStatesCleared := false
 	if !existing.Disabled && existing.Status != StatusDisabled && !auth.Disabled && auth.Status != StatusDisabled {
 		if len(auth.ModelStates) == 0 && len(existing.ModelStates) > 0 {
 			auth.ModelStates = existing.ModelStates
+		}
+		if credentialsChanged || mode == updateModeRefresh {
+			if hasUnauthorizedAuthFailure(existing) {
+				unauthorizedStatesCleared = true
+				auth.Unavailable = false
+				auth.LastError = nil
+				auth.StatusMessage = ""
+				auth.Status = StatusActive
+			}
+			unauthorizedStatesCleared = len(clearUnauthorizedModelStates(auth, time.Now())) > 0 || unauthorizedStatesCleared
 		}
 		if existing.Quota.Exceeded && existing.Quota.Reason == "credential_quota" && existing.Quota.NextRecoverAt.After(time.Now()) {
 			auth.Unavailable = existing.Unavailable
@@ -219,19 +257,24 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	}
 	now := time.Now()
 	auth.UpdatedAt = now
-	cooldownStateChanged := normalizeModelStates(auth)
+	cooldownStateChanged := normalizeModelStates(auth) || unauthorizedStatesCleared
 	if m.cooldownDisabledForAuth(auth) || auth.Disabled || auth.Status == StatusDisabled {
 		cooldownStateChanged = clearCooldownStateForAuth(auth, now) || cooldownStateChanged
 	}
 	auth.EnsureIndex()
 	authClone := auth.Clone()
 	m.auths[auth.ID] = authClone
+	// authClone is now the shared published pointer; other goroutines mutate it
+	// in place under m.mu (e.g. ReconcileRegistryModelStates rewrites ModelStates,
+	// markRefreshPending sets NextRefreshAfter). Snapshot for the scheduler while
+	// still holding the lock so the copy cannot race a locked writer.
+	schedulerClone := authClone.Clone()
 	m.mu.Unlock()
 	if !shouldDeferAPIKeyModelAliasRebuild(ctx) {
 		m.rebuildAPIKeyModelAliasFromRuntimeConfig()
 	}
 	if m.scheduler != nil {
-		m.scheduler.upsertAuth(authClone.Clone())
+		m.scheduler.upsertAuth(schedulerClone)
 	}
 	m.queueRefreshReschedule(auth.ID)
 	_ = m.persist(ctx, auth)
@@ -342,6 +385,15 @@ func (m *Manager) Load(ctx context.Context) error {
 		m.authEpochs[auth.ID] = max(m.authEpochs[auth.ID], auth.RegistrationEpoch) + 1
 		auth.RegistrationEpoch = m.authEpochs[auth.ID]
 		auth.Generation = 1
+		if prev := previousAuths[auth.ID]; prev != nil {
+			auth.CredentialVersion = max(auth.CredentialVersion, prev.CredentialVersion)
+			if CredentialsChanged(prev, auth) {
+				auth.CredentialVersion++
+			} else {
+				auth.RejectedAccessToken = prev.RejectedAccessToken
+			}
+		}
+		auth.CredentialVersion = max(auth.CredentialVersion, 1)
 		m.auths[auth.ID] = auth.Clone()
 	}
 
@@ -386,6 +438,11 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 	if m.store == nil || auth == nil {
 		return nil
 	}
+	// A cancelled caller (e.g., the auto-refresh loop during shutdown) must not
+	// start a new durable write; the store may already be tearing down.
+	if ctx != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if errWeight := ValidateAuthWeight(auth); errWeight != nil {
 		return fmt.Errorf("persist auth: %w", errWeight)
 	}
@@ -415,6 +472,9 @@ func (m *Manager) persist(ctx context.Context, auth *Auth) error {
 	if pLock != nil {
 		pLock.mu.Lock()
 		defer pLock.mu.Unlock()
+		if ctx != nil && ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if auth.RegistrationEpoch < pLock.lastEpoch || (auth.RegistrationEpoch == pLock.lastEpoch && auth.Generation < pLock.lastGeneration) {
 			return nil
 		}

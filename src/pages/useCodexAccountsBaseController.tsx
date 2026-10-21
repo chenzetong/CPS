@@ -1,3 +1,10 @@
+import { prepareCodexServiceJoins } from "../utils/codexServiceJoin";
+import { chatGptPlanErrorKey, listChatGptPlanAccounts } from "../services/chatgptPlanService";
+import { implicitCodexServiceAccountIds } from "../utils/chatgptPlanOverview";
+import { canChooseCodexServiceAuthorization } from "../utils/codexAccountServiceNavigation";
+import { resolveCodexAccountDisplayName } from "../utils/codexAccountDisplayName";
+import { listenSafely as listen } from "../utils/tauriEventListener";
+import { refreshCodexQuotaWithFeedback } from "../utils/codexQuotaRefreshFeedback";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Download, Copy, Check, Eye, EyeOff, FileText, FolderOpen } from "lucide-react";
 import { useCodexAccountStore } from "../stores/useCodexAccountStore";
@@ -13,15 +20,17 @@ import { buildCodexAccountPresentation } from "../presentation/platformAccountPr
 import { type CodexWindowStats } from "../utils/codexWindowStats";
 import { readCodexImportSyncApiService, writeCodexImportSyncApiService } from "../utils/codexImportPreferences";
 import { CODEX_OPEN_ADD_ACCOUNT_EVENT, takePendingCodexOpenAddAccountRequest, type CodexOAuthBindingRetryDetail, type CodexOpenAddAccountDetail } from "../utils/codexAddAccountRequest";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import type { CodexTab } from "../components/CodexOverviewTabsHeader";
 import { type CodexWakeupTestOpenRequest } from "../components/codex/CodexWakeupContent";
 import { useProviderAccountsPage } from "../hooks/useProviderAccountsPage";
+import { getActiveGroupTab, setActiveGroupTab } from "../services/platformGroupService";
 import { usePlatformRuntimeSupport } from "../hooks/usePlatformRuntimeSupport";
 import { useEscClose } from "../hooks/useEscClose";
+import { useMfaCountdown } from "../hooks/useMfaCountdown";
 import { useLaunchTerminalOptions } from "../hooks/useLaunchTerminalOptions";
 import { useRememberMfaQuery } from "../hooks/useRememberMfaQuery";
 import type { SingleSelectFilterOption } from "../components/SingleSelectFilterDropdown";
@@ -33,8 +42,7 @@ import { readCodexCustomSortActive } from "../utils/codexAccountOverview";
 import { useSponsorStore } from "../stores/useSponsorStore";
 import { buildCodexExportContent, buildCodexExportFileNameBase, hasCodexExportAgentIdentity, hasCodexExportSensitiveNotes, type CodexExportFormat } from "../utils/codexExportFormats";
 import { readAccountsOverviewFilterField, readAccountsOverviewFilterPersistenceEnabled, readAccountsOverviewFilterStringArray, removeAccountsOverviewFilterField, writeAccountsOverviewFilterField } from "../utils/accountsOverviewFilterPersistence";
-import { isCodexLocalAccessRiskNoticeDismissed, setCodexLocalAccessRiskNoticeDismissed, type CodexLocalAccessRiskNoticeAction } from "../utils/codexLocalAccessRiskNotice";
-import { getMfaOtpToken, getMfaTimeRemaining, loadSavedMfaRecords, parseMfaCredentialInput, upsertSavedMfaRecord, type MfaRecord } from "../utils/mfaVault";
+import { getMfaOtpToken, loadSavedMfaRecords, parseMfaCredentialInput, upsertSavedMfaRecord, type MfaRecord } from "../utils/mfaVault";
 import { findFirstMailVerificationCode } from "../utils/mailVerificationCode";
 import { ACTIVE_GROUP_ID_FIELD, buildCodexAccountNoteForm, buildExportFileName, CODEX_BATCH_IMPORT_SESSION_STORAGE_KEY, CODEX_FILTER_PERSISTENCE_SCOPE, CODEX_HIDE_RELAY_QUOTA_LEGACY_KEY, CODEX_LOCAL_ACCESS_EXPANDED_KEY, CODEX_OVERVIEW_LAYOUT_MODE_KEY, EMPTY_CODEX_ACCOUNT_NOTE_FORM, EXPIRY_FILTER_FIELD, FILTER_TYPES_FIELD, getCodexAccountNoteTitle, getDirectoryPath, GROUP_FILTER_FIELD, hasCodexAccountNoteDetails, hasCodexAccountNoteFormDetails, isHttpLikeUrl, joinFilePath, normalizeCodexOverviewLayoutMode, normalizeHttpBaseUrl, readStoredLocalAccessAddressKind, SEARCH_QUERY_FIELD, shouldAutoHideBatchDeleteJob, type CodexAccountNoteFieldErrors, type CodexAccountNoteFormState, type CodexAccountNoteMailPreviewSnapshot, type CodexAccountNoteMailPreviewState, type CodexBatchImportFilter, type CodexCliLaunchModalState, type CodexOverviewGeneralConfig, type CodexOverviewLayoutMode } from "./codexAccountsControllerModel";
 
@@ -106,21 +114,13 @@ export function useCodexAccountsBaseController() {
           )
         : [],
     );
-    const [activeGroupId, setActiveGroupId] = useState<string | null>(() => {
-      if (
-        !readAccountsOverviewFilterPersistenceEnabled(
-          CODEX_FILTER_PERSISTENCE_SCOPE,
-        )
-      ) {
-        return null;
-      }
-      const saved = readAccountsOverviewFilterField<string | null>(
-        CODEX_FILTER_PERSISTENCE_SCOPE,
-        ACTIVE_GROUP_ID_FIELD,
-        null,
-      );
-      return typeof saved === "string" && saved.trim() ? saved : null;
+    const [activeGroupId, setActiveGroupIdState] = useState<string | null>(() => {
+      return getActiveGroupTab("codex");
     });
+    const setActiveGroupId = useCallback((groupId: string | null) => {
+      setActiveGroupIdState(groupId);
+      setActiveGroupTab("codex", groupId);
+    }, []);
     const [showCodexGroupModal, setShowCodexGroupModal] = useState(false);
     const [showAddToCodexGroupModal, setShowAddToCodexGroupModal] =
       useState(false);
@@ -200,10 +200,6 @@ export function useCodexAccountsBaseController() {
       useState(false);
     const [localAccessHideSubmitting, setLocalAccessHideSubmitting] =
       useState(false);
-    const [localAccessRiskNoticeAction, setLocalAccessRiskNoticeAction] =
-      useState<CodexLocalAccessRiskNoticeAction | null>(null);
-    const [localAccessRiskNoticeRemember, setLocalAccessRiskNoticeRemember] =
-      useState(false);
     const [localAccessCopiedField, setLocalAccessCopiedField] = useState<
       "baseUrl" | "apiKey" | null
     >(null);
@@ -217,9 +213,6 @@ export function useCodexAccountsBaseController() {
       useState(false);
     const [showLocalAccessQuotaStatsModal, setShowLocalAccessQuotaStatsModal] =
       useState(false);
-    const localAccessRiskNoticeResolverRef = useRef<
-      ((accepted: boolean) => void) | null
-    >(null);
     const [localAccessDetailsExpanded, setLocalAccessDetailsExpanded] =
       useState<boolean>(() => {
         try {
@@ -240,6 +233,8 @@ export function useCodexAccountsBaseController() {
         setExternalImportSyncError(null);
         if (!readCodexImportSyncApiService()) return;
         try {
+          accountIds = implicitCodexServiceAccountIds(accountIds, await listChatGptPlanAccounts());
+          if (!accountIds.length) return;
           const result =
             await codexLocalAccessService.appendCodexLocalAccessAccounts(
               accountIds,
@@ -324,44 +319,6 @@ export function useCodexAccountsBaseController() {
       reloadCodexGroups();
     }, [reloadCodexGroups]);
 
-    useEffect(
-      () => () => {
-        if (localAccessRiskNoticeResolverRef.current) {
-          localAccessRiskNoticeResolverRef.current(false);
-          localAccessRiskNoticeResolverRef.current = null;
-        }
-      },
-      [],
-    );
-
-    const closeLocalAccessRiskNotice = useCallback(
-      (accepted: boolean) => {
-        if (accepted && localAccessRiskNoticeRemember) {
-          setCodexLocalAccessRiskNoticeDismissed(true);
-        }
-        const resolver = localAccessRiskNoticeResolverRef.current;
-        localAccessRiskNoticeResolverRef.current = null;
-        setLocalAccessRiskNoticeAction(null);
-        setLocalAccessRiskNoticeRemember(false);
-        resolver?.(accepted);
-      },
-      [localAccessRiskNoticeRemember],
-    );
-
-    const requestLocalAccessRiskNotice = useCallback(
-      (action: CodexLocalAccessRiskNoticeAction): Promise<boolean> => {
-        if (isCodexLocalAccessRiskNoticeDismissed()) {
-          return Promise.resolve(true);
-        }
-        setLocalAccessRiskNoticeRemember(false);
-        setLocalAccessRiskNoticeAction(action);
-        return new Promise<boolean>((resolve) => {
-          localAccessRiskNoticeResolverRef.current = resolve;
-        });
-      },
-      [],
-    );
-
     const toggleGroupFilterValue = useCallback((groupId: string) => {
       setGroupFilter((prev) => {
         if (prev.includes(groupId)) return prev.filter((id) => id !== groupId);
@@ -382,7 +339,10 @@ export function useCodexAccountsBaseController() {
         const next = prev.filter((id) => validIds.has(id));
         return next.length === prev.length ? prev : next;
       });
-    }, [codexGroups, codexGroupsReady]);
+      if (activeGroupId && !validIds.has(activeGroupId)) {
+        setActiveGroupId(null);
+      }
+    }, [activeGroupId, codexGroups, codexGroupsReady, setActiveGroupId]);
 
     const [overviewLayoutMode, setOverviewLayoutMode] =
       useState<CodexOverviewLayoutMode>(() => {
@@ -466,7 +426,6 @@ export function useCodexAccountsBaseController() {
     const accountNoteMailPreviewSeqRef = useRef(0);
     const accountNoteMailPreviewSnapshotRef =
       useRef<CodexAccountNoteMailPreviewSnapshot | null>(null);
-    const [mfaTimeRemaining, setMfaTimeRemaining] = useState(getMfaTimeRemaining);
     const [savingAccountNote, setSavingAccountNote] = useState(false);
     const [reauthTargetAccount, setReauthTargetAccount] =
       useState<CodexAccount | null>(null);
@@ -487,12 +446,6 @@ export function useCodexAccountsBaseController() {
       set: setAccountNoteError,
     } = useModalErrorState();
 
-    useEffect(() => {
-      const timer = window.setInterval(() => {
-        setMfaTimeRemaining(getMfaTimeRemaining());
-      }, 1000);
-      return () => window.clearInterval(timer);
-    }, []);
 
     // Use the common hook WITHOUT oauthService since Codex uses Tauri event-based OAuth
     // Codex batch-delete confirm is wired after confirmCodexDelete is defined.
@@ -510,8 +463,13 @@ export function useCodexAccountsBaseController() {
         fetchAccounts: store.fetchAccounts,
         switchAccount: store.switchAccount,
         deleteAccounts: store.deleteAccounts,
-        refreshToken: (id) => store.refreshQuota(id).then(() => {}),
-        refreshAllTokens: () => store.refreshAllQuotas().then(() => {}),
+        // The callbacks execute after the page hook has initialized its message state.
+        refreshToken: (id): Promise<void> => refreshCodexQuotaWithFeedback(
+          () => store.refreshQuota(id), page.t, page.setMessage,
+        ),
+        refreshAllTokens: (): Promise<void> => refreshCodexQuotaWithFeedback(
+          () => store.refreshAllQuotas(), page.t, page.setMessage,
+        ),
         updateAccountTags: store.updateAccountTags,
       },
       dataService: {
@@ -523,7 +481,7 @@ export function useCodexAccountsBaseController() {
         },
         exportAccounts: codexService.exportCodexAccounts,
       },
-      getDisplayEmail: (account) => account.email ?? account.id,
+      getDisplayEmail: (account): string => resolveCodexAccountDisplayName(account, page.t("common.apiKeyAccount")),
       initialSearchQuery: readAccountsOverviewFilterPersistenceEnabled(
         CODEX_FILTER_PERSISTENCE_SCOPE,
       )
@@ -634,22 +592,45 @@ export function useCodexAccountsBaseController() {
       [],
     );
 
+    const explicitApiServiceChoiceRef = useRef(false);
+
     const syncImportedAccountsToApiService = useCallback(
       async (accountIds: string[], force = false) => {
         if ((!syncImportedToApiService && !force) || accountIds.length === 0)
           return null;
-        const result =
-          await codexLocalAccessService.appendCodexLocalAccessAccounts(
-            accountIds,
-          );
-        setLocalAccessState(result.state);
-        if (result.syncedAccountIds.length > 0) {
-          await ensureLocalAccessEntryVisible();
-          setImportApiServiceGuideCount(result.syncedAccountIds.length);
+        const failures: string[] = [];
+        if (explicitApiServiceChoiceRef.current) {
+          explicitApiServiceChoiceRef.current = false;
+          const imported = await codexService.listCodexAccounts();
+          const candidates = imported.filter((account) => accountIds.includes(account.id));
+          const grants = candidates.some(canChooseCodexServiceAuthorization) ? await listChatGptPlanAccounts() : [];
+          const prepared = await prepareCodexServiceJoins(candidates, grants,
+            localAccessState?.collection?.accountIds ?? [], setLocalAccessState);
+          failures.push(...prepared.failures.map(({ accountId, error }) => {
+            const account = candidates.find((candidate) => candidate.id === accountId);
+            const label = maskAccountText(account ? resolveCodexAccountDisplayName(account, t("common.apiKeyAccount")) : accountId);
+            const raw = String(error).replace(/^Error:\s*/, "");
+            return `${label}: ${raw.startsWith("CHATGPT_PLAN_") ? t(chatGptPlanErrorKey(error)) : raw}`;
+          }));
+          if (prepared.resumedIds.length) { await ensureLocalAccessEntryVisible(); setImportApiServiceGuideCount(prepared.resumedIds.length); }
+          accountIds = prepared.localIds;
         }
+        let result = null;
+        if (accountIds.length) {
+          accountIds = implicitCodexServiceAccountIds(accountIds, await listChatGptPlanAccounts());
+          if (accountIds.length) {
+            result = await codexLocalAccessService.appendCodexLocalAccessAccounts(accountIds);
+            setLocalAccessState(result.state);
+            if (result.syncedAccountIds.length > 0) {
+              await ensureLocalAccessEntryVisible();
+              setImportApiServiceGuideCount(result.syncedAccountIds.length);
+            }
+          }
+        }
+        if (failures.length) throw new Error(failures.join("\n"));
         return result;
       },
-      [ensureLocalAccessEntryVisible, syncImportedToApiService],
+      [ensureLocalAccessEntryVisible, localAccessState?.collection?.accountIds, maskAccountText, syncImportedToApiService, t],
     );
 
     const reauthTargetAccountId = reauthTargetAccount?.id?.trim() ?? "";
@@ -1014,6 +995,8 @@ export function useCodexAccountsBaseController() {
 
     const closeCodexAddModal = useCallback(() => {
       if (importing) return;
+      explicitApiServiceChoiceRef.current = false;
+      setSyncImportedToApiService(readCodexImportSyncApiService());
       setReauthTargetAccount(null);
       setReauthRetrySwitchAccountId(null);
       setReauthRetryLaunchAfterSwitch(undefined);
@@ -1032,10 +1015,8 @@ export function useCodexAccountsBaseController() {
     // Keep the shared modal independent from the currently visible Codex page.
     useEffect(() => {
       const openFromRequest = async (detail?: CodexOpenAddAccountDetail) => {
-        if (detail?.autoJoinApiService) {
-          setSyncImportedToApiService(true);
-          writeCodexImportSyncApiService(true);
-        }
+        explicitApiServiceChoiceRef.current = Boolean(detail?.autoJoinApiService);
+        if (detail?.autoJoinApiService) setSyncImportedToApiService(true);
         let targetAccount = detail?.targetAccountId
           ? (codexAccountsRef.current.find(
               (account) => account.id === detail.targetAccountId,
@@ -1270,23 +1251,6 @@ export function useCodexAccountsBaseController() {
     useEffect(() => {
       void reloadLocalAccessState();
     }, [reloadLocalAccessState]);
-
-    useEffect(() => {
-      if (
-        !localAccessState?.running ||
-        !localAccessState.collection?.boundOauthQuotaReserve
-      ) {
-        return;
-      }
-      const timer = window.setInterval(() => {
-        void reloadLocalAccessState();
-      }, 60_000);
-      return () => window.clearInterval(timer);
-    }, [
-      localAccessState?.collection?.boundOauthQuotaReserve,
-      localAccessState?.running,
-      reloadLocalAccessState,
-    ]);
 
     useEffect(() => {
       void reloadLocalAccessEntryVisibility();
@@ -2273,6 +2237,9 @@ export function useCodexAccountsBaseController() {
       activeAccountNoteMode === "pendingOAuth"
         ? pendingOAuthNoteForm
         : editingAccountNoteForm;
+    const mfaTimeRemaining = useMfaCountdown(
+      Boolean(activeAccountNoteMode) && activeAccountNoteForm.twoFactorSecret.trim().length > 0,
+    );
     const activeAccountNoteSaving =
       savingAccountNote ||
       (activeAccountNoteMode === "pendingOAuth" && savingPendingOAuthAccount);
@@ -2725,7 +2692,6 @@ export function useCodexAccountsBaseController() {
     closeCliLaunchModal,
     closeCodexAddModal,
     closeExternalImportProgressModal,
-    closeLocalAccessRiskNotice,
     closeResetCreditConfirmModal,
     cockpitApiPanelAccountId,
     codexAccountsRef,
@@ -2819,8 +2785,6 @@ export function useCodexAccountsBaseController() {
     localAccessModalMode,
     localAccessPortKilling,
     localAccessRefreshing,
-    localAccessRiskNoticeAction,
-    localAccessRiskNoticeRemember,
     localAccessSaving,
     localAccessSidecarRestarting,
     localAccessStarting,
@@ -2864,7 +2828,6 @@ export function useCodexAccountsBaseController() {
     renderAccountNoteButton,
     reportExportModalError,
     requestDeleteTag,
-    requestLocalAccessRiskNotice,
     resetBatchImportState,
     resetCreditConfirmAccount,
     resetCreditConfirmActionLocked,
@@ -2884,6 +2847,7 @@ export function useCodexAccountsBaseController() {
     selectedTerminal,
     sessionWindowStats,
     setAccountNoteError,
+    setAccountNoteFieldErrors,
     setAccountNoteMfaPickerOpen,
     setAccountNotePasswordVisible,
     setAccountNoteSecretVisible,
@@ -2935,7 +2899,6 @@ export function useCodexAccountsBaseController() {
     setLocalAccessModalMode,
     setLocalAccessPortKilling,
     setLocalAccessRefreshing,
-    setLocalAccessRiskNoticeRemember,
     setLocalAccessSaving,
     setLocalAccessSidecarRestarting,
     setLocalAccessStarting,

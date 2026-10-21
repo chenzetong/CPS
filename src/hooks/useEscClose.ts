@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
+import { modalCloseHandler, registerModal, topModal, unregisterModal } from './modalStack';
 
-/** ESC-to-close for modals. LIFO cleanup order handles stacked modals correctly. */
+/** ESC-to-close for modals without an explicit stacking policy. */
 export function useEscClose(isOpen: boolean, onClose: () => void) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -18,27 +19,34 @@ export function useEscClose(isOpen: boolean, onClose: () => void) {
   }, [isOpen]);
 }
 
-/**
- * ESC 关闭「最上层」弹框。
- *
- * 同一个页面上的 `useEscClose` 监听的是同级 window 事件，弹框层叠时按下 ESC 会把
- * 上下两层一起关掉（例如添加账号弹框里再打开一个选择弹框）。这里改在捕获阶段拦截并
- * 停止传播，保证只有最上层弹框响应 ESC，其余层的处理逻辑不会被触发。
- */
-export function useEscCloseTopmost(isOpen: boolean, onClose: () => void) {
+let topmostCloseHandlerCount = 0;
+
+function closeTopmost(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return;
+  const top = topModal(window);
+  if (!top) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  modalCloseHandler(top)?.();
+}
+
+/** Close only the visible top layer. Callers without a ref retain legacy LIFO order. */
+export function useEscCloseTopmost(
+  isOpen: boolean,
+  onClose: () => void,
+  dialog?: RefObject<HTMLElement | null>,
+) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!isOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        onCloseRef.current();
-      }
+    const entry = registerModal({ node: () => dialog?.current ?? null,
+      withoutNode: !dialog, close: () => onCloseRef.current() });
+    if (++topmostCloseHandlerCount === 1) window.addEventListener('keydown', closeTopmost, true);
+    return () => {
+      unregisterModal(entry);
+      if (--topmostCloseHandlerCount === 0) window.removeEventListener('keydown', closeTopmost, true);
     };
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isOpen]);
+  }, [isOpen, dialog]);
 }

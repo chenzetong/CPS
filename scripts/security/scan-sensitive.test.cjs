@@ -58,3 +58,26 @@ test("does not exempt other secrets or runtime source in the same module", (t) =
     assert.ok(!result.stderr.includes(secret), "scan output must redact matched values");
   }
 });
+
+test("allows audited SSRF ranges and synthetic thread fixtures", (t) => {
+  const address = [10, 0, 0, 0].join(".");
+  const thread = ["01900000", "0000", "7000", "8000", "000000000001"].join("-");
+  const result = scan(t, {
+    "sidecars/cockpit-cliproxy/image_api_download.go": `netip.MustParsePrefix("${address}/8")`,
+    "src-tauri/src/modules/codex_app_injection_usage_tests.rs": `const THREAD: &str = "${thread}";`,
+  });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("fixture allowances reject other addresses and live-shaped thread IDs", (t) => {
+  const address = [10, 1, 2, 3].join(".");
+  const thread = ["01900000", "abcd", "7000", "8000", "123456789abc"].join("-");
+  const result = scan(t, {
+    "sidecars/cockpit-cliproxy/image_api_download.go": `netip.MustParsePrefix("${address}/8")`,
+    "src-tauri/src/modules/codex_app_injection_usage_tests.rs": `const THREAD: &str = "${thread}";`,
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /rfc1918-host/);
+  assert.match(result.stderr, /codex-thread-id/);
+  assert.ok(!result.stderr.includes(thread));
+});

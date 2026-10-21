@@ -64,6 +64,22 @@ fn apply_codex_auth_identity_headers(request: reqwest::RequestBuilder) -> reqwes
 pub struct CodexOAuthLoginStartResponse {
     pub login_id: String,
     pub auth_url: String,
+    /// 本次登录实际使用的出口；None 表示走原有默认授权出口。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy: Option<CodexOAuthLoginProxyUse>,
+}
+
+/// 本次登录使用的出口描述：只含展示摘要与可编辑地址，绝不含凭据。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexOAuthLoginProxyUse {
+    /// `account`：按重新授权账号的生效出口解析；`explicit`：沿用用户填写的地址。
+    pub source: String,
+    /// 出口外观（协议 / 服务器 / 端口，或资源名称），与账号响应使用同一套脱敏规则。
+    pub summary: serde_json::Value,
+    /// 可回填输入框的地址；资源绑定快照不回填，由后端按登录会话直接使用。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -114,13 +130,30 @@ struct OAuthState {
     device_poll_interval_seconds: Option<u64>,
     #[serde(default)]
     exchange_redirect_uri: Option<String>,
+    #[serde(default)]
+    proxy_required: bool,
+}
+
+struct PendingOAuthProxy {
+    login_id: String,
+    raw_url: String,
+    browser_url: String,
+    request_url: String,
+    tunnel: Option<crate::modules::codex_proxy_engine::NodeTunnel>,
+}
+
+pub struct CodexOAuthCompletion {
+    pub tokens: CodexTokens,
+    pub proxy_url: Option<String>,
 }
 
 lazy_static::lazy_static! {
     static ref OAUTH_STATE: Arc<Mutex<Option<OAuthState>>> = Arc::new(Mutex::new(None));
+    static ref OAUTH_PROXY: Mutex<Option<PendingOAuthProxy>> = Mutex::new(None);
     static ref COMPLETE_ATTEMPT_SEQ: AtomicU64 = AtomicU64::new(0);
     static ref OFFICIAL_CLIENT_STABLE_ID: Mutex<Option<String>> = Mutex::new(None);
 }
+static OAUTH_START_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn generate_base64url_token() -> String {
     let mut rng = rand::thread_rng();
@@ -204,6 +237,99 @@ fn set_oauth_state(state: Option<OAuthState>) {
         *guard = state.clone();
     }
     persist_state_to_disk(state.as_ref());
+    if state.is_none() {
+        if let Ok(mut pending) = OAUTH_PROXY.lock() {
+            pending.take();
+        }
+    }
+}
+
+fn active_proxy(login_id: &str) -> Result<(String, String, String), String> {
+    let guard = OAUTH_PROXY.lock().map_err(|_| "PROXY_OAUTH_UNAVAILABLE")?;
+    let proxy = guard
+        .as_ref()
+        .filter(|proxy| {
+            proxy.login_id == login_id
+                && proxy
+                    .tunnel
+                    .as_ref()
+                    .is_none_or(|tunnel| tunnel.is_running())
+        })
+        .ok_or("PROXY_OAUTH_UNAVAILABLE")?;
+    Ok((
+        proxy.raw_url.clone(),
+        proxy.browser_url.clone(),
+        proxy.request_url.clone(),
+    ))
+}
+
+/// 只读解析：重新授权账号当前的生效出口（账号独立绑定 > 统一代理 > 默认出口）。
+///
+/// 直接调用 `codex_account_proxy::configured_url`，不复制也不修改优先级实现；
+/// 账号不在本地时不借用其他账号的代理，读取失败交由调用方在授权弹框内提示。
+async fn resolve_reauth_egress_proxy(account_id: &str) -> Result<Option<String>, String> {
+    let account_id = account_id.trim();
+    if account_id.is_empty() {
+        return Ok(None);
+    }
+    let account = crate::modules::codex_proxy_runtime::load(account_id).await?;
+    Ok(crate::modules::codex_account_proxy::configured_url(&account)?
+        .map(|value| value.into_owned()))
+}
+
+/// 出口外观复用账号响应的脱敏摘要；资源绑定快照含凭据且可能很大，绝不回传前端。
+fn oauth_proxy_use(source: &str, value: &str) -> CodexOAuthLoginProxyUse {
+    struct Redacted<'a>(&'a str);
+    impl Serialize for Redacted<'_> {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            crate::modules::codex_account_proxy::serialize_summary(
+                &Some(self.0.to_string()),
+                serializer,
+            )
+        }
+    }
+    let summary = serde_json::to_value(Redacted(value))
+        .unwrap_or_else(|_| serde_json::json!({ "protocol": "UNKNOWN" }));
+    let input = (!value.starts_with(crate::modules::codex_proxy_catalog_binding::PREFIX))
+        .then(|| value.to_string());
+    CodexOAuthLoginProxyUse {
+        source: source.to_string(),
+        summary,
+        input,
+    }
+}
+
+fn oauth_proxy_matches_request(requested: Option<&str>, normalized: &str) -> bool {
+    requested.is_some_and(|value| {
+        crate::modules::codex_proxy_runtime::normalize_binding(value)
+            .is_ok_and(|value| value == normalized)
+    })
+}
+
+async fn prepare_proxy(login_id: String, input: String) -> Result<PendingOAuthProxy, String> {
+    let raw_url = crate::modules::codex_proxy_runtime::normalize_binding(&input)?;
+    let parsed = Url::parse(&raw_url).map_err(|_| "PROXY_INVALID_URL")?;
+    if matches!(parsed.scheme(), "http" | "socks5")
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+    {
+        return Ok(PendingOAuthProxy {
+            login_id,
+            raw_url: raw_url.clone(),
+            browser_url: raw_url.clone(),
+            request_url: raw_url,
+            tunnel: None,
+        });
+    }
+    let tunnel = crate::modules::codex_proxy_engine::start_desktop(&raw_url).await?;
+    let loopback = tunnel.proxy_url().to_string();
+    Ok(PendingOAuthProxy {
+        login_id,
+        raw_url,
+        browser_url: loopback.clone(),
+        request_url: loopback,
+        tunnel: Some(tunnel),
+    })
 }
 
 fn ensure_callback_listener_for_state(app_handle: &AppHandle, state: &OAuthState) {
@@ -486,6 +612,9 @@ fn emit_device_auth_error(app_handle: &AppHandle, login_id: &str, error: String)
 pub async fn start_device_auth(
     app_handle: AppHandle,
 ) -> Result<CodexDeviceAuthStartResponse, String> {
+    let _start_guard = OAUTH_START_GATE
+        .try_lock()
+        .map_err(|_| "CODEX_OAUTH_START_BUSY")?;
     hydrate_oauth_state_if_missing();
     if OAUTH_STATE.lock().unwrap().is_some() {
         return Err("Codex OAuth 登录会话已存在，请先取消当前流程".to_string());
@@ -505,6 +634,7 @@ pub async fn start_device_auth(
         device_user_code: Some(user_code.clone()),
         device_poll_interval_seconds: Some(poll_interval_seconds),
         exchange_redirect_uri: Some(DEVICE_EXCHANGE_REDIRECT_URI.to_string()),
+        proxy_required: false,
     };
     set_oauth_state(Some(state));
     tokio::spawn(poll_device_token(
@@ -683,21 +813,76 @@ pub fn open_incognito_oauth_window(app: &AppHandle, auth_url: &str) -> Result<()
         return Err("Codex OAuth 授权地址与当前登录会话不匹配".to_string());
     }
 
-    if let Some(window) = app.get_webview_window(OAUTH_WINDOW_LABEL) {
-        window
-            .destroy()
-            .map_err(|error| format!("重置 Codex OAuth 无痕窗口失败: {}", error))?;
-    }
+    let browser_proxy = if pending.proxy_required {
+        if cfg!(target_os = "macos") {
+            return Err("PROXY_OAUTH_BROWSER_UNSUPPORTED".into());
+        }
+        let (_, browser_url, _) = active_proxy(&pending.login_id)?;
+        Some(Url::parse(&browser_url).map_err(|_| "PROXY_OAUTH_UNAVAILABLE")?)
+    } else {
+        None
+    };
+    let callback = Url::parse(&format!("http://localhost:{}/auth/callback", pending.port))
+        .map_err(|_| "Codex OAuth callback is invalid")?;
+    build_incognito_oauth_window(
+        app,
+        OAUTH_WINDOW_LABEL,
+        "Codex OAuth",
+        parsed,
+        callback,
+        browser_proxy,
+        &pending.login_id,
+    )
+}
 
-    let callback_port = pending.port;
-    WebviewWindowBuilder::new(app, OAUTH_WINDOW_LABEL, WebviewUrl::External(parsed))
-        .title("Codex OAuth")
+/// Shared ephemeral WebView for independent OAuth registrations. The caller
+/// must supply its own session-owned URL and exact loopback callback.
+/// This uses the native WebView, not a shell/browser subprocess on Windows.
+pub(crate) fn build_incognito_oauth_window(
+    app: &AppHandle,
+    label: &str,
+    title: &str,
+    authorize: Url,
+    callback: Url,
+    browser_proxy: Option<Url>,
+    login_id: &str,
+) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(label) {
+        window.destroy().map_err(|_| "OAuth window reset failed")?;
+    }
+    let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::External(authorize));
+    if let Some(proxy) = browser_proxy {
+        #[cfg(windows)]
+        {
+            // WebView2 can reuse a browser process for the same data folder,
+            // which would ignore new proxy flags or affect the main window.
+            let isolated = app
+                .path()
+                .app_cache_dir()
+                .map_err(|_| "PROXY_OAUTH_UNAVAILABLE")?
+                .join("oauth-proxy-webview")
+                .join(login_id);
+            builder = builder.data_directory(isolated);
+        }
+        builder = builder.proxy_url(proxy).on_new_window(|_, _| {
+            // A separate popup may not inherit this WebView's proxy. Keep the
+            // opted-in flow fail closed instead of opening an uncontrolled tab.
+            tauri::webview::NewWindowResponse::Deny
+        });
+    }
+    builder
+        .title(title)
         .inner_size(920.0, 720.0)
         .min_inner_size(640.0, 560.0)
         .center()
         .incognito(true)
         .on_navigation(move |url| {
-            if is_callback_navigation(url, callback_port) {
+            if url.origin() == callback.origin()
+                && url.path() == callback.path()
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.fragment().is_none()
+            {
                 logger::log_info("Codex OAuth 无痕窗口正在访问本地回调地址");
                 return true;
             }
@@ -713,10 +898,6 @@ pub fn open_incognito_oauth_window(app: &AppHandle, auth_url: &str) -> Result<()
         .build()
         .map_err(|error| format!("创建 Codex OAuth 无痕窗口失败: {}", error))?;
 
-    logger::log_info(&format!(
-        "Codex OAuth 无痕窗口已打开: login_id={}, port={}",
-        pending.login_id, pending.port
-    ));
     Ok(())
 }
 
@@ -729,10 +910,14 @@ pub fn close_oauth_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn to_start_response(state: &OAuthState) -> CodexOAuthLoginStartResponse {
+fn to_start_response(
+    state: &OAuthState,
+    proxy: Option<CodexOAuthLoginProxyUse>,
+) -> CodexOAuthLoginStartResponse {
     CodexOAuthLoginStartResponse {
         login_id: state.login_id.clone(),
         auth_url: state.auth_url.clone(),
+        proxy,
     }
 }
 
@@ -761,7 +946,38 @@ fn clear_oauth_state_for_login_id(expected_login_id: &str) {
 
 pub async fn start_oauth_login(
     app_handle: AppHandle,
+    proxy_url: Option<String>,
+    reauth_account_id: Option<String>,
 ) -> Result<CodexOAuthLoginStartResponse, String> {
+    let _start_guard = OAUTH_START_GATE
+        .try_lock()
+        .map_err(|_| "CODEX_OAUTH_START_BUSY")?;
+    // 已有账号重新授权且未显式填写地址时，默认沿用该账号当前生效出口；
+    // 首次添加没有账号 ID，因此不会带入任何账号代理。解析失败按错误返回，不静默改走直连。
+    let (requested_proxy, proxy_source) = match proxy_url.filter(|value| !value.trim().is_empty()) {
+        Some(value) => (Some(value), Some("explicit")),
+        None => {
+            let account_id = reauth_account_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            match account_id {
+                Some(account_id) => match resolve_reauth_egress_proxy(account_id).await? {
+                    Some(value) => (Some(value), Some("account")),
+                    None => (None, None),
+                },
+                None => (None, None),
+            }
+        }
+    };
+    let proxy_use = requested_proxy
+        .as_deref()
+        .map(|value| oauth_proxy_use(proxy_source.unwrap_or("explicit"), value));
+    if requested_proxy.is_some() && cfg!(target_os = "macos") {
+        // The current macOS build lacks Tauri's macos-proxy feature. Using its
+        // WebView would silently bypass the selected route.
+        return Err("PROXY_OAUTH_BROWSER_UNSUPPORTED".into());
+    }
     hydrate_oauth_state_if_missing();
     {
         let oauth_state = OAUTH_STATE.lock().unwrap();
@@ -771,13 +987,28 @@ pub async fn start_oauth_login(
                 let expected_login_id = state.login_id.clone();
                 drop(oauth_state);
                 clear_oauth_state_if_matches(&expected_state, &expected_login_id);
+            } else if state.proxy_required && active_proxy(&state.login_id).is_err() {
+                // A restored session has no in-memory proxy lease. Discard it
+                // before any browser or token request can use a direct route.
+                let expected_state = state.state.clone();
+                let expected_login_id = state.login_id.clone();
+                drop(oauth_state);
+                clear_oauth_state_if_matches(&expected_state, &expected_login_id);
             } else {
+                if state.proxy_required != requested_proxy.is_some()
+                    || (state.proxy_required
+                        && active_proxy(&state.login_id).map_or(true, |(raw, _, _)| {
+                            !oauth_proxy_matches_request(requested_proxy.as_deref(), &raw)
+                        }))
+                {
+                    return Err("PROXY_OAUTH_SESSION_ACTIVE".into());
+                }
                 ensure_callback_listener_for_state(&app_handle, state);
                 logger::log_info(&format!(
                     "Codex OAuth 复用进行中的登录会话: login_id={}, port={}, redirect_uri={}",
                     state.login_id, state.port, state.redirect_uri
                 ));
-                return Ok(to_start_response(state));
+                return Ok(to_start_response(state, proxy_use));
             }
         }
     }
@@ -787,6 +1018,18 @@ pub async fn start_oauth_login(
     let code_challenge = generate_code_challenge(&code_verifier);
     let state_token = generate_base64url_token();
     let login_id = generate_base64url_token();
+    let prepared_proxy = if let Some(input) = requested_proxy {
+        Some(prepare_proxy(login_id.clone(), input).await?)
+    } else {
+        None
+    };
+    if OAUTH_STATE
+        .lock()
+        .map_err(|_| "PROXY_OAUTH_UNAVAILABLE")?
+        .is_some()
+    {
+        return Err("PROXY_OAUTH_SESSION_ACTIVE".into());
+    }
     let redirect_uri = format!("http://localhost:{}/auth/callback", port);
     let auth_url = build_auth_url(&redirect_uri, &code_challenge, &state_token);
 
@@ -803,8 +1046,10 @@ pub async fn start_oauth_login(
         device_user_code: None,
         device_poll_interval_seconds: None,
         exchange_redirect_uri: None,
+        proxy_required: prepared_proxy.is_some(),
     };
 
+    *OAUTH_PROXY.lock().map_err(|_| "PROXY_OAUTH_UNAVAILABLE")? = prepared_proxy;
     set_oauth_state(Some(oauth_state));
 
     let app_handle_clone = app_handle.clone();
@@ -830,7 +1075,11 @@ pub async fn start_oauth_login(
         login_id, port, redirect_uri
     ));
 
-    Ok(CodexOAuthLoginStartResponse { login_id, auth_url })
+    Ok(CodexOAuthLoginStartResponse {
+        login_id,
+        auth_url,
+        proxy: proxy_use,
+    })
 }
 
 async fn start_callback_server(
@@ -1054,9 +1303,17 @@ async fn exchange_code_for_token_internal(
     code_verifier: &str,
     port: u16,
     exchange_redirect_uri: Option<&str>,
+    proxy_url: Option<&str>,
 ) -> Result<CodexTokens, String> {
     let redirect_uri = resolve_exchange_redirect_uri(port, exchange_redirect_uri);
-    let client = reqwest::Client::new();
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(TOKEN_REFRESH_TIMEOUT)
+        .timeout(TOKEN_REFRESH_TIMEOUT);
+    if let Some(proxy_url) = proxy_url {
+        let proxy = reqwest::Proxy::all(proxy_url).map_err(|_| "PROXY_OAUTH_UNAVAILABLE")?;
+        builder = builder.no_proxy().proxy(proxy);
+    }
+    let client = builder.build().map_err(|_| "PROXY_OAUTH_UNAVAILABLE")?;
 
     let params = [
         ("grant_type", "authorization_code"),
@@ -1074,13 +1331,22 @@ async fn exchange_code_for_token_internal(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Token 请求失败: {}", e))?;
+        .map_err(|e| {
+            if proxy_url.is_some() {
+                "PROXY_OAUTH_REQUEST_FAILED".to_string()
+            } else {
+                format!("Token 请求失败: {}", e)
+            }
+        })?;
 
     let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|e| format!("读取响应失败: {}", e))?;
+    let body = response.text().await.map_err(|e| {
+        if proxy_url.is_some() {
+            "PROXY_OAUTH_REQUEST_FAILED".to_string()
+        } else {
+            format!("读取响应失败: {}", e)
+        }
+    })?;
 
     if !status.is_success() {
         let response_summary = serde_json::from_str::<serde_json::Value>(&body)
@@ -1151,7 +1417,7 @@ fn resolve_exchange_redirect_uri(port: u16, exchange_redirect_uri: Option<&str>)
         .unwrap_or_else(|| format!("http://localhost:{}/auth/callback", port))
 }
 
-pub async fn complete_oauth_login(login_id: &str) -> Result<CodexTokens, String> {
+pub async fn complete_oauth_login(login_id: &str) -> Result<CodexOAuthCompletion, String> {
     hydrate_oauth_state_if_missing();
     let attempt_id = COMPLETE_ATTEMPT_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
     let started_at_ms = chrono::Utc::now().timestamp_millis();
@@ -1159,7 +1425,7 @@ pub async fn complete_oauth_login(login_id: &str) -> Result<CodexTokens, String>
         "Codex OAuth 开始完成登录: attempt_id={}, login_id={}, started_at_ms={}",
         attempt_id, login_id, started_at_ms
     ));
-    let (code, code_verifier, port, exchange_redirect_uri) = {
+    let (code, code_verifier, port, exchange_redirect_uri, proxy_required) = {
         let oauth_state = OAUTH_STATE.lock().unwrap();
         let state = oauth_state
             .as_ref()
@@ -1188,7 +1454,15 @@ pub async fn complete_oauth_login(login_id: &str) -> Result<CodexTokens, String>
             state.code_verifier.clone(),
             state.port,
             state.exchange_redirect_uri.clone(),
+            state.proxy_required,
         )
+    };
+
+    let (raw_proxy, request_proxy) = if proxy_required {
+        let (raw, _, request) = active_proxy(login_id)?;
+        (Some(raw), Some(request))
+    } else {
+        (None, None)
     };
 
     let tokens = match exchange_code_for_token_internal(
@@ -1196,6 +1470,7 @@ pub async fn complete_oauth_login(login_id: &str) -> Result<CodexTokens, String>
         &code_verifier,
         port,
         exchange_redirect_uri.as_deref(),
+        request_proxy.as_deref(),
     )
     .await
     {
@@ -1230,7 +1505,10 @@ pub async fn complete_oauth_login(login_id: &str) -> Result<CodexTokens, String>
         login_id,
         chrono::Utc::now().timestamp_millis() - started_at_ms
     ));
-    Ok(tokens)
+    Ok(CodexOAuthCompletion {
+        tokens,
+        proxy_url: raw_proxy,
+    })
 }
 
 pub fn cancel_oauth_flow_for(login_id: Option<&str>) -> Result<(), String> {
@@ -1440,28 +1718,23 @@ pub async fn refresh_access_token_with_fallback(
     refresh_token: &str,
     current_id_token: Option<&str>,
 ) -> Result<CodexTokens, String> {
-    refresh_access_token_with_fallback_and_proxy(refresh_token, current_id_token, None).await
+    refresh_access_token_with_account_proxy(refresh_token, current_id_token, None).await
 }
 
-pub async fn refresh_access_token_with_fallback_and_proxy(
+pub async fn refresh_access_token_with_account_proxy(
     refresh_token: &str,
     current_id_token: Option<&str>,
-    proxy_url: Option<&str>,
+    account: Option<&crate::models::codex::CodexAccount>,
 ) -> Result<CodexTokens, String> {
-    let mut builder = reqwest::Client::builder()
+    let builder = reqwest::Client::builder()
         .connect_timeout(TOKEN_REFRESH_TIMEOUT)
         .timeout(TOKEN_REFRESH_TIMEOUT);
-    if let Some(proxy_url) = proxy_url.map(str::trim).filter(|value| !value.is_empty()) {
-        builder =
-            if proxy_url.eq_ignore_ascii_case("direct") || proxy_url.eq_ignore_ascii_case("none") {
-                builder.no_proxy()
-            } else {
-                builder.proxy(
-                    reqwest::Proxy::all(proxy_url)
-                        .map_err(|error| format!("账号代理地址无效: {}", error))?,
-                )
-            };
-    }
+    let builder = match account {
+        Some(account) => {
+            crate::modules::codex_proxy_runtime::client_builder(account, builder).await?
+        }
+        None => builder,
+    };
     let client = builder
         .build()
         .map_err(|e| format!("创建 Token 刷新客户端失败: {}", e))?;
@@ -1673,6 +1946,130 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn explicit_http_oauth_proxy_needs_no_node_engine() {
+        let prepared = super::prepare_proxy("login-1".into(), "http://127.0.0.1:18080".into())
+            .await
+            .expect("direct proxy");
+        assert_eq!(prepared.login_id, "login-1");
+        assert_eq!(prepared.browser_url, prepared.request_url);
+        assert!(prepared.browser_url.starts_with("http://127.0.0.1:18080"));
+        assert!(prepared.tunnel.is_none());
+    }
+
+    #[tokio::test]
+    async fn oauth_proxy_session_reuse_compares_normalized_addresses() {
+        let prepared = super::prepare_proxy("login-1".into(), "http://127.0.0.1:18080".into())
+            .await
+            .expect("direct proxy");
+        assert_eq!(prepared.raw_url, "http://127.0.0.1:18080/");
+        for requested in ["http://127.0.0.1:18080", "http://127.0.0.1:18080/"] {
+            assert!(super::oauth_proxy_matches_request(Some(requested), &prepared.raw_url));
+        }
+        for requested in [None, Some("http://127.0.0.1:18081"), Some("invalid")] {
+            assert!(!super::oauth_proxy_matches_request(requested, &prepared.raw_url));
+        }
+    }
+
+    fn reauth_proxy_account() -> crate::models::codex::CodexAccount {
+        crate::models::codex::CodexAccount::new(
+            "reauth-account".into(),
+            "reauth@example.com".into(),
+            crate::models::codex::CodexTokens {
+                access_token: "access".into(),
+                refresh_token: Some("refresh".into()),
+                id_token: "id".into(),
+            },
+        )
+    }
+
+    /// 重新授权默认出口的优先级：账号独立绑定 > 统一代理 > 原有默认出口。
+    #[test]
+    fn reauth_proxy_priority_matches_account_proxy_policy() {
+        use crate::modules::codex_account_proxy::{configured_url, has_effective_proxy};
+        // 有独立绑定：直接使用账号代理，统一代理不会覆盖它。
+        let mut bound = reauth_proxy_account();
+        bound.egress_proxy_url = Some("socks5://127.0.0.1:1080".into());
+        assert_eq!(
+            configured_url(&bound).unwrap().as_deref(),
+            Some("socks5://127.0.0.1:1080")
+        );
+        assert!(has_effective_proxy(&bound, true));
+        // 无独立绑定：只有统一代理开启时才解析出统一出口。
+        let unbound = reauth_proxy_account();
+        assert!(has_effective_proxy(&unbound, true));
+        // 两者都没有：保持原有默认授权路径，不借用其他账号的代理。
+        assert!(!has_effective_proxy(&unbound, false));
+        assert_eq!(crate::modules::codex_account_proxy::resolve_effective(&unbound, None), None);
+    }
+
+    /// 没有账号 ID（首次添加）或 ID 为空时不解析任何账号代理。
+    #[tokio::test]
+    async fn reauth_proxy_resolution_needs_a_real_account_id() {
+        assert_eq!(super::resolve_reauth_egress_proxy("   ").await, Ok(None));
+    }
+
+    #[test]
+    fn oauth_proxy_use_redacts_direct_proxy_credentials() {
+        let proxy = super::oauth_proxy_use("account", "http://user:TOPSECRET@proxy.example:8080");
+        assert_eq!(proxy.source, "account");
+        assert_eq!(proxy.summary["protocol"], "HTTP");
+        assert_eq!(proxy.summary["server"], "proxy.example");
+        assert_eq!(proxy.summary["port"], 8080);
+        assert!(!proxy.summary.to_string().contains("TOPSECRET"));
+        // 直接地址可以回填输入框，用户随后可改。
+        assert_eq!(
+            proxy.input.as_deref(),
+            Some("http://user:TOPSECRET@proxy.example:8080")
+        );
+    }
+
+    #[test]
+    fn oauth_proxy_use_keeps_resource_snapshots_backend_side() {
+        let catalog = crate::modules::codex_proxy_subscription_parser::ParsedCatalog {
+            nodes: vec![crate::modules::codex_proxy_subscription_parser::ParsedNode {
+                id: "node-1".into(),
+                name: "Alpha".into(),
+                protocol: "HTTP".into(),
+                outbound: Some(serde_json::json!({
+                    "type": "http",
+                    "server": "proxy.example",
+                    "server_port": 8080,
+                    "username": "user",
+                    "password": "TOP_SECRET",
+                })),
+                error: None,
+            }],
+            groups: Vec::new(),
+        };
+        let snapshot = crate::modules::codex_proxy_catalog_binding::encode(
+            "source-1",
+            "Demo",
+            "node-1",
+            &catalog,
+            &std::collections::BTreeMap::new(),
+        )
+        .expect("binding snapshot");
+        let proxy = super::oauth_proxy_use("account", &snapshot);
+        assert_eq!(proxy.summary["protocol"], "RESOURCE");
+        assert_eq!(proxy.summary["name"], "Alpha");
+        assert!(!proxy.summary.to_string().contains("TOP_SECRET"));
+        // 资源快照可能很大且不是可编辑地址，只显示摘要，实际出口由后端按会话使用。
+        assert!(proxy.input.is_none());
+    }
+
+    #[test]
+    fn pending_oauth_state_records_only_proxy_requirement() {
+        let mut state = pending("https://auth.openai.com/oauth/authorize");
+        state.proxy_required = true;
+        let serialized = serde_json::to_string(&state).expect("serialize");
+        assert!(serialized.contains("\"proxy_required\":true"));
+        assert!(!serialized.contains("proxy_url"));
+        let legacy = serialized.replace(",\"proxy_required\":true", "");
+        let restored: OAuthState = serde_json::from_str(&legacy).expect("legacy state");
+        assert!(!restored.proxy_required);
+    }
+
     fn pending(auth_url: &str) -> OAuthState {
         OAuthState {
             login_id: "login-1".to_string(),
@@ -1687,6 +2084,7 @@ mod tests {
             device_user_code: None,
             device_poll_interval_seconds: None,
             exchange_redirect_uri: None,
+            proxy_required: false,
         }
     }
 

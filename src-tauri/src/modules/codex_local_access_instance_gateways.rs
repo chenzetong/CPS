@@ -250,20 +250,20 @@ pub async fn restart_instance_gateway_for(instance_id: &str, kind: &str) -> Resu
     result
 }
 
-/// 网关已健康（本次不重新走接管流程）时补写 profile 级兜底。
+/// 网关已健康（本次不重新走接管流程）时同步 DeepSeek 参数兼容配置。
 ///
 /// 升级场景下实例可能仍在运行、网关也一直健康，此时启动自愈不会重新接管 profile，
-/// 但 DeepSeek 压缩兜底可能仍是被旧版本清掉的状态。这里按 profile 幂等补写一次；
+/// 这里按 profile 幂等同步有效参数，并清理有备份依据的旧受管压缩开关；
 /// 失败只记日志，不影响网关可用性。
 fn ensure_instance_gateway_profile_overrides(target: &InstanceGatewayTarget) {
     if target.kind != INSTANCE_GATEWAY_KIND_PROVIDER {
         return;
     }
     if let Err(error) =
-        reapply_deepseek_profile_compaction_fallback(&target.profile_dir, &target.account)
+        reapply_deepseek_profile_config_overrides(&target.profile_dir, &target.account)
     {
         logger::log_codex_api_warn(&format!(
-            "[CodexLocalAccess][instance-gateway] 补写 DeepSeek 压缩兜底失败: instance_id={}, profile={}, error={}",
+            "[CodexLocalAccess][instance-gateway] 同步 DeepSeek 参数兼容配置失败: instance_id={}, profile={}, error={}",
             target.instance_id,
             target.profile_dir.display(),
             error
@@ -279,10 +279,7 @@ async fn live_provider_gateway_endpoints() -> HashMap<String, (u16, String)> {
     let mut endpoints = HashMap::new();
     let mut runtimes = provider_gateway_runtime_store().lock().await;
     for (key, runtime) in runtimes.iter_mut() {
-        let alive = runtime
-            .sidecar_child
-            .as_mut()
-            .is_some_and(|child| matches!(child.try_wait(), Ok(None)));
+        let alive = native_provider_runtime_alive(runtime);
         if !alive {
             continue;
         }
@@ -313,10 +310,7 @@ async fn current_instance_gateway_endpoint(
     {
         let mut runtimes = provider_gateway_runtime_store().lock().await;
         if let Some(runtime) = runtimes.get_mut(&runtime_key) {
-            let alive = runtime
-                .sidecar_child
-                .as_mut()
-                .is_some_and(|child| matches!(child.try_wait(), Ok(None)));
+            let alive = native_provider_runtime_alive(runtime);
             if alive {
                 if let Some(collection) = runtime.collection.as_ref() {
                     return Some((collection.port, collection.api_key.clone()));

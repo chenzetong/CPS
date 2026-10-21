@@ -2,7 +2,7 @@ import { isCodexPendingOAuthAccount, type CodexApiProviderMode, type CodexBatchD
 import type { CodexAccount } from "../types/codex";
 import type { CodexLocalAccessAddressKind, CodexLocalAccessAccountHealth } from "../types/codexLocalAccess";
 import { CODEX_OVERVIEW_FILTER_FIELDS, CODEX_OVERVIEW_FILTER_SCOPE } from "../utils/codexAccountOverview";
-import { findCodexApiProviderPresetById } from "../utils/codexProviderPresets";
+import { CODEX_API_PROVIDER_CUSTOM_ID, findCodexApiProviderPresetById } from "../utils/codexProviderPresets";
 import { normalizeApiKeyFunOfficialUrl, resolveApiKeyFunWireApi } from "../utils/apikeyFunLinks";
 import { type CodexModelProvider, type CodexModelProviderUsageSummary } from "../services/codexModelProviderService";
 import type { Sponsor } from "../types/sponsor";
@@ -60,14 +60,6 @@ export const CODEX_TOKEN_BATCH_EXAMPLE = `[
 ]`;
 export const OPENAI_OFFICIAL_PRESET_ID = "openai_official";
 export const OPENAI_OFFICIAL_BASE_URL = "https://api.openai.com/v1";
-export function parseOAuthQuotaReservePercent(value: string): number | null {
-  const normalized = value.trim();
-  if (!/^(?:[1-9]\d?|100)$/.test(normalized)) {
-    return null;
-  }
-  return Number(normalized);
-}
-
 export function normalizeCodexApiBaseUrl(rawValue?: string | null): string {
   return normalizeHttpBaseUrl(rawValue ?? "") ?? "";
 }
@@ -110,10 +102,6 @@ export const OAUTH_BINDING_PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 
 export type CodexOverviewLayoutMode = "compact" | "list" | "grid";
 export type OAuthBindingTargetKind = "api_key_account" | "local_access";
-export type OAuthBindingQuotaReserveFieldErrors = {
-  hourlyPercent?: string;
-  weeklyPercent?: string;
-};
 export type CodexAccountNoteFormState = {
   note: string;
   twoFactorSecret: string;
@@ -643,15 +631,18 @@ export function isRelayApiProviderTemplateId(value?: string | null): boolean {
 }
 
 export function getDefaultApiProviderPresetId(
-  sponsorTemplates: SponsorApiProviderTemplate[],
+  _sponsorTemplates: SponsorApiProviderTemplate[],
 ): string {
-  return sponsorTemplates[0]?.id ?? DEFAULT_CODEX_API_PROVIDER_ID;
+  return CODEX_API_PROVIDER_CUSTOM_ID;
 }
 
 export function resolveApiProviderPresetDefaults(
   providerId: string,
   sponsorTemplates: SponsorApiProviderTemplate[],
 ): { baseUrl: string; providerName: string } {
+  if (providerId === CODEX_API_PROVIDER_CUSTOM_ID) {
+    return { baseUrl: "", providerName: "" };
+  }
   const sponsorTemplate = sponsorTemplates.find(
     (template) => template.id === providerId,
   );

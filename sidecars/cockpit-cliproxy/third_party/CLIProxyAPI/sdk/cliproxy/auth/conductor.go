@@ -44,6 +44,12 @@ type ExecutionSessionCloser interface {
 
 // Result captures execution outcome used to adjust auth state.
 type Result struct {
+	// unsent excludes local admission and preparation failures from execution observations.
+	unsent bool
+	// StaleCredential preserves request diagnostics without changing current auth health.
+	StaleCredential   bool
+	CredentialVersion uint64
+	RegistrationEpoch uint64
 	// AuthID references the auth that produced this result.
 	AuthID string
 	// Provider is copied for convenience when emitting hooks.
@@ -180,6 +186,8 @@ type Manager struct {
 	// Auto refresh state
 	refreshCancel context.CancelFunc
 	refreshLoop   *authAutoRefreshLoop
+	// refreshRuns retains cancelled runs until all their workers have exited.
+	refreshRuns map[*authAutoRefreshLoop]context.CancelFunc
 
 	requestPrepareLocks sync.Map
 	// refreshLocks serializes credential refresh per auth ID so concurrent

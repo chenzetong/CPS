@@ -161,7 +161,7 @@ GitHub 公共 latest 路由可能晚于 Release 状态变更。如果公开校�
 
 ## 9. 已构建版本的发布收尾恢复
 
-若所有平台资产已上传，但 GitHub 标签接口返回过期资产列表导致收尾失败，可从 `main` 运行：
+若所有平台资产已上传到草稿 Release，但收尾失败，可从 `main` 运行：
 
 ```bash
 gh workflow run release.yml --ref main -f finalize_only=true
@@ -169,4 +169,4 @@ gh workflow run release.yml --ref main -f finalize_only=true
 
 此模式只处理 `main` 的 `package.json.version` 对应的现有 Release，不重建安装包、不移动标签。它重新生成发布说明与完整更新清单，生成校验和并更新 Homebrew。仅在该版本所有平台构建已成功后使用。
 
-收尾下载与覆盖上传使用 `scripts/release/github_release_assets.cjs`，先通过标签解析 Release ID，再通过独立资产列表接口枚举文件；下载时验证大小与 GitHub 提供的 SHA-256，覆盖时按资产 ID 精确替换同名文件，避免依赖标签响应中可能过期的内嵌资产列表。
+收尾下载使用 `scripts/release/github_release_assets.cjs`，先通过标签解析 Release ID，再通过独立资产列表接口枚举文件；通过带鉴权的资产 ID 接口下载草稿文件，验证大小与 GitHub 提供的 SHA-256。上传使用 `upload_release_assets.cjs`，每次写入前检查 Release 仍为草稿，避免改写已公开版本。

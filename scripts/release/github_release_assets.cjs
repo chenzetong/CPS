@@ -23,23 +23,32 @@ function assetPath(directory, name) {
   return path.join(directory, name);
 }
 
+async function downloadAsset(repo, asset, destination, run = execFileSync) {
+  const output = fs.openSync(destination, 'w');
+  try {
+    // The authenticated asset API also serves drafts; public download URLs do not.
+    run('gh', [
+      'api', `repos/${repo}/releases/assets/${asset.id}`,
+      '--header', 'Accept: application/octet-stream',
+    ], { stdio: ['ignore', output, 'inherit'], timeout: 180_000 });
+  } finally {
+    fs.closeSync(output);
+  }
+  const hash = crypto.createHash('sha256');
+  for await (const chunk of fs.createReadStream(destination)) hash.update(chunk);
+  if (fs.statSync(destination).size !== asset.size ||
+      asset.digest !== `sha256:${hash.digest('hex')}`) {
+    fs.unlinkSync(destination);
+    throw new Error(`Release asset checksum mismatch: ${asset.name}`);
+  }
+}
+
 async function downloadAssets(repo, tag, directory) {
   const { assets } = releaseAssets(repo, tag);
   if (!assets.length) throw new Error(`No release assets found for ${tag}`);
   fs.mkdirSync(directory, { recursive: true });
   for (const asset of assets) {
-    const destination = assetPath(directory, asset.name);
-    execFileSync('curl', [
-      '--fail', '--location', '--silent', '--show-error', '--retry', '3',
-      '--max-time', '180', '--output', destination, asset.browser_download_url,
-    ], { stdio: 'inherit' });
-    const hash = crypto.createHash('sha256');
-    for await (const chunk of fs.createReadStream(destination)) hash.update(chunk);
-    if (fs.statSync(destination).size !== asset.size ||
-        asset.digest !== `sha256:${hash.digest('hex')}`) {
-      fs.unlinkSync(destination);
-      throw new Error(`Release asset checksum mismatch: ${asset.name}`);
-    }
+    await downloadAsset(repo, asset, assetPath(directory, asset.name));
   }
   console.log(`Downloaded and verified ${assets.length} assets for ${tag}`);
 }
@@ -67,4 +76,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { releaseAssets, assetPath, uploadAsset };
+module.exports = { releaseAssets, assetPath, downloadAsset, uploadAsset };

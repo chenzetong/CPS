@@ -3,7 +3,8 @@ const { test } = require('node:test');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { releaseAssets, assetPath, uploadAsset } = require('./github_release_assets.cjs');
+const crypto = require('node:crypto');
+const { releaseAssets, assetPath, downloadAsset, uploadAsset } = require('./github_release_assets.cjs');
 
 test('lists paginated assets by release ID when tag metadata is stale', () => {
   const calls = [];
@@ -47,4 +48,24 @@ test('rejects asset filenames that escape the download directory', () => {
     assert.throws(() => assetPath('/tmp/releases', name), /Unsafe/);
   }
   assert.equal(assetPath('/tmp/releases', 'latest.json'), path.join('/tmp/releases', 'latest.json'));
+});
+
+test('downloads draft assets by authenticated ID and verifies bytes', async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'draft-assets-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const content = Buffer.from([0, 255, 1, 128]);
+  const asset = { id: 7, name: 'app.zip', size: content.length,
+    digest: `sha256:${crypto.createHash('sha256').update(content).digest('hex')}` };
+  const file = path.join(directory, asset.name);
+  const download = (command, args, options) => {
+    assert.equal(command, 'gh');
+    assert.deepEqual(args, ['api', 'repos/owner/repo/releases/assets/7', '--header', 'Accept: application/octet-stream']);
+    fs.writeSync(options.stdio[1], content);
+  };
+  await downloadAsset('owner/repo', asset, file, download);
+  assert.deepEqual(fs.readFileSync(file), content);
+  await assert.rejects(downloadAsset('owner/repo', { ...asset, size: 99 }, file, download), /checksum mismatch/);
+  assert.equal(fs.existsSync(file), false);
+  await assert.rejects(downloadAsset('owner/repo', { ...asset, digest: 'sha256:wrong' }, file, download), /checksum mismatch/);
+  assert.equal(fs.existsSync(file), false);
 });

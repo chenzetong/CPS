@@ -6,16 +6,18 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { releaseAssets, assetPath, downloadAsset, uploadAsset } = require('./github_release_assets.cjs');
 
-test('lists paginated assets by release ID when tag metadata is stale', () => {
+test('finds drafts in paginated releases and lists fresh assets by ID', () => {
   const calls = [];
   const run = (args) => {
     calls.push(args);
     return calls.length === 1
-      ? JSON.stringify({ id: 42, assets: [] })
+      ? JSON.stringify([[{ id: 41, tag_name: 'v1.2.2' }], [{ id: 42, tag_name: 'v1.2.3', draft: true, assets: [] }]])
       : JSON.stringify([[{ id: 1, name: 'latest.json' }], [{ id: 2, name: 'app.dmg' }]]);
   };
   const result = releaseAssets('owner/repo', 'v1.2.3', run);
   assert.equal(result.assets.length, 2);
+  assert.equal(result.release.draft, true);
+  assert.deepEqual(calls[0], ['api', '--paginate', '--slurp', 'repos/owner/repo/releases?per_page=100']);
   assert.deepEqual(calls[1], ['api', '--paginate', '--slurp', 'repos/owner/repo/releases/42/assets?per_page=100']);
 });
 
@@ -27,7 +29,7 @@ test('replaces only the named asset using its ID despite an empty tag asset list
   const calls = [];
   uploadAsset('owner/repo', 'v1.2.3', file, (args) => {
     calls.push(args);
-    if (calls.length === 1) return JSON.stringify({ id: 42, assets: [] });
+    if (calls.length === 1) return JSON.stringify([[{ id: 42, tag_name: 'v1.2.3', assets: [] }]]);
     if (calls.length === 2) return JSON.stringify([[{ id: 7, name: 'latest.json' }, { id: 8, name: 'app.dmg' }]]);
     return '';
   });
@@ -35,6 +37,15 @@ test('replaces only the named asset using its ID despite an empty tag asset list
     ['api', '--method', 'DELETE', 'repos/owner/repo/releases/assets/7'],
     ['release', 'upload', 'v1.2.3', file, '--repo', 'owner/repo'],
   ]);
+});
+
+test('does not list assets when the requested release is absent', () => {
+  let calls = 0;
+  assert.throws(() => releaseAssets('owner/repo', 'v1.2.3', () => {
+    calls += 1;
+    return JSON.stringify([[{ id: 41, tag_name: 'v1.2.2' }]]);
+  }), /Release not found: v1.2.3/);
+  assert.equal(calls, 1);
 });
 
 test('does not touch remote assets when the replacement is missing', () => {

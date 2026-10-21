@@ -8,7 +8,11 @@ function gh(args) {
 }
 
 function releaseAssets(repo, tag, run = gh) {
-  const release = JSON.parse(run(['api', `repos/${repo}/releases/tags/${encodeURIComponent(tag)}`]));
+  // The tag endpoint can omit drafts; authenticated release listings include them.
+  const release = JSON.parse(run([
+    'api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`,
+  ])).flat().find((item) => item.tag_name === tag);
+  if (!release) throw new Error(`Release not found: ${tag}`);
   // The tag endpoint can return a stale embedded assets array. Always list by ID.
   const assets = JSON.parse(run([
     'api', '--paginate', '--slurp', `repos/${repo}/releases/${release.id}/assets?per_page=100`,
